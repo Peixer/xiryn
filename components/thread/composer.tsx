@@ -1,10 +1,11 @@
 "use client"
 
 import * as React from "react"
-import { ArrowUpIcon, ChevronDownIcon, SquareIcon } from "lucide-react"
+import { ArrowUpIcon, ChevronDownIcon, MicIcon, SquareIcon } from "lucide-react"
 
 import { Glyph } from "@/components/glyph"
 import { ModelSpecLabel } from "@/components/model-picker"
+import { useDictation } from "@/components/thread/dictation"
 import type { AgentLite } from "@/components/thread/transcript"
 import {
   DropdownMenu,
@@ -12,6 +13,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { toast } from "@/components/ui/toast"
 import { cn } from "@/lib/utils"
 
 export function Composer({
@@ -57,9 +59,32 @@ export function Composer({
     } catch {}
   }, [text, draftKey])
 
+  // Voice typing: what was in the box before speaking, then the words
+  // heard so far. Null once the text has been sent, so late results from
+  // the recogniser don't bring it back.
+  const spokenAfter = React.useRef<string | null>(null)
+  const dictation = useDictation({
+    onText: (final, interim) => {
+      if (spokenAfter.current === null) return
+      setText(spokenAfter.current + final + interim)
+    },
+    onProblem: (message) => toast.add({ type: "error", title: message }),
+  })
+  const listening = dictation.state === "listening" || dictation.state === "starting"
+
+  const startDictation = () => {
+    spokenAfter.current = text && !/\s$/.test(text) ? `${text} ` : text
+    void dictation.start()
+    ref.current?.focus()
+  }
+
   const submit = () => {
     const value = text.trim()
     if (!value || busy || disabled) return
+    if (listening) {
+      spokenAfter.current = null
+      dictation.stop()
+    }
     onSend(value)
     setText("")
   }
@@ -82,7 +107,14 @@ export function Composer({
         <textarea
           ref={ref}
           value={text}
-          onChange={(event) => setText(event.target.value)}
+          onChange={(event) => {
+            // Typing takes over from the microphone
+            if (listening) {
+              spokenAfter.current = null
+              dictation.stop()
+            }
+            setText(event.target.value)
+          }}
           onKeyDown={(event) => {
             if (
               event.key === "Enter" &&
@@ -131,9 +163,40 @@ export function Composer({
               className="max-w-56 px-1 text-[11px] text-muted-foreground"
             />
           )}
-          <span className="ml-auto hidden font-mono text-[10.5px] text-faint sm:inline">
-            ↵ send · ⇧↵ newline
-          </span>
+          {listening ? (
+            <span className="ml-auto flex items-center gap-1.5 font-mono text-[10.5px] text-destructive">
+              <span className="size-1.5 animate-pulse-dot rounded-full bg-destructive text-destructive" />
+              {dictation.state === "starting" ? "starting…" : "listening"}
+              <span className="hidden text-faint sm:inline">
+                · {dictation.local ? "on this device" : "your browser's speech service"}
+              </span>
+            </span>
+          ) : (
+            <span className="ml-auto hidden font-mono text-[10.5px] text-faint sm:inline">
+              ↵ send · ⇧↵ newline
+            </span>
+          )}
+          {dictation.state !== "unsupported" && (
+            <button
+              type="button"
+              onClick={() => (listening ? dictation.stop() : startDictation())}
+              aria-label={listening ? "Stop voice typing" : "Voice typing"}
+              aria-pressed={listening}
+              title={listening ? "Stop voice typing" : "Speak your message"}
+              disabled={disabled}
+              className={cn(
+                "relative grid size-8 place-items-center rounded-lg border transition-colors disabled:opacity-30",
+                listening
+                  ? "border-destructive/40 bg-destructive/10 text-destructive"
+                  : "bg-background text-muted-foreground hover:bg-accent hover:text-foreground"
+              )}
+            >
+              {listening && (
+                <span className="absolute inset-0 animate-ping rounded-lg border border-destructive/40" />
+              )}
+              <MicIcon className="size-4" />
+            </button>
+          )}
           {busy ? (
             <button
               type="button"
