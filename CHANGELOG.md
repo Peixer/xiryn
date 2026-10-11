@@ -2,6 +2,26 @@
 
 All notable changes to Oryn are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses [Semantic Versioning](https://semver.org/).
 
+## [0.3.0] — 2026-10-11
+
+Agents can now sign in and pay for you — with your approval every time, and without ever seeing your details.
+
+### Added
+
+- **Vault:** logins, cards, UPI IDs and personal details, encrypted with AES-256-GCM. The key is held by the operating system (macOS Keychain, Windows DPAPI, the Linux Secret Service). Manage it in **Settings → Vault**.
+- **Agents fill without seeing:** `vault_fill` types a saved value into the page and shows the field as dots; agents only ever get masked hints. Logins fill only on their own site.
+- **Payment approvals:** before paying, an agent asks with the merchant, the amount and the site. Approve with a saved card or UPI ID, pay yourself by taking over, or decline — in the chat or with one tap on Telegram. A card only fills on the site you approved, for 20 minutes.
+- **Secure requests:** when an agent needs a login, a card or a one-time code, a form appears in the chat; what you enter goes into the vault, saved or for one task. Codes can be replied to the Telegram bot; the message is deleted and the code used once.
+- **Set up with a coding agent:** a prompt in the README for Claude Code, Codex or Cursor that installs everything and asks for your keys.
+- **Expand the live desktop** inside Oryn, watching only, with Fullscreen and Take over.
+
+### Fixed
+
+- Workstations that had stopped wouldn't start again: stale X server locks are now cleared at boot.
+- macOS setup: Homebrew renamed the Docker Desktop cask; setup now installs Docker Desktop, Node.js and Git without Homebrew or a password.
+- Linux setup as root, and when Docker can't be started without a password.
+- Chromium no longer asks to "restore pages" after a workstation restarts.
+
 ## [0.2.0] — 2026-10-11
 
 Agents' machines now run on your own computer, in Docker. Nothing to sign up for, nothing in the cloud, and sites see your own connection.
@@ -62,5 +82,6 @@ The first public release.
 - **Security:** loopback-only server, Host/Origin guard, masked secrets.
 - Constellation glyphs for agents and squads, dark and light themes, command palette (⌘K), responsive layout.
 
+[0.3.0]: https://github.com/SouravBeraAkaSpeed/oryn/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/SouravBeraAkaSpeed/oryn/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/SouravBeraAkaSpeed/oryn/releases/tag/v0.1.0
