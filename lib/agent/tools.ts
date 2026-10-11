@@ -255,8 +255,10 @@ export function createWorkstationTools(env: ToolEnv) {
         modifiers: z.array(z.enum(["ctrl", "alt", "shift", "cmd"])).default([]),
       }),
       execute: async ({ key, modifiers }) => {
-        await (await desktop()).computerUse.keyboard.press(key, modifiers)
-        return { key, modifiers }
+        // Models sometimes send a modifier as both the key and a modifier
+        const held = modifiers.filter((modifier) => modifier !== key.toLowerCase())
+        await (await desktop()).computerUse.keyboard.press(key, held)
+        return { key, modifiers: held }
       },
     }),
   }
