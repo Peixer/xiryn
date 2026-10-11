@@ -97,11 +97,17 @@ function took(ms: number) {
 type Kind = "done" | "attention" | "error"
 
 function describe(event: OrynEvent) {
-  if (event.type === "takeover") {
+  if (event.type !== "turn-finished") {
+    const status =
+      event.type === "payment"
+        ? "wants to pay"
+        : event.type === "secret"
+          ? "needs a detail"
+          : "needs you"
     return {
       kind: "attention" as Kind,
-      status: "needs you",
-      title: `${event.name} needs you`,
+      status,
+      title: `${event.name} ${status}`,
       body: event.reason,
     }
   }
@@ -289,7 +295,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
           via: event.via,
           href: event.href,
           takeoverHref:
-            kind === "attention" && event.href.startsWith("/a/")
+            event.type === "takeover" && event.href.startsWith("/a/")
               ? `${event.href}?takeover=1`
               : null,
           timeout,

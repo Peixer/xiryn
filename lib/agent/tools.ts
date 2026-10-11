@@ -4,10 +4,26 @@ import { z } from "zod"
 
 import { db } from "@/db"
 import { memories, type Agent } from "@/db/schema"
+import {
+  activeApproval,
+  createApproval,
+  getVaultItem,
+  hostMatches,
+  listVault,
+  markVaultUsed,
+  siteOf,
+  VAULT_FIELDS,
+  vaultValue,
+  type Approval,
+  type VaultItemView,
+  type VaultKind,
+} from "@/lib/vault"
 import { webFetch, webSearch } from "@/lib/web"
 import {
   captureScreen,
   click,
+  currentPage,
+  maskFocusedField,
   drag,
   listDirectory,
   movePointer,
@@ -15,6 +31,7 @@ import {
   readFile,
   runCommand,
   scroll,
+  typeSecret,
   typeText,
   writeFile,
 } from "@/lib/workstation"
@@ -22,10 +39,28 @@ import {
 // The tool belt an agent carries. Every tool acts on behalf of whichever
 // agent holds the turn right now, which changes when a squad delegates.
 
+export type SecretRequest = {
+  kind: VaultKind
+  reason: string
+  // For a login: the site it's for
+  site: string | null
+  // The site the browser was on when it was asked for
+  host: string | null
+}
+
 export type ToolEnv = {
   current: () => Agent
+  threadId: string
   // Lets the person know, wherever they are, that the desktop is theirs
   onTakeoverRequested?: (agent: Agent, reason: string) => Promise<void> | void
+  // A payment waiting for their decision
+  onApprovalRequested?: (
+    agent: Agent,
+    approval: Approval,
+    methods: VaultItemView[]
+  ) => Promise<void> | void
+  // A detail only they can give, through a secure form
+  onSecretRequested?: (agent: Agent, request: SecretRequest) => Promise<void> | void
 }
 
 const MAX_OUTPUT = 20_000
@@ -309,6 +344,151 @@ export function createWorkstationTools(env: ToolEnv) {
   }
 }
 
+/* ───────────────────────────── vault ──────────────────────────── */
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+export function createVaultTools(env: ToolEnv) {
+  const agentId = () => env.current().id
+  const page = () => currentPage(agentId()).catch(() => null)
+
+  return {
+    vault_list: tool({
+      description:
+        "See what the person keeps in their vault: saved logins, cards, UPI IDs and personal details. You get each item's id, label and a masked hint, never the values.",
+      inputSchema: z.object({}),
+      execute: async () => ({
+        items: listVault({ temporary: true }).map(({ id, kind, label, hint, site }) => ({
+          id,
+          kind,
+          label,
+          hint,
+          site,
+          fields: VAULT_FIELDS[kind],
+        })),
+      }),
+    }),
+
+    vault_fill: tool({
+      description:
+        "Type a value from the person's vault into a field on your desktop, without you ever seeing it. Click the field first, or pass x and y to have it clicked. A login only fills on its own site; a card or UPI ID only after the person approved the payment with request_payment_approval, and only on the site they approved. The field then shows dots. Returns no screenshot: take one with screen_capture to check the form.",
+      inputSchema: z.object({
+        id: z
+          .string()
+          .describe("The vault item's id, from vault_list or the person's message"),
+        field: z
+          .string()
+          .describe(
+            "Which value to type: number, expiry, expiry_month, expiry_year, cvv or name for a card; id for UPI; username or password for a login; name, email, phone, address, city, postcode… for personal details; code for a one-time code"
+          ),
+        x: coordinates.x.optional(),
+        y: coordinates.y.optional(),
+      }),
+      execute: async ({ id, field, x, y }) => {
+        const item = getVaultItem(id)
+        if (!item)
+          throw new Error("There's no vault item with that id. Check vault_list.")
+        const where = await page()
+        if (item.kind === "login" && !hostMatches(where?.host ?? null, item.site)) {
+          throw new Error(
+            `"${item.label}" is a login for ${item.site}, but the browser is on ${where?.host ?? "no website"}. Logins only fill on their own site.`
+          )
+        }
+        if (item.kind === "card" || item.kind === "upi") {
+          const approval = activeApproval(env.threadId, item.id)
+          if (!approval) {
+            throw new Error(
+              "This payment method can't be used until the person approves the payment. Call request_payment_approval first."
+            )
+          }
+          if (approval.host && !hostMatches(where?.host ?? null, approval.host)) {
+            throw new Error(
+              `The payment was approved on ${approval.host}, but the browser is now on ${where?.host ?? "no website"}. Ask for approval again on this site.`
+            )
+          }
+        }
+        const value = vaultValue(item.id, field)
+        if (x !== undefined && y !== undefined) {
+          await click(agentId(), x, y, "left", false)
+          await sleep(300)
+        }
+        await typeSecret(agentId(), value)
+        await maskFocusedField(agentId())
+        markVaultUsed(item.id)
+        return {
+          filled: field.replace(/_/g, " "),
+          item: item.hint,
+          site: where?.host ?? null,
+        }
+      },
+    }),
+
+    request_payment_approval: tool({
+      description:
+        "Ask the person to approve a payment before you pay for anything. Call it on the checkout page once the final amount is known. They see the merchant, the amount and the site, and choose: approve with a saved card or UPI ID (you then fill it with vault_fill), take over and pay themselves, or decline. Your turn ends with this call; their decision arrives as a message.",
+      inputSchema: z.object({
+        merchant: z.string().min(1).describe("Who is being paid, e.g. MakeMyTrip"),
+        amount: z
+          .string()
+          .min(1)
+          .describe("The exact total with its currency, e.g. ₹19,062"),
+        purpose: z.string().min(1).describe("What it pays for, in one short sentence"),
+      }),
+      execute: async ({ merchant, amount, purpose }) => {
+        const where = await page()
+        const approval = createApproval({
+          threadId: env.threadId,
+          agentId: agentId(),
+          merchant,
+          amount,
+          purpose,
+          host: where?.host ?? null,
+        })
+        const methods = listVault({ temporary: true }).filter(
+          (item) => item.kind === "card" || item.kind === "upi"
+        )
+        await env.onApprovalRequested?.(env.current(), approval, methods)
+        return {
+          approvalId: approval.id,
+          merchant,
+          amount,
+          purpose,
+          site: approval.host,
+          savedMethods: methods.map((method) => method.hint),
+        }
+      },
+    }),
+
+    request_secret: tool({
+      description:
+        "Ask the person for something only they have: a login, a card or UPI ID, personal details, or a one-time code they were sent. They enter it in a secure form; it goes into their vault (kept for next time if they choose), never into this conversation, and you get an item id to use with vault_fill. Check vault_list first. Your turn ends with this call.",
+      inputSchema: z.object({
+        kind: z
+          .enum(["login", "card", "upi", "identity", "code"])
+          .describe(
+            "login, card, upi, identity (name, phone, address…) or code (a one-time code / OTP)"
+          ),
+        reason: z
+          .string()
+          .min(1)
+          .describe("What it's for, e.g. 'Your Swiggy login, to place the order'"),
+        site: z.string().optional().describe("For a login: the site it's for"),
+      }),
+      execute: async ({ kind, reason, site }) => {
+        const where = await page()
+        const request: SecretRequest = {
+          kind,
+          reason,
+          site: kind === "login" ? siteOf(site || where?.host || "") || null : null,
+          host: where?.host ?? null,
+        }
+        await env.onSecretRequested?.(env.current(), request)
+        return request
+      },
+    }),
+  }
+}
+
 /* ──────────────────────────── memory ──────────────────────────── */
 
 export function createMemoryTools(env: ToolEnv) {
@@ -408,6 +588,7 @@ export function createDelegateTool(
 /* ───────────────────────────── types ──────────────────────────── */
 
 export type OrynTools = ReturnType<typeof createWorkstationTools> &
+  ReturnType<typeof createVaultTools> &
   ReturnType<typeof createMemoryTools> &
   ReturnType<typeof createWebTools> &
   ReturnType<typeof createDelegateTool>
@@ -422,6 +603,11 @@ export type OrynMetadata = {
   via?: "telegram"
   // Set on the message sent when the person hands the desktop back
   handback?: { note?: string }
+  // Set on the message that answers a payment approval or a secret request
+  vault?: {
+    action: "approved" | "declined" | "taken-over" | "provided"
+    summary: string
+  }
 }
 
 export type OrynMessage = UIMessage<OrynMetadata, UIDataTypes, InferUITools<OrynTools>>

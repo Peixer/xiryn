@@ -21,7 +21,9 @@ export type OrynEvent =
       durationMs: number
     })
   | (Common & {
-      type: "takeover"
+      // The agent handed over its screen, wants a payment approved, or
+      // needs a detail only the person has
+      type: "takeover" | "payment" | "secret"
       reason: string
     })
 

@@ -18,10 +18,18 @@ const bodySchema = z.object({
       .array(z.object({ type: z.string() }).loose())
       .min(1)
       .max(32),
-    // Only the hand-back marker is accepted; the rest is set by the server
+    // Only display markers are accepted; the rest is set by the server
     metadata: z
       .object({
         handback: z.object({ note: z.string().max(4000).optional() }).optional(),
+        // Shown as a marker in the transcript; decisions themselves are stored
+        // by the server actions that made them
+        vault: z
+          .object({
+            action: z.enum(["approved", "declined", "taken-over", "provided"]),
+            summary: z.string().max(300),
+          })
+          .optional(),
       })
       .optional(),
   }),

@@ -12,8 +12,10 @@ import {
   subscribe,
   TurnError,
 } from "@/lib/agent/runtime"
-import type { OrynMessage } from "@/lib/agent/tools"
+import type { OrynMessage, SecretRequest } from "@/lib/agent/tools"
 import { getSetting, setSetting } from "@/lib/config"
+import { getApproval, type Approval, type VaultItemView } from "@/lib/vault"
+import { answerPayment, answerSecret, type VaultMarker } from "@/lib/vault-requests"
 import { getTakeoverLink } from "@/lib/workstation"
 import { resolveModelSpec } from "@/lib/providers/registry"
 import {
@@ -49,6 +51,13 @@ type BridgeState = {
   rejected: string | null
   // Wrong pairing codes since the last rotation
   failedPairs: number
+  // A one-time code an agent asked for: the next reply is stored, not sent
+  awaitingCode?: {
+    threadId: string
+    agentId: string
+    squadId: string | null
+    expires: number
+  } | null
 }
 
 const globalForBridge = globalThis as unknown as { __orynTelegram?: BridgeState }
@@ -62,7 +71,8 @@ const state = (globalForBridge.__orynTelegram ??= {
   queues: new Map(),
   rejected: null,
   failedPairs: 0,
-})
+  awaitingCode: null,
+} as BridgeState)
 
 const COMMANDS = [
   { command: "agents", description: "Pick the agent or squad to talk to" },
@@ -355,6 +365,36 @@ async function handle(token: string, update: TgUpdate) {
     return
   }
 
+  // A code an agent asked for goes into the vault, not into the conversation
+  const awaiting = state.awaitingCode
+  if (
+    awaiting &&
+    Date.now() < awaiting.expires &&
+    /^[A-Za-z0-9][A-Za-z0-9 -]{2,15}$/.test(text)
+  ) {
+    state.awaitingCode = null
+    const answer = answerSecret(
+      "code",
+      { code: text.replace(/\s/g, "") },
+      { save: false }
+    )
+    await callTelegram(token, "deleteMessage", {
+      chat_id: message.chat.id,
+      message_id: message.message_id,
+    }).catch(() => {})
+    await say(
+      token,
+      message.chat.id,
+      "🔐 Code received and stored in your vault. It's used once, then deleted."
+    )
+    setTarget(
+      awaiting.squadId
+        ? { squadId: awaiting.squadId, threadId: awaiting.threadId }
+        : { agentId: awaiting.agentId, threadId: awaiting.threadId }
+    )
+    return converse(token, message.chat.id, answer.text, answer.marker)
+  }
+
   const command = text.match(/^\/(\w+)(?:@\w+)?\s*([\s\S]*)$/)
   if (command) {
     const [, name, rest] = command
@@ -458,6 +498,8 @@ async function handleCallback(token: string, query: TgCallbackQuery) {
     }).catch(() => {})
     return
   }
+  const pay = query.data?.match(/^pay:([\w-]+):([\w-]+)$/)
+  if (pay) return handlePayment(token, query, pay[1], pay[2])
   const match = query.data?.match(/^use:(a|s):(.+)$/)
   if (!match) return
   const [, kind, id] = match
@@ -565,10 +607,21 @@ const TOOL_LABELS: Record<string, (input: Record<string, unknown>) => string> = 
   memory_write: () => "saving to memory",
   memory_forget: () => "forgetting a note",
   request_takeover: () => "handing you the screen",
+  vault_list: () => "checking your vault",
+  vault_fill: (i) =>
+    `filling ${String(i.field ?? "a field").replace(/_/g, " ")} from your vault`,
+  request_payment_approval: (i) =>
+    `asking you to approve ${String(i.amount ?? "a payment")}`,
+  request_secret: () => "asking you for a detail",
   delegate: () => "delegating",
 }
 
-async function converse(token: string, chatId: number, text: string) {
+async function converse(
+  token: string,
+  chatId: number,
+  text: string,
+  vault?: VaultMarker
+) {
   const target = resolveTarget()
   if (!target) {
     await sendAgentPicker(token, chatId)
@@ -614,6 +667,7 @@ async function converse(token: string, chatId: number, text: string) {
     id: nanoid(),
     role: "user",
     parts: [{ type: "text", text: body }],
+    ...(vault && { metadata: { vault } }),
   } as OrynMessage
 
   let run
@@ -733,7 +787,12 @@ async function converse(token: string, chatId: number, text: string) {
         )
       }
       // The hand-off notice itself was already sent by notifyTakeover
-      if (part.type === "tool-request_takeover" && part.state === "output-available") {
+      if (
+        (part.type === "tool-request_takeover" ||
+          part.type === "tool-request_payment_approval" ||
+          part.type === "tool-request_secret") &&
+        part.state === "output-available"
+      ) {
         await flushText()
         sentSomething = true
       }
@@ -872,4 +931,226 @@ export async function notifyFinished({
       .filter(Boolean)
       .join("\n\n")
   )
+}
+
+/* ───────────────────────── payments & secrets ───────────────────── */
+
+function threadOwner(threadId: string) {
+  return db
+    .select({ agentId: threads.agentId, squadId: threads.squadId })
+    .from(threads)
+    .where(eq(threads.id, threadId))
+    .get()
+}
+
+function threadLink(threadId: string, agentId: string, squadId: string | null) {
+  return squadId
+    ? `${APP_URL}/s/${squadId}/${threadId}`
+    : `${APP_URL}/a/${agentId}/${threadId}`
+}
+
+// An agent wants to pay: the person approves with a saved method, pays
+// themselves, or declines, with one tap
+export async function notifyPayment({
+  agent,
+  squadId,
+  approval,
+  methods,
+}: {
+  agent: Agent
+  squadId: string | null
+  approval: Approval
+  methods: VaultItemView[]
+}) {
+  const token = getSetting("telegram.botToken")
+  const owner = ownerId()
+  if (!token || !owner || !state.bot) return
+
+  setTarget(
+    squadId
+      ? { squadId, threadId: approval.threadId }
+      : { agentId: agent.id, threadId: approval.threadId }
+  )
+  const inApp = threadLink(approval.threadId, agent.id, squadId)
+  const lines = [
+    `💳 <b>${escape(agent.name)} wants to pay</b>`,
+    "",
+    `<b>${escape(approval.amount)}</b> to ${escape(approval.merchant)}`,
+    approval.purpose && escape(approval.purpose),
+    approval.host && `on <code>${escape(approval.host)}</code>`,
+    "",
+    methods.length
+      ? "Approve with a saved method, pay yourself, or decline. Nothing is paid until you choose."
+      : `Nothing is saved to pay with yet. <a href="${escape(inApp)}">Add a card or UPI ID in Oryn</a> to let ${escape(agent.name)} pay, or pay yourself.`,
+  ].filter((line): line is string => typeof line === "string")
+
+  const keyboard: InlineKeyboard = [
+    ...methods.slice(0, 6).map((method) => [
+      {
+        text: `✓ Pay with ${method.hint}`.slice(0, 64),
+        callback_data: `pay:${approval.id}:${method.id}`,
+      },
+    ]),
+    [
+      { text: "🖐 I'll pay myself", callback_data: `pay:${approval.id}:takeover` },
+      { text: "✕ Decline", callback_data: `pay:${approval.id}:decline` },
+    ],
+  ]
+
+  const sent = await callTelegram<TgMessage>(token, "sendMessage", {
+    chat_id: owner,
+    text: lines.join("\n"),
+    parse_mode: "HTML",
+    link_preview_options: { is_disabled: true },
+    reply_markup: { inline_keyboard: keyboard },
+  })
+  paymentNotices.set(approval.id, { chatId: owner, messageId: sent.message_id })
+}
+
+// Telegram messages asking for a payment decision, so a decision made in
+// the app can take the buttons away
+const globalForNotices = globalThis as unknown as {
+  __orynPaymentNotices?: Map<string, { chatId: number; messageId: number }>
+}
+const paymentNotices = (globalForNotices.__orynPaymentNotices ??= new Map())
+
+export async function closePaymentNotice(approvalId: string, outcome: string) {
+  const notice = paymentNotices.get(approvalId)
+  const token = getSetting("telegram.botToken")
+  if (!notice || !token) return
+  paymentNotices.delete(approvalId)
+  await edit(
+    token,
+    notice.chatId,
+    notice.messageId,
+    `💳 <b>${escape(outcome)}</b> · decided in Oryn`
+  ).catch(() => {})
+}
+
+async function handlePayment(
+  token: string,
+  query: TgCallbackQuery,
+  approvalId: string,
+  choice: string
+) {
+  const chatId = query.message?.chat.id
+  let outcome: ReturnType<typeof answerPayment>
+  try {
+    outcome = answerPayment(
+      approvalId,
+      choice === "takeover"
+        ? "takeover"
+        : choice === "decline"
+          ? "decline"
+          : { itemId: choice }
+    )
+  } catch (error) {
+    await callTelegram(token, "answerCallbackQuery", {
+      callback_query_id: query.id,
+      text: (error instanceof Error ? error.message : String(error)).slice(0, 190),
+    }).catch(() => {})
+    return
+  }
+  const approval = getApproval(approvalId)!
+  const decided =
+    outcome.marker.action === "approved"
+      ? `✅ Approved · ${outcome.marker.summary}`
+      : outcome.marker.action === "declined"
+        ? `✕ Declined · ${outcome.marker.summary}`
+        : `🖐 You're paying · ${outcome.marker.summary}`
+  await callTelegram(token, "answerCallbackQuery", {
+    callback_query_id: query.id,
+    text: decided.slice(0, 190),
+  }).catch(() => {})
+  if (!chatId || !query.message) return
+  paymentNotices.delete(approvalId)
+  await edit(
+    token,
+    chatId,
+    query.message.message_id,
+    `💳 <b>${escape(decided)}</b>`
+  ).catch(() => {})
+
+  const owner = threadOwner(approval.threadId)
+  const agentId = approval.agentId ?? owner?.agentId
+  if (!owner || !agentId) return
+  setTarget(
+    owner.squadId
+      ? { squadId: owner.squadId, threadId: approval.threadId }
+      : { agentId, threadId: approval.threadId }
+  )
+  if (outcome.text) {
+    await converse(token, chatId, outcome.text, outcome.marker)
+    return
+  }
+  // Paying themselves: hand over the desktop with the checkout on it
+  const agent = db.select().from(agents).where(eq(agents.id, agentId)).get()
+  if (agent) {
+    await notifyTakeover({
+      agent: agent as Agent,
+      threadId: approval.threadId,
+      squadId: owner.squadId,
+      reason: `You chose to pay ${approval.amount} to ${approval.merchant} yourself. The checkout is open on ${agent.name}'s desktop.`,
+    })
+  }
+}
+
+const SECRET_LABEL: Record<SecretRequest["kind"], string> = {
+  login: "a login",
+  card: "card details",
+  upi: "a UPI ID",
+  identity: "some personal details",
+  code: "a code",
+}
+
+// An agent needs something only the person has. Codes can be replied with
+// here (they never reach the agent); anything else is entered in the app
+export async function notifySecret({
+  agent,
+  threadId,
+  squadId,
+  request,
+}: {
+  agent: Agent
+  threadId: string
+  squadId: string | null
+  request: SecretRequest
+}) {
+  const token = getSetting("telegram.botToken")
+  const owner = ownerId()
+  if (!token || !owner || !state.bot) return
+
+  setTarget(squadId ? { squadId, threadId } : { agentId: agent.id, threadId })
+  const name = escape(agent.name)
+  const inApp = threadLink(threadId, agent.id, squadId)
+  if (request.kind === "code") {
+    state.awaitingCode = {
+      threadId,
+      agentId: agent.id,
+      squadId,
+      expires: Date.now() + 10 * 60_000,
+    }
+  }
+  const lines =
+    request.kind === "code"
+      ? [
+          `🔐 <b>${name} needs a code</b>`,
+          "",
+          escape(request.reason),
+          "",
+          `Reply here with just the code. It goes straight into your vault, is used once and deleted, and ${name} never sees it.`,
+        ]
+      : [
+          `🔐 <b>${name} needs ${SECRET_LABEL[request.kind]}${request.site ? ` for ${escape(request.site)}` : ""}</b>`,
+          "",
+          escape(request.reason),
+          "",
+          `For your safety, enter it in Oryn on your computer, not in this chat: <a href="${escape(inApp)}">open the thread</a>. It goes into your encrypted vault, and ${name} only ever sees a masked hint.`,
+        ]
+  await callTelegram(token, "sendMessage", {
+    chat_id: owner,
+    text: lines.join("\n"),
+    parse_mode: "HTML",
+    link_preview_options: { is_disabled: true },
+  })
 }

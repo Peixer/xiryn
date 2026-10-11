@@ -26,6 +26,7 @@ import {
   createDelegateTool,
   createMemoryTools,
   createWebTools,
+  createVaultTools,
   createWorkstationTools,
   isDesktopAction,
   type OrynMessage,
@@ -383,6 +384,7 @@ export async function startTurn({
       ...(thread.squad && { agentId: first.id }),
       ...(channel === "telegram" && { via: "telegram" as const }),
       ...(message.metadata?.handback && { handback: message.metadata.handback }),
+      ...(message.metadata?.vault && { vault: message.metadata.vault }),
     },
   }
   saveMessage(threadId, userMessage)
@@ -406,22 +408,51 @@ export async function startTurn({
   const href = thread.squadId
     ? `/s/${thread.squadId}/${threadId}`
     : `/a/${first.id}/${threadId}`
+  const attention = (
+    type: "takeover" | "payment" | "secret",
+    agent: Agent,
+    reason: string
+  ) =>
+    emit({
+      type,
+      threadId,
+      href,
+      name: agent.name,
+      glyph: agent.glyph,
+      via: channel,
+      reason,
+    })
+  // Loaded lazily: the bridge itself depends on this module
+  const bridge = () => import("@/lib/telegram/bridge")
+  const telegramFailed = (error: unknown) =>
+    console.error("[oryn] telegram: notice failed:", error)
+
   const env: ToolEnv = {
     current: () => current,
+    threadId,
     onTakeoverRequested: async (agent, reason) => {
-      emit({
-        type: "takeover",
-        threadId,
-        href,
-        name: agent.name,
-        glyph: agent.glyph,
-        via: channel,
-        reason,
-      })
-      // Loaded lazily: the bridge itself depends on this module
-      const { notifyTakeover } = await import("@/lib/telegram/bridge")
+      attention("takeover", agent, reason)
+      const { notifyTakeover } = await bridge()
       await notifyTakeover({ agent, threadId, squadId: thread.squadId, reason }).catch(
-        (error) => console.error("[oryn] telegram: hand-off notice failed:", error)
+        telegramFailed
+      )
+    },
+    onApprovalRequested: async (agent, approval, methods) => {
+      attention(
+        "payment",
+        agent,
+        `Wants to pay ${approval.amount} to ${approval.merchant}: ${approval.purpose ?? ""}`.trim()
+      )
+      const { notifyPayment } = await bridge()
+      await notifyPayment({ agent, squadId: thread.squadId, approval, methods }).catch(
+        telegramFailed
+      )
+    },
+    onSecretRequested: async (agent, request) => {
+      attention("secret", agent, request.reason)
+      const { notifySecret } = await bridge()
+      await notifySecret({ agent, threadId, squadId: thread.squadId, request }).catch(
+        telegramFailed
       )
     },
   }
@@ -437,7 +468,9 @@ export async function startTurn({
       : undefined
 
   const tools: ToolSet = {
-    ...(capabilities.workstation ? createWorkstationTools(env) : {}),
+    ...(capabilities.workstation
+      ? { ...createWorkstationTools(env), ...createVaultTools(env) }
+      : {}),
     ...createMemoryTools(env),
     ...(capabilities.web ? createWebTools() : {}),
     ...(thread.squad
@@ -491,8 +524,14 @@ export async function startTurn({
         ignoreIncompleteToolCalls: true,
       }),
       tools,
-      // The turn also ends when the agent hands its screen to the person
-      stopWhen: [isStepCount(maxSteps), hasToolCall("request_takeover")],
+      // The turn also ends when the agent needs the person: its screen,
+      // a payment decision or a detail only they have
+      stopWhen: [
+        isStepCount(maxSteps),
+        hasToolCall("request_takeover"),
+        hasToolCall("request_payment_approval"),
+        hasToolCall("request_secret"),
+      ],
       abortSignal: run.controller.signal,
       prepareStep: ({ messages: stepMessages, stepNumber }) => {
         // Long tool loops resend everything each step; keep it lean
@@ -585,8 +624,12 @@ export async function startTurn({
 
         // Tell the person, wherever they are. Stopping a turn yourself needs
         // no news, and a hand-off has already sent its own.
-        const handedOver = reply.parts.some(
-          (part) => part.type === "tool-request_takeover"
+        const handedOver = reply.parts.some((part) =>
+          [
+            "tool-request_takeover",
+            "tool-request_payment_approval",
+            "tool-request_secret",
+          ].includes(part.type)
         )
         if (!isAborted && !handedOver) {
           emit({
