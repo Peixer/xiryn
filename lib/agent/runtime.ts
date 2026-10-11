@@ -1,0 +1,482 @@
+import {
+  convertToModelMessages,
+  isStepCount,
+  streamText,
+  toUIMessageStream,
+  type LanguageModelUsage,
+  type ToolSet,
+  type UIMessageChunk,
+} from "ai"
+import { asc, eq } from "drizzle-orm"
+import { nanoid } from "nanoid"
+
+import { db } from "@/db"
+import {
+  messages,
+  squadMembers,
+  threads,
+  turns,
+  type Agent,
+  type Squad,
+} from "@/db/schema"
+import { buildInstructions, type Capabilities } from "@/lib/agent/instructions"
+import {
+  createDelegateTool,
+  createMemoryTools,
+  createWebTools,
+  createWorkstationTools,
+  type OrynMessage,
+  type ToolEnv,
+} from "@/lib/agent/tools"
+import { getMaxSteps } from "@/lib/config"
+import { createModel, resolveModelSpec } from "@/lib/providers/registry"
+import { isWebConfigured } from "@/lib/web"
+import { isWorkstationConfigured } from "@/lib/workstation"
+
+/* ───────────────────────────── runs ───────────────────────────────
+ * A run is one agent turn executing inside this process. Its output is
+ * buffered so the browser can drop and re-attach (refresh, closed tab)
+ * without the turn noticing. Runs are kept in memory: they survive the
+ * tab, not a server restart.
+ * ────────────────────────────────────────────────────────────────── */
+
+type Run = {
+  id: string
+  threadId: string
+  chunks: UIMessageChunk[]
+  listeners: Set<ReadableStreamDefaultController<UIMessageChunk>>
+  done: boolean
+  controller: AbortController
+  startedAt: number
+}
+
+const globalForRuns = globalThis as unknown as { __orynRuns?: Map<string, Run> }
+const runs = (globalForRuns.__orynRuns ??= new Map<string, Run>())
+
+export function getActiveRun(threadId: string) {
+  const run = runs.get(threadId)
+  return run && !run.done ? run : undefined
+}
+
+export function activeThreadIds() {
+  return [...runs.values()].filter((run) => !run.done).map((run) => run.threadId)
+}
+
+// Replays what the run has produced so far, then follows it live
+export function subscribe(run: Run) {
+  let self: ReadableStreamDefaultController<UIMessageChunk>
+  return new ReadableStream<UIMessageChunk>({
+    start(controller) {
+      self = controller
+      for (const chunk of run.chunks) controller.enqueue(chunk)
+      if (run.done) controller.close()
+      else run.listeners.add(controller)
+    },
+    cancel() {
+      // The reader left; the run carries on
+      run.listeners.delete(self)
+    },
+  })
+}
+
+export function stopRun(threadId: string) {
+  const run = getActiveRun(threadId)
+  if (!run) return false
+  run.controller.abort()
+  return true
+}
+
+function publish(run: Run, chunk: UIMessageChunk) {
+  run.chunks.push(chunk)
+  for (const listener of run.listeners) {
+    try {
+      listener.enqueue(chunk)
+    } catch {
+      run.listeners.delete(listener)
+    }
+  }
+}
+
+function finish(run: Run) {
+  run.done = true
+  for (const listener of run.listeners) {
+    try {
+      listener.close()
+    } catch {}
+  }
+  run.listeners.clear()
+  // Late reconnects get a 204 and read the saved message instead
+  setTimeout(() => {
+    if (runs.get(run.threadId) === run) runs.delete(run.threadId)
+  }, 30_000)
+}
+
+/* ──────────────────────────── loading ──────────────────────────── */
+
+export class TurnError extends Error {
+  constructor(
+    message: string,
+    public status = 400
+  ) {
+    super(message)
+    this.name = "TurnError"
+  }
+}
+
+function loadThread(threadId: string) {
+  const thread = db.query.threads
+    .findFirst({
+      where: eq(threads.id, threadId),
+      with: {
+        agent: true,
+        squad: {
+          with: {
+            members: { orderBy: [asc(squadMembers.position)], with: { agent: true } },
+          },
+        },
+      },
+    })
+    .sync()
+  if (!thread) throw new TurnError("Thread not found", 404)
+  return thread
+}
+
+export function loadMessages(threadId: string) {
+  const rows = db
+    .select()
+    .from(messages)
+    .where(eq(messages.threadId, threadId))
+    .orderBy(asc(messages.createdAt))
+    .all()
+  return rows.map(
+    (row) =>
+      ({
+        id: row.id,
+        role: row.role,
+        parts: row.parts,
+        metadata: row.metadata ?? undefined,
+      }) as OrynMessage
+  )
+}
+
+function saveMessage(threadId: string, message: OrynMessage, createdAt = new Date()) {
+  db.insert(messages)
+    .values({
+      id: message.id,
+      threadId,
+      role: message.role,
+      parts: message.parts,
+      metadata: message.metadata ?? null,
+      createdAt,
+    })
+    .onConflictDoUpdate({
+      target: messages.id,
+      set: { parts: message.parts, metadata: message.metadata ?? null },
+    })
+    .run()
+}
+
+function textOf(message: OrynMessage) {
+  return message.parts
+    .flatMap((part) => (part.type === "text" ? [part.text] : []))
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim()
+}
+
+// Screenshots are heavy. Only the most recent few go back to the model.
+const SCREENS_IN_CONTEXT = 2
+
+function pruneScreens(history: OrynMessage[]) {
+  let kept = 0
+  return history
+    .slice()
+    .reverse()
+    .map((message) => {
+      if (message.role !== "assistant") return message
+      const parts = message.parts
+        .slice()
+        .reverse()
+        .map((part) => {
+          if (
+            (part.type === "tool-screen_capture" || part.type === "tool-screen_share") &&
+            part.state === "output-available" &&
+            part.output.image
+          ) {
+            if (kept < SCREENS_IN_CONTEXT) {
+              kept++
+              return part
+            }
+            return { ...part, output: { ...part.output, image: null } }
+          }
+          return part
+        })
+        .reverse()
+      return { ...message, parts } as OrynMessage
+    })
+    .reverse()
+}
+
+/* ───────────────────────────── turns ───────────────────────────── */
+
+export async function startTurn({
+  threadId,
+  message,
+  agentId,
+  channel = "web",
+}: {
+  threadId: string
+  message: OrynMessage
+  agentId?: string
+  channel?: "web" | "telegram"
+}) {
+  if (getActiveRun(threadId)) {
+    throw new TurnError("An agent is already working in this thread.", 409)
+  }
+
+  const thread = loadThread(threadId)
+  const members: Agent[] = thread.squad
+    ? thread.squad.members.map((member) => member.agent)
+    : thread.agent
+      ? [thread.agent]
+      : []
+  const first = members.find((member) => member.id === agentId) ?? members[0]
+  if (!first) throw new TurnError("This thread has no agents left in it.", 410)
+
+  const capabilities: Capabilities = {
+    workstation: isWorkstationConfigured(),
+    web: isWebConfigured(),
+    channel,
+  }
+
+  // Fail before anything is saved when the model can't be reached
+  const specFor = (agent: Agent) => {
+    const spec = resolveModelSpec(agent.model)
+    if (!spec) {
+      throw new TurnError(
+        "No model is configured. Add a provider key to .env or open Settings → Providers."
+      )
+    }
+    return spec
+  }
+  const firstSpec = specFor(first)
+  const firstModel = (() => {
+    try {
+      return createModel(firstSpec)
+    } catch (error) {
+      throw new TurnError(error instanceof Error ? error.message : String(error))
+    }
+  })()
+
+  // The person's message is on disk before the agent starts
+  const userMessage: OrynMessage = {
+    ...message,
+    role: "user",
+    metadata: {
+      ...(thread.squad && { agentId: first.id }),
+      ...(channel === "telegram" && { via: "telegram" as const }),
+    },
+  }
+  saveMessage(threadId, userMessage)
+  const prompt = textOf(userMessage)
+  db.update(threads)
+    .set({
+      title: thread.title ?? (prompt.slice(0, 80) || "Untitled"),
+      preview: prompt.slice(0, 140),
+      activeAt: new Date(),
+    })
+    .where(eq(threads.id, threadId))
+    .run()
+
+  const history = loadMessages(threadId)
+
+  /* Delegation: whoever holds the turn owns the tools and the prompt */
+  let current = first
+  const held = [first.id]
+  let brief: string | undefined
+  const env: ToolEnv = { current: () => current }
+
+  const squadContext = (agent: Agent) =>
+    thread.squad
+      ? {
+          squad: thread.squad as Squad,
+          members,
+          delegatedFrom: held.filter((id) => id !== agent.id),
+          brief,
+        }
+      : undefined
+
+  const tools: ToolSet = {
+    ...(capabilities.workstation ? createWorkstationTools(env) : {}),
+    ...createMemoryTools(env),
+    ...(capabilities.web ? createWebTools() : {}),
+    ...(thread.squad
+      ? createDelegateTool((targetId, handoverBrief) => {
+          const target = members.find((member) => member.id === targetId)
+          if (!target) throw new Error("No agent in this squad has that id.")
+          if (held.includes(target.id)) {
+            throw new Error(
+              `${target.name} already had this request. Handle it yourself.`
+            )
+          }
+          // Validate the target's model now, so a broken config fails the call
+          createModel(specFor(target))
+          current = target
+          held.push(target.id)
+          brief = handoverBrief
+          return { agentId: target.id, name: target.name }
+        })
+      : {}),
+  }
+
+  const run: Run = {
+    id: nanoid(),
+    threadId,
+    chunks: [],
+    listeners: new Set(),
+    done: false,
+    controller: new AbortController(),
+    startedAt: Date.now(),
+  }
+  runs.set(threadId, run)
+
+  // Accumulated across steps so stopped and failed turns are still metered
+  const usage = { input: 0, output: 0, reasoning: 0, cached: 0, steps: 0, toolCalls: 0 }
+  const addUsage = (step: LanguageModelUsage) => {
+    usage.input += step.inputTokens ?? 0
+    usage.output += step.outputTokens ?? 0
+    usage.reasoning += step.outputTokenDetails?.reasoningTokens ?? 0
+    usage.cached += step.inputTokenDetails?.cacheReadTokens ?? 0
+  }
+  let failure: string | null = null
+  let appliedAgentId = first.id
+
+  try {
+    const result = streamText({
+      model: firstModel,
+      instructions: buildInstructions(first, capabilities, squadContext(first)),
+      messages: await convertToModelMessages(pruneScreens(history), {
+        tools,
+        ignoreIncompleteToolCalls: true,
+      }),
+      tools,
+      stopWhen: isStepCount(getMaxSteps()),
+      abortSignal: run.controller.signal,
+      // After a delegation the next step runs as the new agent, on its model
+      prepareStep: () => {
+        if (current.id === appliedAgentId) return undefined
+        appliedAgentId = current.id
+        return {
+          model: createModel(specFor(current)),
+          instructions: buildInstructions(current, capabilities, squadContext(current)),
+        }
+      },
+      // Counted per model call, so a turn stopped mid-tool is still metered
+      onLanguageModelCallEnd: (call) => addUsage(call.usage),
+      onStepEnd: (step) => {
+        usage.steps++
+        usage.toolCalls += step.toolCalls.length
+      },
+      onError: ({ error }) => {
+        failure = describeError(error)
+        console.error(`[oryn] turn failed in thread ${threadId}:`, error)
+      },
+    })
+
+    const stream = toUIMessageStream<ToolSet, OrynMessage>({
+      stream: result.stream,
+      originalMessages: history,
+      generateMessageId: () => nanoid(),
+      messageMetadata: ({ part }) => {
+        if (part.type === "start") return { agentId: first.id, model: firstSpec }
+        if (part.type === "finish") {
+          return {
+            agentId: first.id,
+            model: firstSpec,
+            usage: { input: usage.input, output: usage.output },
+            durationMs: Date.now() - run.startedAt,
+          }
+        }
+        return undefined
+      },
+      onError: (error) => describeError(error),
+      onEnd: ({ responseMessage, isAborted }) => {
+        const durationMs = Date.now() - run.startedAt
+        const reply = {
+          ...responseMessage,
+          metadata: {
+            ...responseMessage.metadata,
+            agentId: first.id,
+            model: firstSpec,
+            usage: { input: usage.input, output: usage.output },
+            durationMs,
+          },
+        } as OrynMessage
+
+        if (reply.parts.length > 0) saveMessage(threadId, reply)
+
+        const preview = textOf(reply)
+        db.update(threads)
+          .set({
+            activeAt: new Date(),
+            ...(preview && { preview: preview.slice(0, 140) }),
+          })
+          .where(eq(threads.id, threadId))
+          .run()
+
+        db.insert(turns)
+          .values({
+            threadId,
+            agentId: first.id,
+            model: firstSpec,
+            inputTokens: usage.input,
+            outputTokens: usage.output,
+            reasoningTokens: usage.reasoning,
+            cachedTokens: usage.cached,
+            steps: usage.steps,
+            toolCalls: usage.toolCalls,
+            durationMs,
+            status: failure ? "failed" : isAborted ? "stopped" : "completed",
+            error: failure,
+          })
+          .run()
+      },
+    })
+
+    // Drain the stream in the background, whoever is (or isn't) listening
+    void (async () => {
+      const reader = stream.getReader()
+      try {
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          publish(run, value)
+        }
+      } catch (error) {
+        publish(run, { type: "error", errorText: describeError(error) })
+      } finally {
+        finish(run)
+      }
+    })()
+  } catch (error) {
+    finish(run)
+    throw error
+  }
+
+  return run
+}
+
+function describeError(error: unknown): string {
+  if (error instanceof Error) {
+    const cause = (error as { responseBody?: string }).responseBody
+    if (cause) {
+      try {
+        const parsed = JSON.parse(cause)
+        const detail = parsed?.error?.message ?? parsed?.message
+        if (typeof detail === "string") return `${error.message} — ${detail}`
+      } catch {}
+    }
+    return error.message
+  }
+  return String(error)
+}
