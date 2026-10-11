@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/SouravBeraAkaSpeed/xiryn/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/SouravBeraAkaSpeed/xiryn/ci.yml?branch=main&style=flat-square&label=CI&labelColor=0b0e14"></a>
+  <a href="https://github.com/SouravBeraAkaSpeed/xiryn/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/SouravBeraAkaSpeed/xiryn/ci.yml?branch=main&style=flat-square&label=CI&labelColor=0b0e14&cacheSeconds=600"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-7cc4ff?style=flat-square&labelColor=0b0e14"></a>
   <a href="https://github.com/SouravBeraAkaSpeed/xiryn/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/SouravBeraAkaSpeed/xiryn?style=flat-square&color=7cc4ff&labelColor=0b0e14"></a>
   <img alt="Node 20.9+" src="https://img.shields.io/badge/node-%E2%89%A520.9-7cc4ff?style=flat-square&labelColor=0b0e14">
@@ -28,7 +28,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/assets/workstation.png" alt="Atlas lists the nonstop Bengaluru to Lucknow flights it found on MakeMyTrip, with its live sandboxed desktop beside the chat" width="100%">
+  <img src="docs/assets/workstation.png" alt="Atlas lists the nonstop Bengaluru to Lucknow flights it found on Google Flights, with its live desktop beside the chat" width="100%">
 </p>
 
 ---
@@ -69,7 +69,7 @@ irm https://raw.githubusercontent.com/SouravBeraAkaSpeed/xiryn/main/setup.ps1 | 
 
 |  | **Xiryn** | Hosted agents<br><sub>Muse · Grok Bot · Dots</sub> | Local computer-use agents<br><sub>e.g. OpenClaw</sub> |
 | --- | --- | --- | --- |
-| Source | ✅ Open source (MIT) | ❌ Closed | ✅ Open source |
+| Source | ✅ Open source (MIT) | ❌ Closed | ✅ Open source (MIT) |
 | Where the agent works | Its own sandboxed desktop (Docker, on your machine) | Vendor's cloud computer | Your computer |
 | Uses your mouse, screen or files | **Never** | No — vendor cloud | Yes — shell, files and apps on your machine |
 | Browses from | **Your own connection** | Vendor data centers | Your own connection |
