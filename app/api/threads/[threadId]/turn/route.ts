@@ -18,6 +18,12 @@ const bodySchema = z.object({
       .array(z.object({ type: z.string() }).loose())
       .min(1)
       .max(32),
+    // Only the hand-back marker is accepted; the rest is set by the server
+    metadata: z
+      .object({
+        handback: z.object({ note: z.string().max(4000).optional() }).optional(),
+      })
+      .optional(),
   }),
   agentId: z.string().max(64).optional(),
 })

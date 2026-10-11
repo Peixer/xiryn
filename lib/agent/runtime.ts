@@ -1,5 +1,6 @@
 import {
   convertToModelMessages,
+  hasToolCall,
   isStepCount,
   streamText,
   toUIMessageStream,
@@ -339,6 +340,7 @@ export async function startTurn({
     metadata: {
       ...(thread.squad && { agentId: first.id }),
       ...(channel === "telegram" && { via: "telegram" as const }),
+      ...(message.metadata?.handback && { handback: message.metadata.handback }),
     },
   }
   saveMessage(threadId, userMessage)
@@ -424,7 +426,8 @@ export async function startTurn({
         ignoreIncompleteToolCalls: true,
       }),
       tools,
-      stopWhen: isStepCount(getMaxSteps()),
+      // The turn also ends when the agent hands its screen to the person
+      stopWhen: [isStepCount(getMaxSteps()), hasToolCall("request_takeover")],
       abortSignal: run.controller.signal,
       prepareStep: ({ messages: stepMessages }) => {
         // Long tool loops resend everything each step; keep it lean

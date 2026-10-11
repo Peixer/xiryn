@@ -13,6 +13,8 @@ import { ensureDesktop, ensureWorkstation } from "@/lib/workstation"
 
 export type ToolEnv = {
   current: () => Agent
+  // Lets the person know, wherever they are, that the desktop is theirs
+  onTakeoverRequested?: (agent: Agent, reason: string) => Promise<void> | void
 }
 
 const MAX_OUTPUT = 20_000
@@ -261,6 +263,23 @@ export function createWorkstationTools(env: ToolEnv) {
         return { key, modifiers: held }
       },
     }),
+
+    request_takeover: tool({
+      description:
+        "Pause and hand your desktop to the person for a step only they should do: signing in, entering a one-time code, paying, solving a CAPTCHA, or a choice they must make on screen. Leave the page ready, then describe exactly what is waiting and what they need to do. Your turn ends with this call; they will hand control back (with a note if needed) when they're done.",
+      inputSchema: z.object({
+        reason: z
+          .string()
+          .min(1)
+          .describe(
+            "What is on screen and what the person needs to do, in one or two sentences"
+          ),
+      }),
+      execute: async ({ reason }) => {
+        await env.onTakeoverRequested?.(env.current(), reason)
+        return { reason }
+      },
+    }),
   }
 }
 
@@ -375,6 +394,8 @@ export type OrynMetadata = {
   durationMs?: number
   // Set on messages that arrived through Telegram
   via?: "telegram"
+  // Set on the message sent when the person hands the desktop back
+  handback?: { note?: string }
 }
 
 export type OrynMessage = UIMessage<OrynMetadata, UIDataTypes, InferUITools<OrynTools>>
