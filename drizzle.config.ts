@@ -6,8 +6,8 @@ export default defineConfig({
   dialect: "sqlite",
   casing: "snake_case",
   dbCredentials: {
-    url: process.env.ORYN_DATA_DIR
-      ? `${process.env.ORYN_DATA_DIR}/oryn.db`
-      : "./data/oryn.db",
+    url: process.env.XIRYN_DATA_DIR
+      ? `${process.env.XIRYN_DATA_DIR}/xiryn.db`
+      : "./data/xiryn.db",
   },
 })

@@ -1,19 +1,19 @@
-# Oryn - one-step setup for Windows.
+# Xiryn - one-step setup for Windows.
 #
-#   irm https://raw.githubusercontent.com/SouravBeraAkaSpeed/oryn/main/setup.ps1 | iex
+#   irm https://raw.githubusercontent.com/SouravBeraAkaSpeed/xiryn/main/setup.ps1 | iex
 #
 # or, inside a clone: double-click setup.cmd (or run .\setup.cmd)
 #
 # Installs whatever is missing (Git, Node.js, Docker Desktop) with winget,
-# then Oryn's packages and the agents' workstation image, and starts Oryn.
-# It asks once before installing anything. $env:ORYN_YES = "1" skips it.
-# -NoStart (or $env:ORYN_NO_START = "1") sets everything up without starting Oryn.
+# then Xiryn's packages and the agents' workstation image, and starts Xiryn.
+# It asks once before installing anything. $env:XIRYN_YES = "1" skips it.
+# -NoStart (or $env:XIRYN_NO_START = "1") sets everything up without starting Xiryn.
 
 param([switch]$NoStart)
-if ($env:ORYN_NO_START -eq "1") { $NoStart = $true }
+if ($env:XIRYN_NO_START -eq "1") { $NoStart = $true }
 
 $ErrorActionPreference = "Stop"
-$Repo = "https://github.com/SouravBeraAkaSpeed/oryn.git"
+$Repo = "https://github.com/SouravBeraAkaSpeed/xiryn.git"
 
 function Ok($text) { Write-Host "  [ok] $text" -ForegroundColor Green }
 function Note($text) { Write-Host "  [!] $text" -ForegroundColor Yellow }
@@ -21,7 +21,7 @@ function Fail($text) { Write-Host "  [x] $text" -ForegroundColor Red; exit 1 }
 function Has($command) { [bool](Get-Command $command -ErrorAction SilentlyContinue) }
 
 function Ask($question) {
-  if ($env:ORYN_YES -eq "1") { return $true }
+  if ($env:XIRYN_YES -eq "1") { return $true }
   $answer = Read-Host "  $question [Y/n]"
   return ($answer -eq "" -or $answer -match "^[Yy]")
 }
@@ -44,7 +44,7 @@ function Docker-Installed {
 }
 
 Write-Host ""
-Write-Host "  oryn - setup" -ForegroundColor White
+Write-Host "  xiryn - setup" -ForegroundColor White
 Write-Host ""
 
 $missing = @()
@@ -53,7 +53,7 @@ if (-not (Node-Ok)) { $missing += "Node.js LTS" }
 if (-not (Docker-Installed)) { $missing += "Docker Desktop" }
 
 if ($missing.Count -gt 0) {
-  Write-Host "  To run Oryn this computer needs: $($missing -join ', ')"
+  Write-Host "  To run Xiryn this computer needs: $($missing -join ', ')"
   if (-not (Has "winget")) {
     Fail "winget isn't available. Install 'App Installer' from the Microsoft Store, then run this again."
   }
@@ -87,17 +87,17 @@ Ok "node $(node -v)"
 
 # Run from inside a clone, or clone one here
 $here = if ($PSScriptRoot) { $PSScriptRoot } else { (Get-Location).Path }
-$isOryn = { param($dir) (Test-Path "$dir\package.json") -and (Select-String -Path "$dir\package.json" -Pattern '"name": "oryn"' -Quiet) }
-if (& $isOryn $here) {
+$isXiryn = { param($dir) (Test-Path "$dir\package.json") -and (Select-String -Path "$dir\package.json" -Pattern '"name": "xiryn"' -Quiet) }
+if (& $isXiryn $here) {
   Set-Location $here
-} elseif (& $isOryn (Get-Location).Path) {
+} elseif (& $isXiryn (Get-Location).Path) {
   # already here
 } else {
-  if (Test-Path "oryn\.git") { Note "Using the existing .\oryn folder" }
-  else { git clone --depth 1 $Repo oryn }
-  Set-Location oryn
+  if (Test-Path "xiryn\.git") { Note "Using the existing .\xiryn folder" }
+  else { git clone --depth 1 $Repo xiryn }
+  Set-Location xiryn
 }
-Ok "oryn in $((Get-Location).Path)"
+Ok "xiryn in $((Get-Location).Path)"
 
 Write-Host ""
 npm install --no-fund --no-audit --loglevel=error
@@ -110,7 +110,7 @@ if ($LASTEXITCODE -ne 0 -and $dockerFresh) {
 }
 
 Write-Host ""
-if (-not $NoStart -and (Ask "Start Oryn now?")) {
+if (-not $NoStart -and (Ask "Start Xiryn now?")) {
   $url = "http://127.0.0.1:6796"
   Start-Job -ScriptBlock {
     param($url)
@@ -118,11 +118,11 @@ if (-not $NoStart -and (Ask "Start Oryn now?")) {
       try { Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 2 | Out-Null; Start-Process $url; return } catch { Start-Sleep 1 }
     }
   } -ArgumentList $url | Out-Null
-  Write-Host "  Oryn is starting at $url - press Ctrl+C to stop it."
+  Write-Host "  Xiryn is starting at $url - press Ctrl+C to stop it."
   Write-Host "  Next time, start it with: cd $((Get-Location).Path); npm run dev"
   Write-Host ""
   npm run dev
 } else {
-  Write-Host "  Start Oryn any time with: cd $((Get-Location).Path); npm run dev"
+  Write-Host "  Start Xiryn any time with: cd $((Get-Location).Path); npm run dev"
   Write-Host ""
 }

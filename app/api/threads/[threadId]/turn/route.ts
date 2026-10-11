@@ -8,7 +8,7 @@ import {
   subscribe,
   TurnError,
 } from "@/lib/agent/runtime"
-import type { OrynMessage } from "@/lib/agent/tools"
+import type { XirynMessage } from "@/lib/agent/tools"
 
 const bodySchema = z.object({
   message: z.object({
@@ -60,13 +60,13 @@ export async function POST(
   try {
     const run = await startTurn({
       threadId,
-      message: parsed.data.message as unknown as OrynMessage,
+      message: parsed.data.message as unknown as XirynMessage,
       agentId: parsed.data.agentId,
     })
     return createUIMessageStreamResponse({ stream: subscribe(run) })
   } catch (error) {
     if (error instanceof TurnError) return fail(error.message, error.status)
-    console.error("[oryn] could not start turn:", error)
+    console.error("[xiryn] could not start turn:", error)
     return fail(error instanceof Error ? error.message : "Could not start the turn.", 500)
   }
 }

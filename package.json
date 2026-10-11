@@ -1,5 +1,5 @@
 {
-  "name": "oryn",
+  "name": "xiryn",
   "version": "0.4.0",
   "description": "The open-source, local-first answer to Muse, Grok Bot and Dots: AI agents with their own sandboxed Linux desktops, running in Docker on your machine, with your keys and any model.",
   "keywords": [
@@ -24,13 +24,13 @@
     "multi-agent",
     "byok"
   ],
-  "homepage": "https://github.com/SouravBeraAkaSpeed/oryn#readme",
+  "homepage": "https://github.com/SouravBeraAkaSpeed/xiryn#readme",
   "bugs": {
-    "url": "https://github.com/SouravBeraAkaSpeed/oryn/issues"
+    "url": "https://github.com/SouravBeraAkaSpeed/xiryn/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/SouravBeraAkaSpeed/oryn.git"
+    "url": "git+https://github.com/SouravBeraAkaSpeed/xiryn.git"
   },
   "author": {
     "name": "Sourav Bera",

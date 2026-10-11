@@ -4,7 +4,7 @@ import { db } from "@/db"
 import { settings } from "@/db/schema"
 import { providers, type ProviderId } from "@/lib/providers/catalog"
 
-// Every value Oryn reads from its environment. A value saved from the
+// Every value Xiryn reads from its environment. A value saved from the
 // Settings screen wins over the same value in .env, so the UI is always the
 // source of truth once something has been set there.
 
@@ -12,26 +12,26 @@ type SettingDef = {
   env: string | null
   secret?: boolean
   fallback?: string
-  // Written by Oryn itself, never through the Settings form
+  // Written by Xiryn itself, never through the Settings form
   internal?: boolean
 }
 
 const integrationSettings = {
-  "model.default": { env: "ORYN_DEFAULT_MODEL" },
-  "agent.maxSteps": { env: "ORYN_MAX_STEPS", fallback: "40" },
+  "model.default": { env: "XIRYN_DEFAULT_MODEL" },
+  "agent.maxSteps": { env: "XIRYN_MAX_STEPS", fallback: "40" },
   // Limits for each agent's workstation container
-  "workstation.cpus": { env: "ORYN_WORKSTATION_CPUS", fallback: "2" },
-  "workstation.memory": { env: "ORYN_WORKSTATION_MEMORY_GB", fallback: "4" },
+  "workstation.cpus": { env: "XIRYN_WORKSTATION_CPUS", fallback: "2" },
+  "workstation.memory": { env: "XIRYN_WORKSTATION_MEMORY_GB", fallback: "4" },
   // Idle minutes before a workstation stops itself; 0 keeps it running
-  "workstation.autoStop": { env: "ORYN_WORKSTATION_AUTO_STOP_MINUTES", fallback: "15" },
+  "workstation.autoStop": { env: "XIRYN_WORKSTATION_AUTO_STOP_MINUTES", fallback: "15" },
   // Unset keeps workstations until you reset or delete the agent
-  "workstation.autoDelete": { env: "ORYN_WORKSTATION_AUTO_DELETE_MINUTES" },
+  "workstation.autoDelete": { env: "XIRYN_WORKSTATION_AUTO_DELETE_MINUTES" },
   // "off" leaves the phone link out of Telegram hand-off notices
-  "workstation.phoneLinks": { env: "ORYN_PHONE_TAKEOVER", fallback: "on" },
+  "workstation.phoneLinks": { env: "XIRYN_PHONE_TAKEOVER", fallback: "on" },
   "workstation.installId": { env: null, internal: true },
-  // "off" stops the update check and star count (the only request Oryn makes
+  // "off" stops the update check and star count (the only request Xiryn makes
   // on its own, to GitHub's public API)
-  "updates.check": { env: "ORYN_UPDATE_CHECK", fallback: "on" },
+  "updates.check": { env: "XIRYN_UPDATE_CHECK", fallback: "on" },
   "firecrawl.apiKey": { env: "FIRECRAWL_API_KEY", secret: true },
   "firecrawl.apiUrl": { env: "FIRECRAWL_API_URL", fallback: "https://api.firecrawl.dev" },
   "telegram.botToken": { env: "TELEGRAM_BOT_TOKEN", secret: true },
@@ -40,7 +40,7 @@ const integrationSettings = {
   // Numeric Telegram user id allowed to talk to the bot; set by pairing
   "telegram.ownerId": { env: "TELEGRAM_OWNER_ID" },
   // Finished tasks started in the app: "long" (a minute or more), "all" or "off"
-  "telegram.notify": { env: "ORYN_TELEGRAM_NOTIFY", fallback: "long" },
+  "telegram.notify": { env: "XIRYN_TELEGRAM_NOTIFY", fallback: "long" },
   "telegram.ownerName": { env: null, internal: true },
   "telegram.pairCode": { env: null, internal: true },
   // JSON: which agent/squad and thread Telegram messages go to

@@ -80,7 +80,7 @@ async function onDevice(Class: RecognitionClass, lang: string) {
 }
 
 const PROBLEMS: Record<string, string> = {
-  "not-allowed": "Microphone access is blocked for Oryn in this browser.",
+  "not-allowed": "Microphone access is blocked for Xiryn in this browser.",
   "service-not-allowed": "This browser doesn't allow voice typing here.",
   "audio-capture": "No microphone was found.",
   network: "Your browser's speech service couldn't be reached.",

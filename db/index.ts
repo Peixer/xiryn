@@ -7,12 +7,12 @@ import { migrate } from "drizzle-orm/better-sqlite3/migrator"
 
 import * as schema from "./schema"
 
-// Everything Oryn stores lives in one directory on your machine
+// Everything Xiryn stores lives in one directory on your machine
 // Resolved at runtime, never traced into the build
 export const DATA_DIR = path.resolve(
-  /*turbopackIgnore: true*/ process.env.ORYN_DATA_DIR || "data"
+  /*turbopackIgnore: true*/ process.env.XIRYN_DATA_DIR || "data"
 )
-export const DB_PATH = path.join(DATA_DIR, "oryn.db")
+export const DB_PATH = path.join(DATA_DIR, "xiryn.db")
 
 function open() {
   fs.mkdirSync(DATA_DIR, { recursive: true })
@@ -41,14 +41,14 @@ function open() {
 
 // One connection per process, kept across dev-server hot reloads
 const globalForDb = globalThis as unknown as {
-  __oryn?: ReturnType<typeof open>
+  __xiryn?: ReturnType<typeof open>
 }
 
 // Opens the database (and applies migrations) the first time it's used, not
 // when this module is imported: `next build` imports every route in parallel
 // workers and must not touch the database at all
 export function connect() {
-  return (globalForDb.__oryn ??= open())
+  return (globalForDb.__xiryn ??= open())
 }
 
 function lazy<T extends object>(get: () => T): T {

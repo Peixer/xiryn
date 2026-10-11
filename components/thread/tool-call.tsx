@@ -37,10 +37,10 @@ import { useTakeover } from "@/components/thread/takeover"
 import { PaymentApprovalCard, SecretRequestCard } from "@/components/vault/request-cards"
 import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
-import type { OrynMessage } from "@/lib/agent/tools"
+import type { XirynMessage } from "@/lib/agent/tools"
 import { cn } from "@/lib/utils"
 
-export type ToolPart = Extract<OrynMessage["parts"][number], { type: `tool-${string}` }>
+export type ToolPart = Extract<XirynMessage["parts"][number], { type: `tool-${string}` }>
 
 type Meta = {
   icon: LucideIcon

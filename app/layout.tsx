@@ -30,10 +30,10 @@ const mono = localFont({
 })
 
 export const metadata: Metadata = {
-  title: { default: "Oryn", template: "%s · Oryn" },
+  title: { default: "Xiryn", template: "%s · Xiryn" },
   description:
     "Self-hosted AI agents on your own keys: a sandboxed Linux workstation, long-term memory and any model per agent, reachable from Telegram.",
-  applicationName: "Oryn",
+  applicationName: "Xiryn",
 }
 
 export const viewport: Viewport = {

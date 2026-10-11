@@ -6,10 +6,10 @@ import { docker, dockerRaw, ensureEngine } from "@/lib/docker"
 
 // Agents' machines run from an image built on this computer out of the
 // ./workstation folder. Its tag is a fingerprint of that folder, so after an
-// update that changes it Oryn builds the new image once, and each agent moves
+// update that changes it Xiryn builds the new image once, and each agent moves
 // to it the next time its machine starts. Files in a home folder are kept.
 
-export const IMAGE_REPO = "oryn-workstation"
+export const IMAGE_REPO = "xiryn-workstation"
 
 const SOURCE = path.join(/*turbopackIgnore: true*/ process.cwd(), "workstation")
 const LOG_LINES = 80
@@ -58,9 +58,9 @@ export type ImageState =
   | { state: "failed"; tag: string; error: string; log: string[] }
 
 const globalForImage = globalThis as unknown as {
-  __orynImage?: { build: Promise<string> | null; last: ImageState | null }
+  __xirynImage?: { build: Promise<string> | null; last: ImageState | null }
 }
-const shared = (globalForImage.__orynImage ??= { build: null, last: null })
+const shared = (globalForImage.__xirynImage ??= { build: null, last: null })
 
 export async function getImageState(): Promise<ImageState> {
   const tag = imageTag()
@@ -94,7 +94,7 @@ export function buildImage(): Promise<string> {
     await ensureEngine()
     try {
       await docker(
-        ["build", "--tag", tag, "--label", "oryn.workstation-image=1", SOURCE],
+        ["build", "--tag", tag, "--label", "xiryn.workstation-image=1", SOURCE],
         {
           timeoutMs: 45 * 60_000,
           env: { BUILDKIT_PROGRESS: "plain", DOCKER_CLI_HINTS: "false" },

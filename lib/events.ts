@@ -12,7 +12,7 @@ type Common = {
   via: "web" | "telegram"
 }
 
-export type OrynEvent =
+export type XirynEvent =
   | (Common & {
       // A turn began (from the app, Telegram or an answered request): a page
       // showing the thread follows it live
@@ -32,17 +32,17 @@ export type OrynEvent =
       reason: string
     })
 
-type Listener = (event: OrynEvent) => void
+type Listener = (event: XirynEvent) => void
 
-const globalForEvents = globalThis as unknown as { __orynEvents?: Set<Listener> }
-const listeners = (globalForEvents.__orynEvents ??= new Set())
+const globalForEvents = globalThis as unknown as { __xirynEvents?: Set<Listener> }
+const listeners = (globalForEvents.__xirynEvents ??= new Set())
 
-export function emit(event: OrynEvent) {
+export function emit(event: XirynEvent) {
   for (const listener of listeners) {
     try {
       listener(event)
     } catch (error) {
-      console.error("[oryn] event listener failed:", error)
+      console.error("[xiryn] event listener failed:", error)
     }
   }
 }

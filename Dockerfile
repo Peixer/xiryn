@@ -19,7 +19,7 @@ FROM node:22-bookworm-slim AS run
 WORKDIR /app
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
-    ORYN_DATA_DIR=/app/data
+    XIRYN_DATA_DIR=/app/data
 
 COPY --from=build /app/package.json ./
 COPY --from=build /app/next.config.ts ./
@@ -37,7 +37,7 @@ USER node
 VOLUME ["/app/data"]
 EXPOSE 6796
 
-# Inside the container Oryn listens on all interfaces; publish the port to
+# Inside the container Xiryn listens on all interfaces; publish the port to
 # 127.0.0.1 on the host (see docker-compose.yml) to keep it private.
 # Workstations are sibling containers: mount the host's Docker socket.
 CMD ["node_modules/.bin/next", "start", "--hostname", "0.0.0.0", "--port", "6796"]

@@ -3,12 +3,12 @@
 #
 # Xvfb draws the screen, xfwm4 and xfce4-panel make it a desktop, x11vnc
 # serves it (password protected) and websockify/noVNC put it on port 6080.
-# The container stops itself after ORYN_IDLE_MINUTES without activity, so an
-# idle agent costs nothing even when Oryn isn't running to stop it.
+# The container stops itself after XIRYN_IDLE_MINUTES without activity, so an
+# idle agent costs nothing even when Xiryn isn't running to stop it.
 
 set -u
 
-state=/tmp/oryn
+state=/tmp/xiryn
 mkdir -p "$state"
 
 # A machine that was stopped keeps its /tmp. Locks left by the last run's X
@@ -17,9 +17,9 @@ mkdir -p "$state"
 display_number="${DISPLAY#:}"
 rm -f "/tmp/.X${display_number}-lock" "/tmp/.X11-unix/X${display_number}"
 touch "$state/active"
-echo "${ORYN_IDLE_MINUTES:-15}" > "$state/idle-minutes"
+echo "${XIRYN_IDLE_MINUTES:-15}" > "$state/idle-minutes"
 
-Xvfb "$DISPLAY" -screen 0 "${ORYN_SCREEN:-1280x800}x24" -dpi 96 -nolisten tcp \
+Xvfb "$DISPLAY" -screen 0 "${XIRYN_SCREEN:-1280x800}x24" -dpi 96 -nolisten tcp \
   >"$state/xvfb.log" 2>&1 &
 xvfb=$!
 for _ in $(seq 100); do
@@ -27,9 +27,9 @@ for _ in $(seq 100); do
   sleep 0.1
 done
 
-x11vnc -storepasswd "${ORYN_VNC_PASSWORD:?ORYN_VNC_PASSWORD is required}" \
+x11vnc -storepasswd "${XIRYN_VNC_PASSWORD:?XIRYN_VNC_PASSWORD is required}" \
   "$state/vncpass" >/dev/null 2>&1
-unset ORYN_VNC_PASSWORD
+unset XIRYN_VNC_PASSWORD
 # Kept to put the file back if something clears /tmp: x11vnc reads it for
 # every connection
 vncpass=$(base64 -w0 "$state/vncpass")
@@ -38,7 +38,7 @@ eval "$(dbus-launch --sh-syntax)"
 xfsettingsd --daemon >/dev/null 2>&1
 xfwm4 --compositor=off >"$state/xfwm4.log" 2>&1 &
 xfce4-panel >"$state/panel.log" 2>&1 &
-feh --no-fehbg --bg-fill /usr/share/oryn/wallpaper.png 2>/dev/null \
+feh --no-fehbg --bg-fill /usr/share/xiryn/wallpaper.png 2>/dev/null \
   || xsetroot -solid "#0b0e14"
 
 x11vnc -display "$DISPLAY" -rfbauth "$state/vncpass" -rfbport 5900 -localhost \
@@ -51,7 +51,7 @@ ws=$!
 # ended Chromium abruptly; mark that session as closed cleanly so it doesn't
 # open with a "restore pages?" bubble.
 sed -i 's/"exit_type":"Crashed"/"exit_type":"Normal"/' \
-  "$HOME/.config/oryn-browser/Default/Preferences" 2>/dev/null
+  "$HOME/.config/xiryn-browser/Default/Preferences" 2>/dev/null
 browser
 
 while sleep 20; do
@@ -61,7 +61,7 @@ while sleep 20; do
 
   # Someone watching the screen or a command still running counts as activity
   if [ -n "$(ss -Htn state established '( sport = :6080 )' 2>/dev/null)" ] \
-    || pgrep -f '^/bin/bash /usr/local/bin/oryn-run' >/dev/null; then
+    || pgrep -f '^/bin/bash /usr/local/bin/xiryn-run' >/dev/null; then
     touch "$state/active"
   fi
 

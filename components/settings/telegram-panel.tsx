@@ -151,13 +151,14 @@ export function TelegramPanelView({ initial }: { initial: TelegramPanel }) {
               <b className="text-foreground">Start</b>.
             </p>
             <p>
-              Send <Code>/newbot</Code>. Give it a display name (e.g. <Code>My Oryn</Code>
+              Send <Code>/newbot</Code>. Give it a display name (e.g.{" "}
+              <Code>My Xiryn</Code>
               ), then a username that ends in <Code>bot</Code> (e.g.{" "}
-              <Code>my_oryn_bot</Code>).
+              <Code>my_xiryn_bot</Code>).
             </p>
             <p>
               BotFather replies with a token like <Code>123456789:AAH…</Code>. That&apos;s
-              the only thing Oryn needs. Treat it like a password.
+              the only thing Xiryn needs. Treat it like a password.
             </p>
           </div>
           <a
@@ -226,7 +227,7 @@ export function TelegramPanelView({ initial }: { initial: TelegramPanel }) {
                   </button>
                 }
                 title="Disconnect Telegram?"
-                description="The bot token is removed from Oryn and the paired account is forgotten. The bot itself keeps existing in Telegram."
+                description="The bot token is removed from Xiryn and the paired account is forgotten. The bot itself keeps existing in Telegram."
                 action="Disconnect"
                 onConfirm={() => save(null)}
               />
@@ -315,7 +316,7 @@ export function TelegramPanelView({ initial }: { initial: TelegramPanel }) {
             Message the bot like you would message the agent here. <Code>/agents</Code>{" "}
             switches agent or squad, <Code>/new</Code> starts a fresh thread,{" "}
             <Code>/stop</Code> interrupts. Threads started from Telegram show up in this
-            app too. Oryn has to be running on this computer for the bot to answer.
+            app too. Xiryn has to be running on this computer for the bot to answer.
           </p>
         </Step>
       </ol>

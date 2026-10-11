@@ -22,13 +22,13 @@ import { ensureImage, imageTag } from "@/lib/workstation-image"
 // again on demand.
 
 export const SCREEN = { width: 1280, height: 800 }
-const HOME = "/home/oryn"
+const HOME = "/home/xiryn"
 const VNC_PORT = "6080/tcp"
 
-const containerName = (agentId: string) => `oryn-ws-${agentId}`
-const volumeName = (agentId: string) => `oryn-home-${agentId}`
+const containerName = (agentId: string) => `xiryn-ws-${agentId}`
+const volumeName = (agentId: string) => `xiryn-home-${agentId}`
 
-// Labels this installation's containers, so two copies of Oryn on one
+// Labels this installation's containers, so two copies of Xiryn on one
 // computer never clean up each other's machines
 function installId() {
   let id = getSetting("workstation.installId")
@@ -83,7 +83,7 @@ async function inspect(name: string): Promise<Inspection | null> {
       "--type",
       "container",
       "--format",
-      '{{.State.Status}}\t{{index .Config.Labels "oryn.image"}}\t{{.State.StartedAt}}\t{{.State.FinishedAt}}\t{{.HostConfig.NanoCpus}}\t{{.HostConfig.Memory}}',
+      '{{.State.Status}}\t{{index .Config.Labels "xiryn.image"}}\t{{.State.StartedAt}}\t{{.State.FinishedAt}}\t{{.HostConfig.NanoCpus}}\t{{.HostConfig.Memory}}',
       name,
     ],
     { timeoutMs: 20_000 }
@@ -120,7 +120,7 @@ async function create(agentId: string, tag: string) {
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"
   // Asked for by the desktop viewer; the port is reachable from this computer only
   const password = randomBytes(9).toString("base64url").slice(0, 8)
-  const labels = [`oryn.agent=${agentId}`, `oryn.install=${installId()}`]
+  const labels = [`xiryn.agent=${agentId}`, `xiryn.install=${installId()}`]
 
   await docker([
     "volume",
@@ -136,16 +136,16 @@ async function create(agentId: string, tag: string) {
       "--hostname",
       hostnameFor(agent.name),
       "--label",
-      "oryn.workstation=1",
+      "xiryn.workstation=1",
       ...labels.flatMap((l) => ["--label", l]),
       "--label",
-      `oryn.image=${tag}`,
+      `xiryn.image=${tag}`,
       "--env",
-      `ORYN_VNC_PASSWORD=${password}`,
+      `XIRYN_VNC_PASSWORD=${password}`,
       "--env",
-      `ORYN_IDLE_MINUTES=${idle}`,
+      `XIRYN_IDLE_MINUTES=${idle}`,
       "--env",
-      `ORYN_SCREEN=${SCREEN.width}x${SCREEN.height}`,
+      `XIRYN_SCREEN=${SCREEN.width}x${SCREEN.height}`,
       "--env",
       `TZ=${timeZone}`,
       "--volume",
@@ -167,19 +167,19 @@ async function create(agentId: string, tag: string) {
 // Starts a stopped container and waits until its desktop is up
 async function boot(name: string) {
   await docker(["start", name], { timeoutMs: 60_000 })
-  await docker(["exec", name, "oryn-ready"], { timeoutMs: 45_000 })
+  await docker(["exec", name, "xiryn-ready"], { timeoutMs: 45_000 })
 }
 
 type Session = { name: string; at: number; port?: number; password?: string }
 
 const globalForWorkstations = globalThis as unknown as {
-  __orynWorkstations?: {
+  __xirynWorkstations?: {
     pending: Map<string, Promise<Session>>
     recent: Map<string, Session>
     janitor: NodeJS.Timeout | null
   }
 }
-const shared = (globalForWorkstations.__orynWorkstations ??= {
+const shared = (globalForWorkstations.__xirynWorkstations ??= {
   pending: new Map(),
   recent: new Map(),
   janitor: null,
@@ -216,7 +216,7 @@ async function prepare(agentId: string): Promise<Session> {
       name,
       "sh",
       "-c",
-      'mkdir -p /tmp/oryn && echo "$1" > /tmp/oryn/idle-minutes && touch /tmp/oryn/active',
+      'mkdir -p /tmp/xiryn && echo "$1" > /tmp/xiryn/idle-minutes && touch /tmp/xiryn/active',
       "sh",
       String(idle),
     ],
@@ -290,7 +290,7 @@ async function execOrThrow(
 
 /* ───────────────────────── shell & files ───────────────────────── */
 
-// "~/x" and "x" both mean /home/oryn/x
+// "~/x" and "x" both mean /home/xiryn/x
 export function resolvePath(input: string) {
   const value = input.trim() || "."
   if (value === "~") return HOME
@@ -304,7 +304,7 @@ export async function runCommand(
   command: string,
   { cwd, timeoutSeconds = 120 }: { cwd?: string; timeoutSeconds?: number } = {}
 ) {
-  const result = await execIn(agentId, ["oryn-run", String(timeoutSeconds), command], {
+  const result = await execIn(agentId, ["xiryn-run", String(timeoutSeconds), command], {
     cwd: cwd ? resolvePath(cwd) : HOME,
     timeoutMs: (timeoutSeconds + 20) * 1000,
   })
@@ -372,7 +372,7 @@ export async function listDirectory(agentId: string, path: string) {
 /* ──────────────────────────── desktop ──────────────────────────── */
 
 export async function captureScreen(agentId: string) {
-  const result = await execOrThrow(agentId, ["oryn-shot"], { timeoutMs: 30_000 })
+  const result = await execOrThrow(agentId, ["xiryn-shot"], { timeoutMs: 30_000 })
   const image = result.stdout.toString("ascii").trim()
   if (!image) throw new Error("The screenshot came back empty.")
   return { image, mediaType: "image/jpeg", width: SCREEN.width, height: SCREEN.height }
@@ -481,7 +481,7 @@ export function typeSecret(agentId: string, value: string) {
 // in screenshots or to anyone watching. Best effort: the fill already
 // happened either way.
 export async function maskFocusedField(agentId: string) {
-  await execIn(agentId, ["oryn-mask"], { timeoutMs: 15_000 }).catch(() => null)
+  await execIn(agentId, ["xiryn-mask"], { timeoutMs: 15_000 }).catch(() => null)
 }
 
 // The page in front of the person: the browser tab whose title is in the
@@ -591,8 +591,8 @@ export async function getDesktopAccess(agentId: string) {
     ])
     const binding = port.stdout.toString().match(/127\.0\.0\.1:(\d+)/)
     const password = (JSON.parse(env.stdout.toString()) as string[])
-      .find((entry) => entry.startsWith("ORYN_VNC_PASSWORD="))
-      ?.slice("ORYN_VNC_PASSWORD=".length)
+      .find((entry) => entry.startsWith("XIRYN_VNC_PASSWORD="))
+      ?.slice("XIRYN_VNC_PASSWORD=".length)
     if (!binding || !password) throw new Error("The desktop isn't reachable yet.")
     if (session) Object.assign(session, { port: Number(binding[1]), password })
     return { url: `ws://127.0.0.1:${binding[1]}/websockify`, password }
@@ -613,13 +613,13 @@ export async function getTakeoverLink(
 ) {
   if (!phoneLinksEnabled()) return null
   const { password } = await getDesktopAccess(agentId)
-  const result = await execOrThrow(agentId, ["oryn-tunnel", String(minutes)], {
+  const result = await execOrThrow(agentId, ["xiryn-tunnel", String(minutes)], {
     timeoutMs: 45_000,
   })
   const base = result.stdout.toString().trim().split("\n").at(-1) ?? ""
   if (!base.startsWith("https://"))
     throw new Error("The tunnel didn't report an address.")
-  // Oryn's phone page (workstation/…/novnc/oryn.html). Everything it needs
+  // Xiryn's phone page (workstation/…/novnc/xiryn.html). Everything it needs
   // rides after the #, which browsers never send to a server, so the
   // password stays out of the tunnel's logs.
   const fragment = new URLSearchParams({
@@ -628,7 +628,7 @@ export async function getTakeoverLink(
     ...(agent && { agent }),
     ...(bot && { bot }),
   })
-  return { url: `${new URL("/oryn.html", base)}#${fragment}`, minutes }
+  return { url: `${new URL("/xiryn.html", base)}#${fragment}`, minutes }
 }
 
 /* ──────────────────────────── status ──────────────────────────── */
@@ -744,9 +744,9 @@ export async function sweepWorkstations() {
     "ps",
     "--all",
     "--filter",
-    `label=oryn.install=${install}`,
+    `label=xiryn.install=${install}`,
     "--format",
-    '{{.Label "oryn.agent"}}\t{{.State}}',
+    '{{.Label "xiryn.agent"}}\t{{.State}}',
   ])
   for (const line of containers.stdout.toString().split(/\r?\n/).filter(Boolean)) {
     const [agentId, state] = line.split("\t")
@@ -765,9 +765,9 @@ export async function sweepWorkstations() {
     "volume",
     "ls",
     "--filter",
-    `label=oryn.install=${install}`,
+    `label=xiryn.install=${install}`,
     "--format",
-    '{{.Label "oryn.agent"}}',
+    '{{.Label "xiryn.agent"}}',
   ])
   for (const agentId of volumes.stdout.toString().split(/\r?\n/).filter(Boolean)) {
     if (!known.has(agentId)) await dockerRaw(["volume", "rm", volumeName(agentId)])
@@ -778,7 +778,7 @@ export function startWorkstationJanitor() {
   if (shared.janitor) return
   const sweep = () =>
     sweepWorkstations().catch((error) =>
-      console.error("[oryn] workstation cleanup failed:", error)
+      console.error("[xiryn] workstation cleanup failed:", error)
     )
   setTimeout(sweep, 20_000)
   shared.janitor = setInterval(sweep, 5 * 60_000)

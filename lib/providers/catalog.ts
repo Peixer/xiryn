@@ -1,4 +1,4 @@
-// Every model provider Oryn can talk to. Client-safe: no keys, no SDKs.
+// Every model provider Xiryn can talk to. Client-safe: no keys, no SDKs.
 
 export type ProviderId =
   | "openai"

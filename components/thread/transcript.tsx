@@ -21,7 +21,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
-import type { OrynMessage } from "@/lib/agent/tools"
+import type { XirynMessage } from "@/lib/agent/tools"
 import { cn } from "@/lib/utils"
 
 export type AgentLite = {
@@ -32,11 +32,11 @@ export type AgentLite = {
   model: string | null
 }
 
-type Part = OrynMessage["parts"][number]
+type Part = XirynMessage["parts"][number]
 
 // One reply can pass through several agents in a squad. It is cut at every
 // delegation so each stretch is credited to whoever wrote it.
-function segments(message: OrynMessage, members: AgentLite[]) {
+function segments(message: XirynMessage, members: AgentLite[]) {
   const find = (id?: string) => members.find((member) => member.id === id)
   let current = {
     author: find(message.metadata?.agentId) ?? members[0],
@@ -150,7 +150,7 @@ function UserMessage({
   message,
   addressee,
 }: {
-  message: OrynMessage
+  message: XirynMessage
   addressee?: AgentLite
 }) {
   const text = message.parts
@@ -237,7 +237,7 @@ function AgentMessage({
   streaming,
   awaiting = false,
 }: {
-  message: OrynMessage
+  message: XirynMessage
   members: AgentLite[]
   streaming: boolean
   // The latest message, finished: its requests can still be answered
@@ -320,7 +320,7 @@ export function Transcript({
   empty,
   footer,
 }: {
-  messages: OrynMessage[]
+  messages: XirynMessage[]
   members: AgentLite[]
   status: ChatStatus
   isSquad: boolean

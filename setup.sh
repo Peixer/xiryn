@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
-# Oryn — one-step setup for macOS and Linux.
+# Xiryn — one-step setup for macOS and Linux.
 #
-#   curl -fsSL https://raw.githubusercontent.com/SouravBeraAkaSpeed/oryn/main/setup.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/SouravBeraAkaSpeed/xiryn/main/setup.sh | bash
 #
 # or, inside a clone:  ./setup.sh
 #
-# Installs whatever is missing (Git, Node.js, Docker), then Oryn's packages
-# and the agents' workstation image, and starts Oryn. It asks once before
-# installing anything. ORYN_YES=1 skips the question.
-# --no-start (or ORYN_NO_START=1) sets everything up without starting Oryn.
+# Installs whatever is missing (Git, Node.js, Docker), then Xiryn's packages
+# and the agents' workstation image, and starts Xiryn. It asks once before
+# installing anything. XIRYN_YES=1 skips the question.
+# --no-start (or XIRYN_NO_START=1) sets everything up without starting Xiryn.
 
 set -euo pipefail
 
-REPO="https://github.com/SouravBeraAkaSpeed/oryn.git"
+REPO="https://github.com/SouravBeraAkaSpeed/xiryn.git"
 NODE_MAJOR=22
 
 bold=$'\033[1m'; dim=$'\033[2m'; green=$'\033[32m'; yellow=$'\033[33m'; red=$'\033[31m'; reset=$'\033[0m'
@@ -25,7 +25,7 @@ has() { command -v "$1" >/dev/null 2>&1; }
 has_tty() { ( : </dev/tty ) 2>/dev/null; }
 
 ask() {
-  [ "${ORYN_YES:-}" = 1 ] && return 0
+  [ "${XIRYN_YES:-}" = 1 ] && return 0
   has_tty || return 1
   local answer
   read -r -p "  $1 ${dim}[Y/n]${reset} " answer </dev/tty || return 1
@@ -41,7 +41,7 @@ needs_you() {
   exit 2
 }
 
-printf '\n  %soryn%s · setup\n\n' "$bold" "$reset"
+printf '\n  %sxiryn%s · setup\n\n' "$bold" "$reset"
 
 os="$(uname -s)"
 case "$os" in
@@ -92,8 +92,8 @@ node_ok || missing+=("Node.js")
 docker_ok || missing+=("Docker")
 
 if [ ${#missing[@]} -gt 0 ]; then
-  printf '  To run Oryn this computer needs: %s%s%s\n' "$bold" "$(IFS=,; echo "${missing[*]}" | sed 's/,/, /g')" "$reset"
-  ask "Install them now?" || fail "Nothing installed. Install them yourself, or run this again with ORYN_YES=1."
+  printf '  To run Xiryn this computer needs: %s%s%s\n' "$bold" "$(IFS=,; echo "${missing[*]}" | sed 's/,/, /g')" "$reset"
+  ask "Install them now?" || fail "Nothing installed. Install them yourself, or run this again with XIRYN_YES=1."
 fi
 
 linux_install() {
@@ -130,15 +130,15 @@ install_node_home() {
   file=$(curl -fsSL "https://nodejs.org/dist/latest-v$NODE_MAJOR.x/SHASUMS256.txt" |
     awk '{print $2}' | grep -E "^node-v[0-9.]+-$kind-$arch\.tar\.gz$" | head -1)
   [ -n "$file" ] || fail "Couldn't find a Node.js download. Install it from https://nodejs.org."
-  dir="$HOME/.oryn/node"
+  dir="$HOME/.xiryn/node"
   rm -rf "$dir" && mkdir -p "$dir"
   curl -fsSL "https://nodejs.org/dist/latest-v$NODE_MAJOR.x/$file" | tar -xzf - -C "$dir" --strip-components=1
   export PATH="$dir/bin:$PATH"
   # So new terminals find it too
-  local line='export PATH="$HOME/.oryn/node/bin:$PATH"'
+  local line='export PATH="$HOME/.xiryn/node/bin:$PATH"'
   for profile in "$HOME/.zprofile" "$HOME/.bash_profile" "$HOME/.profile"; do
     if [ -f "$profile" ] || [ "$profile" = "$HOME/.zprofile" -a "$platform" = mac ] || [ "$profile" = "$HOME/.profile" -a "$platform" = linux ]; then
-      grep -qF "$line" "$profile" 2>/dev/null || printf '\n# Node.js for Oryn\n%s\n' "$line" >>"$profile"
+      grep -qF "$line" "$profile" 2>/dev/null || printf '\n# Node.js for Xiryn\n%s\n' "$line" >>"$profile"
     fi
   done
 }
@@ -190,7 +190,7 @@ install_docker_mac() {
   cp -R "$tmp/mount/Docker.app" /Applications/
   hdiutil detach -quiet "$tmp/mount" || true
   rm -rf "$tmp"
-  note "Docker Desktop is opening. Accept its terms (it may ask for your password once); Oryn waits for it."
+  note "Docker Desktop is opening. Accept its terms (it may ask for your password once); Xiryn waits for it."
   open -a /Applications/Docker.app || true
 }
 
@@ -218,19 +218,19 @@ ok "node $(node -v)"
 
 # Run from inside a clone, or clone one here
 here="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || pwd)"
-if [ -f "$here/package.json" ] && grep -q '"name": "oryn"' "$here/package.json"; then
+if [ -f "$here/package.json" ] && grep -q '"name": "xiryn"' "$here/package.json"; then
   cd "$here"
-elif [ -f package.json ] && grep -q '"name": "oryn"' package.json; then
+elif [ -f package.json ] && grep -q '"name": "xiryn"' package.json; then
   :
 else
-  if [ -d oryn/.git ]; then
-    note "Using the existing ./oryn folder"
+  if [ -d xiryn/.git ]; then
+    note "Using the existing ./xiryn folder"
   else
-    git clone --depth 1 "$REPO" oryn
+    git clone --depth 1 "$REPO" xiryn
   fi
-  cd oryn
+  cd xiryn
 fi
-ok "oryn in $(pwd)"
+ok "xiryn in $(pwd)"
 
 # On Linux the docker group only applies to new logins; run Docker steps
 # through it now so nothing needs sudo
@@ -247,9 +247,9 @@ npm install --no-fund --no-audit --loglevel=error
 run_with_docker "node scripts/setup.mjs --yes"
 
 printf '\n'
-no_start="${ORYN_NO_START:-0}"
+no_start="${XIRYN_NO_START:-0}"
 for arg in "$@"; do [ "$arg" = --no-start ] && no_start=1; done
-if [ "$no_start" = 0 ] && ask "Start Oryn now?"; then
+if [ "$no_start" = 0 ] && ask "Start Xiryn now?"; then
   url="http://127.0.0.1:6796"
   ( for _ in $(seq 120); do
       if curl -fs -o /dev/null "$url"; then
@@ -258,9 +258,9 @@ if [ "$no_start" = 0 ] && ask "Start Oryn now?"; then
       fi
       sleep 1
     done ) &
-  printf '  Oryn is starting at %s%s%s — press Ctrl+C to stop it.\n' "$bold" "$url" "$reset"
+  printf '  Xiryn is starting at %s%s%s — press Ctrl+C to stop it.\n' "$bold" "$url" "$reset"
   printf '  Next time, start it with: %scd %s && npm run dev%s\n\n' "$bold" "$(pwd)" "$reset"
   run_with_docker "npm run dev"
 else
-  printf '  Start Oryn any time with: %scd %s && npm run dev%s\n\n' "$bold" "$(pwd)" "$reset"
+  printf '  Start Xiryn any time with: %scd %s && npm run dev%s\n\n' "$bold" "$(pwd)" "$reset"
 fi

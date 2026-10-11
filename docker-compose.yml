@@ -1,20 +1,20 @@
 services:
-  oryn:
+  xiryn:
     build: .
-    image: oryn:local
-    container_name: oryn
+    image: xiryn:local
+    container_name: xiryn
     restart: unless-stopped
     env_file: .env
     # Talking to Docker needs access to its socket, which is root-only on
     # most hosts. (Access to the socket is root-equivalent either way.)
     user: root
     ports:
-      # Loopback only: Oryn has no login, so never publish it on 0.0.0.0
+      # Loopback only: Xiryn has no login, so never publish it on 0.0.0.0
       - "127.0.0.1:6796:6796"
     volumes:
-      - oryn-data:/app/data
+      - xiryn-data:/app/data
       # Agents' workstations run as sibling containers on the host's Docker
       - /var/run/docker.sock:/var/run/docker.sock
 
 volumes:
-  oryn-data:
+  xiryn-data:

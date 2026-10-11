@@ -2,7 +2,7 @@
 
 ## Our pledge
 
-Oryn is built in the open by people with different backgrounds, skill levels and opinions. We want taking part to be a harassment-free experience for everyone, regardless of age, body size, visible or invisible disability, ethnicity, sex characteristics, gender identity and expression, level of experience, education, socio-economic status, nationality, personal appearance, race, caste, color, religion, or sexual identity and orientation.
+Xiryn is built in the open by people with different backgrounds, skill levels and opinions. We want taking part to be a harassment-free experience for everyone, regardless of age, body size, visible or invisible disability, ethnicity, sex characteristics, gender identity and expression, level of experience, education, socio-economic status, nationality, personal appearance, race, caste, color, religion, or sexual identity and orientation.
 
 ## What we expect
 

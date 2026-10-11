@@ -26,13 +26,15 @@ const ok = (s) => `\x1b[32m✓\x1b[0m ${s}`
 const warn = (s) => `\x1b[33m!\x1b[0m ${s}`
 const bad = (s) => `\x1b[31m✗\x1b[0m ${s}`
 
-console.log("\n  oryn · setup\n")
+console.log("\n  xiryn · setup\n")
 
 /* ───────────────────────────── node ────────────────────────────── */
 
 const [major, minor] = process.versions.node.split(".").map(Number)
 if (major < 20 || (major === 20 && minor < 9)) {
-  console.log(bad(`Node ${process.versions.node} is too old — Oryn needs 20.9 or newer.`))
+  console.log(
+    bad(`Node ${process.versions.node} is too old — Xiryn needs 20.9 or newer.`)
+  )
   process.exit(1)
 }
 console.log(ok(`node ${process.versions.node}`))
@@ -45,7 +47,7 @@ if (!workstationOnly) {
   } else {
     console.log(ok(`.env exists ${dim("(left untouched)")}`))
   }
-  mkdirSync(path.join(root, process.env.ORYN_DATA_DIR || "data"), { recursive: true })
+  mkdirSync(path.join(root, process.env.XIRYN_DATA_DIR || "data"), { recursive: true })
 }
 
 /* ──────────────────────────── docker ───────────────────────────── */
@@ -233,7 +235,7 @@ function imageTag() {
     hash.update(readFileSync(path.join(source, ...file.split("/"))))
     hash.update("\0")
   }
-  return `oryn-workstation:${hash.digest("hex").slice(0, 12)}`
+  return `xiryn-workstation:${hash.digest("hex").slice(0, 12)}`
 }
 
 async function buildImage(docker) {
@@ -251,22 +253,26 @@ async function buildImage(docker) {
     "--tag",
     tag,
     "--label",
-    "oryn.workstation-image=1",
+    "xiryn.workstation-image=1",
     path.join(root, "workstation"),
   ])
   if (!built) {
     console.log(
-      bad("The workstation image didn't build. Oryn will try again on first use.")
+      bad("The workstation image didn't build. Xiryn will try again on first use.")
     )
     return false
   }
   // Older versions go once nothing uses them
-  const tags = spawnSync(docker, ["images", "oryn-workstation", "--format", "{{.Tag}}"], {
-    encoding: "utf8",
-  })
+  const tags = spawnSync(
+    docker,
+    ["images", "xiryn-workstation", "--format", "{{.Tag}}"],
+    {
+      encoding: "utf8",
+    }
+  )
   for (const old of (tags.stdout ?? "").split(/\r?\n/).filter(Boolean)) {
-    if (`oryn-workstation:${old}` !== tag) {
-      spawnSync(docker, ["rmi", `oryn-workstation:${old}`], { stdio: "ignore" })
+    if (`xiryn-workstation:${old}` !== tag) {
+      spawnSync(docker, ["rmi", `xiryn-workstation:${old}`], { stdio: "ignore" })
     }
   }
   console.log(ok(`workstation image ${dim(tag)}`))

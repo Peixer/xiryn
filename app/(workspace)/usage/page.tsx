@@ -51,7 +51,7 @@ export default function Page() {
           <h1 className="text-2xl font-semibold tracking-tight">Usage</h1>
           <p className="max-w-2xl text-[13.5px] leading-relaxed text-muted-foreground">
             Every agent turn is recorded locally: the model it ran on and the tokens it
-            consumed. Your providers bill you directly — Oryn just keeps the receipts.
+            consumed. Your providers bill you directly — Xiryn just keeps the receipts.
           </p>
         </header>
 

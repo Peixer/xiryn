@@ -9,11 +9,11 @@ Guidance for AI coding agents (and humans) working in this repository.
 3. **Secrets stay on the server.** Never return a raw key from a server action or render one in a component; use `describeSetting()` which masks them.
 4. **Loopback only.** Don't weaken `proxy.ts`.
 
-## Installing Oryn for someone
+## Installing Xiryn for someone
 
-If you were asked to set Oryn up rather than change it:
+If you were asked to set Xiryn up rather than change it:
 
-1. Run `ORYN_YES=1 ORYN_NO_START=1 ./setup.sh` (macOS, Linux) or `$env:ORYN_YES="1"; $env:ORYN_NO_START="1"; .\setup.ps1` (Windows). It installs Git, Node.js and Docker when missing, the packages, and the workstation image.
+1. Run `XIRYN_YES=1 XIRYN_NO_START=1 ./setup.sh` (macOS, Linux) or `$env:XIRYN_YES="1"; $env:XIRYN_NO_START="1"; .\setup.ps1` (Windows). It installs Git, Node.js and Docker when missing, the packages, and the workstation image.
 2. Exit code 2 means a step needs the person: show them the printed command (it needs their password) or ask them to finish the installer that opened, then run the setup again. If Docker Desktop isn't running, ask them to open it and accept its terms.
 3. Ask for at least one model provider key (and optionally `FIRECRAWL_API_KEY`, `TELEGRAM_BOT_TOKEN`) and write them into `.env`. Never echo or commit them.
 4. Start it with `npm run dev`, wait for http://127.0.0.1:6796, and open it.

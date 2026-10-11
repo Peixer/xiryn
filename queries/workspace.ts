@@ -186,7 +186,7 @@ export function getSystemStatus() {
   const defaultModel = resolveModelSpec(null)
   return {
     version,
-    // Newer Oryn on GitHub, and its star count (null until first checked)
+    // Newer Xiryn on GitHub, and its star count (null until first checked)
     updates: getUpdateInfo(),
     // Filled in per request by the layout
     host: null as string | null,
@@ -236,7 +236,7 @@ export function getSettingsView() {
       apiUrl: describeSetting("firecrawl.apiUrl"),
     },
     dbPath: DB_PATH,
-    allowedHosts: process.env.ORYN_ALLOWED_HOSTS ?? null,
+    allowedHosts: process.env.XIRYN_ALLOWED_HOSTS ?? null,
     counts: {
       agents: countRows(agents),
       squads: countRows(squads),

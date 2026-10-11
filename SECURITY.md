@@ -1,6 +1,6 @@
 # Security Policy
 
-Oryn runs AI agents with real capabilities — shell access in sandboxed containers, web access, a remote-control bridge — on people's own machines. Security reports are taken seriously.
+Xiryn runs AI agents with real capabilities — shell access in sandboxed containers, web access, a remote-control bridge — on people's own machines. Security reports are taken seriously.
 
 ## Supported versions
 
@@ -14,7 +14,7 @@ Oryn runs AI agents with real capabilities — shell access in sandboxed contain
 
 **Please do not open a public issue.**
 
-Use GitHub's private reporting: **Security → Report a vulnerability** on [the repository](https://github.com/SouravBeraAkaSpeed/oryn/security/advisories/new). If that isn't possible, contact the maintainer through <https://souravbera.vercel.app>.
+Use GitHub's private reporting: **Security → Report a vulnerability** on [the repository](https://github.com/SouravBeraAkaSpeed/xiryn/security/advisories/new). If that isn't possible, contact the maintainer through <https://souravbera.vercel.app>.
 
 Include what you can:
 
@@ -27,29 +27,29 @@ You'll get an acknowledgement within **72 hours** and a first assessment within 
 
 ## Security model
 
-Understanding what Oryn protects — and what it doesn't — helps you judge a finding.
+Understanding what Xiryn protects — and what it doesn't — helps you judge a finding.
 
-**What Oryn defends**
+**What Xiryn defends**
 
-- **Network exposure.** The server binds to `127.0.0.1`. Requests whose `Host` or `Origin` isn't loopback (or listed in `ORYN_ALLOWED_HOSTS`) are refused, which also blocks DNS-rebinding attacks from websites you visit.
+- **Network exposure.** The server binds to `127.0.0.1`. Requests whose `Host` or `Origin` isn't loopback (or listed in `XIRYN_ALLOWED_HOSTS`) are refused, which also blocks DNS-rebinding attacks from websites you visit.
 - **Secret handling.** API keys and the Telegram token are read only on the server. The browser receives masked values; server-action argument logging is disabled.
 - **Remote access.** The Telegram bridge answers exactly one paired account. Pairing codes are single-use and rotate after repeated wrong guesses.
 - **Host isolation.** Agent tools execute inside each agent's own Docker container, as an unprivileged user with no access to your files, desktop or other containers' data. Nothing from your machine is mounted into it.
 - **The vault.** Logins, cards, UPI IDs and personal details are encrypted with AES-256-GCM, each entry bound to its id. The key is kept by the operating system (macOS Keychain, Windows DPAPI, the Linux Secret Service), or, where none is available, in a file readable only by you outside the data folder. The browser receives masked hints only. Values reach a page by being typed into the agent's browser from stdin — never through a model, a log or a tool result — and the field is then shown as dots. A login only fills on its own site; a card or UPI ID only after the person approved that payment in that thread, on the site it was approved on, for 20 minutes.
-- **Live desktops.** Each container's noVNC port is published on `127.0.0.1` only and protected by a random per-container password that only the Oryn server hands to your browser. Phone take-over links (Telegram hand-offs) open a temporary Cloudflare quick tunnel to that one desktop; it closes after 30 minutes, and the link carries the password — treat it as a secret, or turn the feature off with `ORYN_PHONE_TAKEOVER=off`.
+- **Live desktops.** Each container's noVNC port is published on `127.0.0.1` only and protected by a random per-container password that only the Xiryn server hands to your browser. Phone take-over links (Telegram hand-offs) open a temporary Cloudflare quick tunnel to that one desktop; it closes after 30 minutes, and the link carries the password — treat it as a secret, or turn the feature off with `XIRYN_PHONE_TAKEOVER=off`.
 
 **What is out of scope or your responsibility**
 
-- **No authentication by design.** If you expose Oryn beyond localhost, put it behind your own authenticating proxy. Doing so without one is a misconfiguration, not a vulnerability.
+- **No authentication by design.** If you expose Xiryn beyond localhost, put it behind your own authenticating proxy. Doing so without one is a misconfiguration, not a vulnerability.
 - **Model behavior.** Agents act on instructions, and content they read (web pages, files) can contain prompt injections. Workstations limit the blast radius to the agent's container — which can still reach the internet, from your connection — but treat agent output — and anything it does with credentials you give it — with care.
 - **Third-party services.** Prompts go to the model provider you configure; Telegram messages pass through Telegram; phone take-over links pass through Cloudflare. Their security is governed by those providers.
-- **What the vault can't do.** A value typed into a page is in that page, and the agent controls the browser it's in. The vault keeps secrets out of the model's context and out of Oryn's records, and makes their use deliberate and approved; it doesn't make a compromised agent harmless. Approve payments you recognise.
-- **Container isolation itself.** Workstations rely on Docker's isolation. A container escape is a Docker issue — report it to Docker — unless Oryn's configuration (mounts, capabilities, published ports) made it possible.
-- **Local data at rest.** `data/oryn.db`, `.env` and the agents' home-folder volumes are protected by your operating system's account security.
+- **What the vault can't do.** A value typed into a page is in that page, and the agent controls the browser it's in. The vault keeps secrets out of the model's context and out of Xiryn's records, and makes their use deliberate and approved; it doesn't make a compromised agent harmless. Approve payments you recognise.
+- **Container isolation itself.** Workstations rely on Docker's isolation. A container escape is a Docker issue — report it to Docker — unless Xiryn's configuration (mounts, capabilities, published ports) made it possible.
+- **Local data at rest.** `data/xiryn.db`, `.env` and the agents' home-folder volumes are protected by your operating system's account security.
 
 ## Hardening tips
 
-- Keep Oryn updated.
+- Keep Xiryn updated.
 - Use a dedicated, scoped API key per provider and set spending limits in their dashboards.
-- Set `ORYN_WORKSTATION_AUTO_DELETE_MINUTES` if you want workstations to be disposable.
+- Set `XIRYN_WORKSTATION_AUTO_DELETE_MINUTES` if you want workstations to be disposable.
 - Don't give agents credentials they don't need.

@@ -159,7 +159,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
               href={REPOSITORY_URL}
               target="_blank"
               rel="noreferrer"
-              title="Star Oryn on GitHub"
+              title="Star Xiryn on GitHub"
               className="flex items-center gap-1 rounded-sm border px-1.5 py-px font-mono text-[10px] text-muted-foreground transition-colors hover:border-betelgeuse/40 hover:text-betelgeuse"
             >
               <StarIcon className="size-2.5 fill-current" />
@@ -174,7 +174,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
               title={
                 updates.behind
                   ? `${updates.behind} new commit${updates.behind === 1 ? "" : "s"} on GitHub — see how to update`
-                  : `Oryn ${updates.latestVersion} is out — see how to update`
+                  : `Xiryn ${updates.latestVersion} is out — see how to update`
               }
               className="flex items-center gap-1 rounded-sm border border-betelgeuse/40 bg-betelgeuse-soft px-1.5 py-px font-mono text-[10px] text-betelgeuse transition-colors hover:bg-betelgeuse/20"
             >

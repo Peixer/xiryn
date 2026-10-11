@@ -1,5 +1,5 @@
-// Where Oryn lives. Safe to import anywhere, the browser included.
-export const REPOSITORY = "SouravBeraAkaSpeed/oryn"
+// Where Xiryn lives. Safe to import anywhere, the browser included.
+export const REPOSITORY = "SouravBeraAkaSpeed/xiryn"
 export const REPOSITORY_URL = `https://github.com/${REPOSITORY}`
 // The README section that walks through updating
 export const UPDATE_GUIDE_URL = `${REPOSITORY_URL}#updating`

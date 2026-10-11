@@ -55,7 +55,7 @@ export function buildInstructions(
   const sections = [
     `# Identity
 You are ${agent.name}. Role: ${agent.role}.
-You run inside Oryn, a self-hosted agent workspace on the person's own computer. They created you, named you and gave you this role; stay in it, and speak as yourself.`,
+You run inside Xiryn, a self-hosted agent workspace on the person's own computer. They created you, named you and gave you this role; stay in it, and speak as yourself.`,
 
     agent.instructions?.trim() &&
       `# Standing orders from the person
@@ -84,7 +84,7 @@ Save a note in the same turn you learn something worth knowing later (who the pe
 
     capabilities.channel === "telegram" &&
       `# Channel
-The person is messaging you through Telegram, most likely from their phone, while Oryn keeps running on their computer. Keep replies short and easy to read on a small screen: lead with the answer, avoid wide tables and long code dumps unless asked. Screenshots from \`screen_share\` are delivered to them as photos.`,
+The person is messaging you through Telegram, most likely from their phone, while Xiryn keeps running on their computer. Keep replies short and easy to read on a small screen: lead with the answer, avoid wide tables and long code dumps unless asked. Screenshots from \`screen_share\` are delivered to them as photos.`,
 
     capabilities.workstation &&
       `# Using websites like a person

@@ -142,7 +142,7 @@ export const turns = sqliteTable(
 
 // Logins, cards, UPI IDs and personal details, encrypted with a key held by
 // the operating system's keychain (lib/vault.ts). Agents only ever see the
-// label and the hint; the values are typed into pages by Oryn itself.
+// label and the hint; the values are typed into pages by Xiryn itself.
 export const vaultItems = sqliteTable(
   "vault_items",
   {

@@ -662,7 +662,7 @@ function WorkstationCard({ data }: { data: SettingsData }) {
         {engine?.state === "missing" && (
           <div className="flex flex-col gap-2 px-3 py-3 text-[12.5px] leading-relaxed text-muted-foreground">
             <p>
-              Install Docker, then restart Oryn. In a terminal in the Oryn folder,{" "}
+              Install Docker, then restart Xiryn. In a terminal in the Xiryn folder,{" "}
               <code className="rounded-sm bg-muted px-1 font-mono text-[11.5px]">
                 npm run setup
               </code>{" "}
@@ -833,7 +833,7 @@ function ModelSection({ data }: { data: SettingsData }) {
           <span className="text-[11.5px] text-muted-foreground">
             Used by every agent that doesn&apos;t pick its own.
             {data.defaultModel.source === "env" &&
-              " Currently set by ORYN_DEFAULT_MODEL in .env."}
+              " Currently set by XIRYN_DEFAULT_MODEL in .env."}
           </span>
         </label>
         <label className="flex flex-col gap-1.5">
@@ -887,9 +887,9 @@ function UpdateCheck({ enabled }: { enabled: boolean }) {
       <span className="flex flex-col gap-0.5">
         <span className="text-[13px] font-medium">Check GitHub for updates</span>
         <span className="text-[12px] leading-relaxed text-muted-foreground">
-          When you open it, Oryn asks GitHub&apos;s public API whether a newer version is
+          When you open it, Xiryn asks GitHub&apos;s public API whether a newer version is
           out and how many stars the project has, to show an Update button. It&apos;s the
-          only request Oryn makes on its own, and it sends nothing about you.
+          only request Xiryn makes on its own, and it sends nothing about you.
         </span>
       </span>
     </label>
@@ -1003,7 +1003,7 @@ export function SettingsForm({
           id="remote"
           kicker="05 · remote access"
           title="Telegram"
-          description="Talk to your agents from anywhere. Oryn polls Telegram from this machine — no public URL, no port forwarding, no tunnel."
+          description="Talk to your agents from anywhere. Xiryn polls Telegram from this machine — no public URL, no port forwarding, no tunnel."
         >
           {telegram}
         </Section>
@@ -1012,7 +1012,7 @@ export function SettingsForm({
           id="system"
           kicker="06 · system"
           title="System"
-          description="Where your data lives and what Oryn is running on."
+          description="Where your data lives and what Xiryn is running on."
         >
           <div className="divide-y rounded-xl border bg-surface/50 font-mono text-[12px]">
             {[

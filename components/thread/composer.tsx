@@ -47,15 +47,15 @@ export function Composer({
     try {
       // Restoring from browser storage is exactly what effects are for
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setText(sessionStorage.getItem(`oryn:draft:${draftKey}`) ?? "")
+      setText(sessionStorage.getItem(`xiryn:draft:${draftKey}`) ?? "")
     } catch {}
     ref.current?.focus()
   }, [draftKey])
 
   React.useEffect(() => {
     try {
-      if (text) sessionStorage.setItem(`oryn:draft:${draftKey}`, text)
-      else sessionStorage.removeItem(`oryn:draft:${draftKey}`)
+      if (text) sessionStorage.setItem(`xiryn:draft:${draftKey}`, text)
+      else sessionStorage.removeItem(`xiryn:draft:${draftKey}`)
     } catch {}
   }, [text, draftKey])
 

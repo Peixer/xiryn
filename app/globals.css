@@ -8,7 +8,7 @@
 @custom-variant dark (&:is(.dark *));
 
 /* ───────────────────────────────────────────────────────────────────
- * Oryn design tokens
+ * Xiryn design tokens
  *
  * Two accents, named after Orion: Rigel (cool, the brand and focus color)
  * and Betelgeuse (warm, for hand-offs and attention). Everything else is
@@ -242,52 +242,52 @@
 }
 
 /* Markdown inside agent replies */
-.prose-oryn {
+.prose-xiryn {
   @apply text-[14px] leading-[1.7] text-foreground;
 }
-.prose-oryn :where(p, ul, ol, pre, blockquote, table, h1, h2, h3, h4) + :where(*) {
+.prose-xiryn :where(p, ul, ol, pre, blockquote, table, h1, h2, h3, h4) + :where(*) {
   margin-top: 0.75em;
 }
-.prose-oryn :where(h1, h2, h3, h4) {
+.prose-xiryn :where(h1, h2, h3, h4) {
   @apply font-semibold tracking-tight;
 }
-.prose-oryn :where(h1) {
+.prose-xiryn :where(h1) {
   @apply text-lg;
 }
-.prose-oryn :where(h2) {
+.prose-xiryn :where(h2) {
   @apply text-base;
 }
-.prose-oryn :where(h3, h4) {
+.prose-xiryn :where(h3, h4) {
   @apply text-[14px];
 }
-.prose-oryn :where(ul) {
+.prose-xiryn :where(ul) {
   @apply list-disc pl-5;
 }
-.prose-oryn :where(ol) {
+.prose-xiryn :where(ol) {
   @apply list-decimal pl-5;
 }
-.prose-oryn :where(li) + :where(li) {
+.prose-xiryn :where(li) + :where(li) {
   margin-top: 0.25em;
 }
-.prose-oryn :where(a) {
+.prose-xiryn :where(a) {
   @apply text-rigel underline decoration-rigel/40 underline-offset-[3px] hover:decoration-rigel;
 }
-.prose-oryn :where(:not(pre) > code) {
+.prose-xiryn :where(:not(pre) > code) {
   @apply rounded-[4px] bg-muted px-[0.35em] py-[0.1em] font-mono text-[0.86em];
 }
-.prose-oryn :where(blockquote) {
+.prose-xiryn :where(blockquote) {
   @apply border-l-2 border-border pl-3 text-muted-foreground;
 }
-.prose-oryn :where(hr) {
+.prose-xiryn :where(hr) {
   @apply my-4 border-hairline;
 }
-.prose-oryn :where(strong) {
+.prose-xiryn :where(strong) {
   @apply font-semibold;
 }
 
-/* Oryn runs under `next dev`, whose error badge and overlay aren't meant for
+/* Xiryn runs under `next dev`, whose error badge and overlay aren't meant for
    the people using it. Errors still print in the terminal and the browser
-   console; delete this rule while working on Oryn if you want them back. */
+   console; delete this rule while working on Xiryn if you want them back. */
 nextjs-portal {
   display: none !important;
 }

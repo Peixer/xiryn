@@ -59,7 +59,7 @@ import { MemoryPanel } from "@/components/workbench/memory"
 import { Screen } from "@/components/workbench/screen"
 import { useWorkspace } from "@/components/workspace/context"
 import { useNotifications } from "@/components/workspace/notifier"
-import type { OrynMessage } from "@/lib/agent/tools"
+import type { XirynMessage } from "@/lib/agent/tools"
 import { cn } from "@/lib/utils"
 
 export type ThreadSummary = { id: string; title: string | null; activeAt: string }
@@ -71,7 +71,7 @@ export type ThreadViewProps = {
   owner: { id: string; name: string; subtitle: string; glyphs: string[] }
   members: AgentLite[]
   threads: ThreadSummary[]
-  initialMessages: OrynMessage[]
+  initialMessages: XirynMessage[]
   workbenchOpen: boolean
 }
 
@@ -474,14 +474,14 @@ export function ThreadView(props: ThreadViewProps) {
 
   const toggleWorkbench = () => {
     const next = !workbenchOpen
-    document.cookie = `oryn_workbench=${next ? "open" : "closed"}; path=/; max-age=31536000; samesite=lax`
+    document.cookie = `xiryn_workbench=${next ? "open" : "closed"}; path=/; max-age=31536000; samesite=lax`
     setWorkbenchOpen(next)
   }
 
   const api = `/api/threads/${threadId}/turn`
   const transport = React.useMemo(
     () =>
-      new DefaultChatTransport<OrynMessage>({
+      new DefaultChatTransport<XirynMessage>({
         api,
         prepareSendMessagesRequest: ({ messages, body }) => ({
           body: { message: messages[messages.length - 1], agentId: body?.agentId },
@@ -500,7 +500,7 @@ export function ThreadView(props: ThreadViewProps) {
     stop,
     error,
     clearError,
-  } = useChat<OrynMessage>({
+  } = useChat<XirynMessage>({
     id: threadId,
     messages: initialMessages,
     transport,
@@ -530,7 +530,7 @@ export function ThreadView(props: ThreadViewProps) {
         if (busyRef.current) return
         void threadMessages(threadId)
           .then((saved) => {
-            setMessages(saved as OrynMessage[])
+            setMessages(saved as XirynMessage[])
             return resumeStream()
           })
           .catch(() => {})

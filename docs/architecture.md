@@ -1,6 +1,6 @@
 # Architecture
 
-Oryn is one Node.js process — a Next.js 16 server — plus a SQLite file. There is no queue, no worker, no separate backend and nothing of ours in the cloud. This page explains how the pieces fit.
+Xiryn is one Node.js process — a Next.js 16 server — plus a SQLite file. There is no queue, no worker, no separate backend and nothing of ours in the cloud. This page explains how the pieces fit.
 
 ```mermaid
 graph TB
@@ -9,7 +9,7 @@ graph TB
         server[Next.js server]
         runtime[Agent runtime]
         bridge[Telegram bridge]
-        db[(SQLite<br/>data/oryn.db)]
+        db[(SQLite<br/>data/xiryn.db)]
         ui <-->|HTTP / SSE · loopback| server
         server --> runtime
         server --> bridge
@@ -64,7 +64,7 @@ Either side can hand the desktop over.
 | Tool | Does |
 | --- | --- |
 | `vault_list` | Labels and masked hints, never values |
-| `vault_fill` | Types one field into the focused input: from stdin through `xdotool`, then `oryn-mask` shows it as dots. Checks the page's site through Chromium's debugging port first: a login only on its own site, a card or UPI ID only with an approval for this thread and site |
+| `vault_fill` | Types one field into the focused input: from stdin through `xdotool`, then `xiryn-mask` shows it as dots. Checks the page's site through Chromium's debugging port first: a login only on its own site, a card or UPI ID only with an approval for this thread and site |
 | `request_payment_approval` | Records a pending payment (merchant, amount, site) and ends the turn. The person approves with a saved method, takes over, or declines — in the transcript card or with Telegram buttons |
 | `request_secret` | Ends the turn with a secure form for a login, card, UPI ID, personal details or a code. What's entered goes straight into the vault; the agent receives the new item's id. On Telegram, a requested code can be replied with; the message is deleted and the code stored once |
 
@@ -72,7 +72,7 @@ Answers continue the thread as ordinary messages that carry ids and hints only (
 
 ## Notifications
 
-The runtime emits an event when a turn finishes (or fails) and when an agent hands over its screen (`lib/events.ts`). The browser follows them over a server-sent event stream at `/api/events`: the notifier plays a short synthesized chime and shows a desktop notification when Oryn isn't the window in focus, or a toast when you're elsewhere in the app. A finished turn that started in the app is also sent to the paired Telegram account when it took a minute or more (`ORYN_TELEGRAM_NOTIFY`).
+The runtime emits an event when a turn finishes (or fails) and when an agent hands over its screen (`lib/events.ts`). The browser follows them over a server-sent event stream at `/api/events`: the notifier plays a short synthesized chime and shows a desktop notification when Xiryn isn't the window in focus, or a toast when you're elsewhere in the app. A finished turn that started in the app is also sent to the paired Telegram account when it took a minute or more (`XIRYN_TELEGRAM_NOTIFY`).
 
 ## Squads and delegation
 
@@ -80,16 +80,16 @@ A squad thread has an ordered list of members. A message is addressed to one of 
 
 ## Workstations
 
-Each agent's workstation is a Docker container named `oryn-ws-<agent id>`, run from an image built on your computer out of [`workstation/`](../workstation): Debian with Xvfb, xfwm4 and a panel, Chromium, x11vnc + noVNC, xdotool, Node.js, Python and passwordless `sudo`. Oryn talks to Docker only through the `docker` CLI (`lib/docker.ts`), so Docker Desktop, Docker Engine, Colima or OrbStack all work, as does whatever context the CLI points at.
+Each agent's workstation is a Docker container named `xiryn-ws-<agent id>`, run from an image built on your computer out of [`workstation/`](../workstation): Debian with Xvfb, xfwm4 and a panel, Chromium, x11vnc + noVNC, xdotool, Node.js, Python and passwordless `sudo`. Xiryn talks to Docker only through the `docker` CLI (`lib/docker.ts`), so Docker Desktop, Docker Engine, Colima or OrbStack all work, as does whatever context the CLI points at.
 
-- **Image.** Its tag is a fingerprint of the `workstation/` folder (`lib/workstation-image.ts`). `npm run setup` builds it, or Oryn does at boot or on first use. When an update changes the folder, the new image is built once and each agent moves to it the next time its machine starts.
-- **Lifecycle.** The first tool call that needs a machine creates it (starting Docker Desktop if it isn't running), with the agent's home folder in a named volume, `oryn-home-<agent id>`, so files survive restarts and image updates. Inside the container a watchdog stops it after `ORYN_WORKSTATION_AUTO_STOP_MINUTES` without activity (a running command or someone watching counts), even if Oryn itself is closed. A janitor in the server removes machines of deleted agents and, with `ORYN_WORKSTATION_AUTO_DELETE_MINUTES`, machines stopped for longer than that. Resetting or deleting an agent removes its container and volume.
-- **Commands.** `shell` runs `oryn-run`, which writes output to a file, so a program left running in the background can't hold the call open, and returns the beginning and end of very long output.
-- **Live desktop.** noVNC listens on port 6080 inside the container, published on `127.0.0.1` with a random host port. The browser connects there directly with the container's random VNC password, which only the server hands out. For phone take-overs, `oryn-tunnel` starts a Cloudflare quick tunnel inside the container that closes itself after 30 minutes.
+- **Image.** Its tag is a fingerprint of the `workstation/` folder (`lib/workstation-image.ts`). `npm run setup` builds it, or Xiryn does at boot or on first use. When an update changes the folder, the new image is built once and each agent moves to it the next time its machine starts.
+- **Lifecycle.** The first tool call that needs a machine creates it (starting Docker Desktop if it isn't running), with the agent's home folder in a named volume, `xiryn-home-<agent id>`, so files survive restarts and image updates. Inside the container a watchdog stops it after `XIRYN_WORKSTATION_AUTO_STOP_MINUTES` without activity (a running command or someone watching counts), even if Xiryn itself is closed. A janitor in the server removes machines of deleted agents and, with `XIRYN_WORKSTATION_AUTO_DELETE_MINUTES`, machines stopped for longer than that. Resetting or deleting an agent removes its container and volume.
+- **Commands.** `shell` runs `xiryn-run`, which writes output to a file, so a program left running in the background can't hold the call open, and returns the beginning and end of very long output.
+- **Live desktop.** noVNC listens on port 6080 inside the container, published on `127.0.0.1` with a random host port. The browser connects there directly with the container's random VNC password, which only the server hands out. For phone take-overs, `xiryn-tunnel` starts a Cloudflare quick tunnel inside the container that closes itself after 30 minutes.
 
 ## Data
 
-Everything lives in `data/oryn.db` (override with `ORYN_DATA_DIR`). Schema: `db/schema.ts`; migrations in `db/migrations` run automatically at boot.
+Everything lives in `data/xiryn.db` (override with `XIRYN_DATA_DIR`). Schema: `db/schema.ts`; migrations in `db/migrations` run automatically at boot.
 
 | Table | Holds |
 | --- | --- |
@@ -110,4 +110,4 @@ Everything lives in `data/oryn.db` (override with `ORYN_DATA_DIR`). Schema: `db/
 
 ## Security boundary
 
-`proxy.ts` runs before every request and refuses any `Host` or `Origin` that isn't loopback (or in `ORYN_ALLOWED_HOSTS`). Together with binding to `127.0.0.1`, this keeps an account-less app private and blocks DNS rebinding. See [SECURITY.md](../SECURITY.md).
+`proxy.ts` runs before every request and refuses any `Host` or `Origin` that isn't loopback (or in `XIRYN_ALLOWED_HOSTS`). Together with binding to `127.0.0.1`, this keeps an account-less app private and blocks DNS rebinding. See [SECURITY.md](../SECURITY.md).

@@ -1,6 +1,6 @@
-# Contributing to Oryn
+# Contributing to Xiryn
 
-Thanks for wanting to make Oryn better. This guide gets you from clone to merged pull request.
+Thanks for wanting to make Xiryn better. This guide gets you from clone to merged pull request.
 
 ## Ground rules
 
@@ -14,8 +14,8 @@ Thanks for wanting to make Oryn better. This guide gets you from clone to merged
 **Requirements:** Node.js 20.9+ (22 recommended — see `.nvmrc`), npm, and a key for at least one model provider.
 
 ```bash
-git clone https://github.com/SouravBeraAkaSpeed/oryn.git
-cd oryn
+git clone https://github.com/SouravBeraAkaSpeed/xiryn.git
+cd xiryn
 npm install
 npm run setup        # creates .env from .env.example
 npm run dev          # http://127.0.0.1:6796

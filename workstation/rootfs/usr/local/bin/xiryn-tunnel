@@ -1,5 +1,5 @@
 #!/bin/bash
-# oryn-tunnel <minutes>
+# xiryn-tunnel <minutes>
 # Prints a temporary public https address for this desktop (a Cloudflare
 # quick tunnel to noVNC), so a hand-off can be done from a phone. The tunnel
 # closes itself when the time is up. The desktop still asks for its password.
@@ -7,7 +7,7 @@
 set -u
 
 minutes="${1:-30}"
-dir=/tmp/oryn/tunnel
+dir=/tmp/xiryn/tunnel
 mkdir -p "$dir"
 now=$(date +%s)
 
@@ -32,7 +32,7 @@ for _ in $(seq 80); do
     # once it answers from the internet: a phone that tries too early can
     # remember the failure for a while.
     for _ in $(seq 40); do
-      [ "$(curl -s -o /dev/null -m 5 -w '%{http_code}' "$url/oryn.html")" = 200 ] && break
+      [ "$(curl -s -o /dev/null -m 5 -w '%{http_code}' "$url/xiryn.html")" = 200 ] && break
       sleep 1
     done
     echo "$url" > "$dir/url"

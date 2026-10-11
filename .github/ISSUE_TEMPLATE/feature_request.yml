@@ -1,5 +1,5 @@
 name: Feature request
-description: Suggest an idea for Oryn
+description: Suggest an idea for Xiryn
 labels: [enhancement]
 body:
   - type: textarea
@@ -22,9 +22,9 @@ body:
   - type: checkboxes
     id: principles
     attributes:
-      label: Fits Oryn's principles
+      label: Fits Xiryn's principles
       options:
-        - label: Keeps Oryn local-first (no accounts, telemetry or hosted backend)
+        - label: Keeps Xiryn local-first (no accounts, telemetry or hosted backend)
           required: true
         - label: Doesn't let agents act on the user's own machine
           required: true

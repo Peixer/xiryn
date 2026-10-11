@@ -587,13 +587,13 @@ export function createDelegateTool(
 
 /* ───────────────────────────── types ──────────────────────────── */
 
-export type OrynTools = ReturnType<typeof createWorkstationTools> &
+export type XirynTools = ReturnType<typeof createWorkstationTools> &
   ReturnType<typeof createVaultTools> &
   ReturnType<typeof createMemoryTools> &
   ReturnType<typeof createWebTools> &
   ReturnType<typeof createDelegateTool>
 
-export type OrynMetadata = {
+export type XirynMetadata = {
   // The agent that started the reply, or that a squad message was sent to
   agentId?: string
   model?: string
@@ -610,4 +610,4 @@ export type OrynMetadata = {
   }
 }
 
-export type OrynMessage = UIMessage<OrynMetadata, UIDataTypes, InferUITools<OrynTools>>
+export type XirynMessage = UIMessage<XirynMetadata, UIDataTypes, InferUITools<XirynTools>>

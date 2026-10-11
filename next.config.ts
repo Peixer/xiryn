@@ -5,7 +5,7 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   // Server action arguments can contain API keys; keep them out of the terminal
   logging: { serverFunctions: false },
-  // Oryn ships its own contributor guide; don't let `next dev` write one
+  // Xiryn ships its own contributor guide; don't let `next dev` write one
   agentRules: false,
   // Native or Node-only packages that must not be bundled
   serverExternalPackages: ["better-sqlite3"],

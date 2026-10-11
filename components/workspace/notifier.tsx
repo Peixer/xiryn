@@ -13,21 +13,21 @@ import {
   ToastPortal,
   ToastViewport,
 } from "@/components/ui/toast"
-import type { OrynEvent } from "@/lib/events"
+import type { XirynEvent } from "@/lib/events"
 import { cn } from "@/lib/utils"
 
 // Lets you know when an agent finishes, fails or needs you: a chime, a
-// desktop notification when Oryn isn't the window you're looking at, and a
+// desktop notification when Xiryn isn't the window you're looking at, and a
 // toast when you're elsewhere in the app. Turned on or off per browser.
 
-const PREFERENCE = "oryn.notifications"
+const PREFERENCE = "xiryn.notifications"
 
 type Notifications = {
   enabled: boolean
   permission: NotificationPermission | "unsupported"
   toggle: () => void
   // Hear every event as it arrives (an open thread follows its turns)
-  listen: (listener: (event: OrynEvent) => void) => () => void
+  listen: (listener: (event: XirynEvent) => void) => () => void
 }
 
 const NotificationsContext = React.createContext<Notifications>({
@@ -99,7 +99,7 @@ function took(ms: number) {
 
 type Kind = "done" | "attention" | "error"
 
-function describe(event: Exclude<OrynEvent, { type: "turn-started" }>) {
+function describe(event: Exclude<XirynEvent, { type: "turn-started" }>) {
   if (event.type !== "turn-finished") {
     const status =
       event.type === "payment"
@@ -199,7 +199,7 @@ function Cards({ onOpen }: { onOpen: (href: string) => void }) {
           <ToastPrimitive.Description className="line-clamp-3 text-[12.5px] leading-relaxed text-foreground/80" />
           <div className="flex items-center justify-between gap-2 border-t border-dashed pt-2.5">
             <span className="font-mono text-[10px] text-faint">
-              {data.kind === "attention" ? "// waiting for you" : "// oryn"}
+              {data.kind === "attention" ? "// waiting for you" : "// xiryn"}
             </span>
             <div className="flex items-center gap-1.5">
               {data.takeoverHref && (
@@ -251,8 +251,8 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
 
   // What's on screen right now, read when an event arrives
   const here = React.useRef({ pathname, enabled })
-  const listeners = React.useRef(new Set<(event: OrynEvent) => void>())
-  const listen = React.useCallback((listener: (event: OrynEvent) => void) => {
+  const listeners = React.useRef(new Set<(event: XirynEvent) => void>())
+  const listen = React.useCallback((listener: (event: XirynEvent) => void) => {
     listeners.current.add(listener)
     return () => {
       listeners.current.delete(listener)
@@ -279,9 +279,9 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   React.useEffect(() => {
     const source = new EventSource("/api/events")
     source.onmessage = (message) => {
-      let event: OrynEvent
+      let event: XirynEvent
       try {
-        event = JSON.parse(message.data) as OrynEvent
+        event = JSON.parse(message.data) as XirynEvent
       } catch {
         return
       }

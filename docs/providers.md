@@ -1,6 +1,6 @@
 # Model providers
 
-Oryn talks to models through the [AI SDK](https://ai-sdk.dev). Configure as many providers as you like — in `.env` or **Settings → Providers** — and pick a model per agent or a workspace default.
+Xiryn talks to models through the [AI SDK](https://ai-sdk.dev). Configure as many providers as you like — in `.env` or **Settings → Providers** — and pick a model per agent or a workspace default.
 
 Models are always written `provider/model-id`. Only the first slash separates the two, so ids that contain slashes (OpenRouter) work as-is.
 
@@ -66,12 +66,12 @@ Use `custom/<model-id>`.
 ## Defaults
 
 ```bash
-ORYN_DEFAULT_MODEL=openai/gpt-6-luna   # used by agents without their own model
-ORYN_MAX_STEPS=40                      # max tool calls per turn
+XIRYN_DEFAULT_MODEL=openai/gpt-6-luna   # used by agents without their own model
+XIRYN_MAX_STEPS=40                      # max tool calls per turn
 ```
 
-Without `ORYN_DEFAULT_MODEL`, Oryn uses the first recommended model of the first configured provider.
+Without `XIRYN_DEFAULT_MODEL`, Xiryn uses the first recommended model of the first configured provider.
 
 ## Costs
 
-Oryn is free; providers bill you directly. The **Usage** page shows input, output, cached and reasoning tokens per turn, model and agent. Set spending limits in your provider's dashboard.
+Xiryn is free; providers bill you directly. The **Usage** page shows input, output, cached and reasoning tokens per turn, model and agent. Set spending limits in your provider's dashboard.

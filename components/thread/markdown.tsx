@@ -19,7 +19,7 @@ export const Markdown = memo(function Markdown({
 }) {
   return (
     <Streamdown
-      className={cn("prose-oryn min-w-0", className)}
+      className={cn("prose-xiryn min-w-0", className)}
       plugins={{ code }}
       isAnimating={streaming}
       parseIncompleteMarkdown

@@ -29,7 +29,7 @@ import {
   createVaultTools,
   createWorkstationTools,
   isDesktopAction,
-  type OrynMessage,
+  type XirynMessage,
   type ToolEnv,
 } from "@/lib/agent/tools"
 import { getMaxSteps } from "@/lib/config"
@@ -55,8 +55,8 @@ type Run = {
   startedAt: number
 }
 
-const globalForRuns = globalThis as unknown as { __orynRuns?: Map<string, Run> }
-const runs = (globalForRuns.__orynRuns ??= new Map<string, Run>())
+const globalForRuns = globalThis as unknown as { __xirynRuns?: Map<string, Run> }
+const runs = (globalForRuns.__xirynRuns ??= new Map<string, Run>())
 
 export function getActiveRun(threadId: string) {
   const run = runs.get(threadId)
@@ -160,11 +160,11 @@ export function loadMessages(threadId: string) {
         role: row.role,
         parts: row.parts,
         metadata: row.metadata ?? undefined,
-      }) as OrynMessage
+      }) as XirynMessage
   )
 }
 
-function saveMessage(threadId: string, message: OrynMessage, createdAt = new Date()) {
+function saveMessage(threadId: string, message: XirynMessage, createdAt = new Date()) {
   db.insert(messages)
     .values({
       id: message.id,
@@ -181,7 +181,7 @@ function saveMessage(threadId: string, message: OrynMessage, createdAt = new Dat
     .run()
 }
 
-function textOf(message: OrynMessage) {
+function textOf(message: XirynMessage) {
   return message.parts
     .flatMap((part) => (part.type === "text" ? [part.text] : []))
     .join(" ")
@@ -198,7 +198,7 @@ This is your last step in this turn, and your tools are switched off. Tell the p
 // Screenshots are heavy. Only the most recent few go back to the model.
 const SCREENS_IN_CONTEXT = 2
 
-type Part = OrynMessage["parts"][number]
+type Part = XirynMessage["parts"][number]
 
 // Tool results that carry a screenshot: looks, and every desktop action
 function hasScreen(part: Part): part is Part & { output: { image: string | null } } {
@@ -224,7 +224,7 @@ function keepNewestScreens(parts: Part[], keep: number, counter = { kept: 0 }) {
     .reverse()
 }
 
-function pruneScreens(history: OrynMessage[]) {
+function pruneScreens(history: XirynMessage[]) {
   const counter = { kept: 0 }
   return history
     .slice()
@@ -234,7 +234,7 @@ function pruneScreens(history: OrynMessage[]) {
         ? ({
             ...message,
             parts: keepNewestScreens(message.parts, SCREENS_IN_CONTEXT, counter),
-          } as OrynMessage)
+          } as XirynMessage)
         : message
     )
     .reverse()
@@ -243,7 +243,7 @@ function pruneScreens(history: OrynMessage[]) {
 // Desktop actions each return a screenshot. Saving all of them would grow
 // the database by megabytes per task, so a saved reply keeps the images of
 // what the agent chose to show or look at, plus the latest action's.
-function trimActionScreens(reply: OrynMessage): OrynMessage {
+function trimActionScreens(reply: XirynMessage): XirynMessage {
   let latestAction = true
   const parts = reply.parts
     .slice()
@@ -334,7 +334,7 @@ export async function startTurn({
   channel = "web",
 }: {
   threadId: string
-  message: OrynMessage
+  message: XirynMessage
   agentId?: string
   channel?: "web" | "telegram"
 }) {
@@ -377,7 +377,7 @@ export async function startTurn({
   })()
 
   // The person's message is on disk before the agent starts
-  const userMessage: OrynMessage = {
+  const userMessage: XirynMessage = {
     ...message,
     role: "user",
     metadata: {
@@ -425,7 +425,7 @@ export async function startTurn({
   // Loaded lazily: the bridge itself depends on this module
   const bridge = () => import("@/lib/telegram/bridge")
   const telegramFailed = (error: unknown) =>
-    console.error("[oryn] telegram: notice failed:", error)
+    console.error("[xiryn] telegram: notice failed:", error)
 
   const env: ToolEnv = {
     current: () => current,
@@ -568,11 +568,11 @@ export async function startTurn({
       },
       onError: ({ error }) => {
         failure = describeError(error)
-        console.error(`[oryn] turn failed in thread ${threadId}:`, error)
+        console.error(`[xiryn] turn failed in thread ${threadId}:`, error)
       },
     })
 
-    const stream = toUIMessageStream<ToolSet, OrynMessage>({
+    const stream = toUIMessageStream<ToolSet, XirynMessage>({
       stream: result.stream,
       originalMessages: history,
       generateMessageId: () => nanoid(),
@@ -600,7 +600,7 @@ export async function startTurn({
             usage: { input: usage.input, output: usage.output },
             durationMs,
           },
-        } as OrynMessage
+        } as XirynMessage
 
         if (reply.parts.length > 0) saveMessage(threadId, trimActionScreens(reply))
 
@@ -670,7 +670,7 @@ export async function startTurn({
                 })
               )
               .catch((error) =>
-                console.error("[oryn] telegram: finished notice failed:", error)
+                console.error("[xiryn] telegram: finished notice failed:", error)
               )
           }
         }

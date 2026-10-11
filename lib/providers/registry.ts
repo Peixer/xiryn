@@ -36,7 +36,7 @@ export function isProviderConfigured(id: ProviderId) {
   const { apiKey, baseUrl } = getProviderCredentials(id)
   if (meta.requiresKey && !apiKey) return false
   if (meta.requiresBaseUrl && !baseUrl) return false
-  // Local servers are assumed off until the person points Oryn at them
+  // Local servers are assumed off until the person points Xiryn at them
   if (meta.local) {
     const source = getSettingSource(`provider.${id}.baseUrl`)
     return source === "local" || source === "env"
@@ -62,7 +62,7 @@ export function createModel(spec: string): LanguageModel {
   const parsed = parseModelSpec(spec)
   if (!parsed) {
     throw new ModelConfigError(
-      `"${spec}" is not a model Oryn knows how to reach. Use provider/model, e.g. openai/gpt-6-luna.`
+      `"${spec}" is not a model Xiryn knows how to reach. Use provider/model, e.g. openai/gpt-6-luna.`
     )
   }
 

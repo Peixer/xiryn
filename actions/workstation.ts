@@ -74,7 +74,7 @@ export async function startDocker() {
 // Starts a build and returns right away; progress comes from dockerStatus()
 export async function buildWorkstationImage() {
   buildImage().catch((error) =>
-    console.error("[oryn] workstation image build failed:", error)
+    console.error("[xiryn] workstation image build failed:", error)
   )
   return dockerStatus()
 }

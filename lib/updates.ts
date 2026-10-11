@@ -5,9 +5,9 @@ import { getSetting } from "@/lib/config"
 import { REPOSITORY } from "@/lib/project"
 import { version } from "@/package.json"
 
-// Whether a newer Oryn is out, and how many stars the project has. The one
-// request Oryn makes on its own: GitHub's public API, asked when you open
-// Oryn, sending nothing about you. Off with ORYN_UPDATE_CHECK=off or in
+// Whether a newer Xiryn is out, and how many stars the project has. The one
+// request Xiryn makes on its own: GitHub's public API, asked when you open
+// Xiryn, sending nothing about you. Off with XIRYN_UPDATE_CHECK=off or in
 // Settings.
 
 const API = `https://api.github.com/repos/${REPOSITORY}`
@@ -24,8 +24,8 @@ export type UpdateInfo = {
 }
 
 const globalForUpdates = globalThis as unknown as {
-  __orynUpdates?: { at: number; info: UpdateInfo } | null
-  __orynUpdatesRunning?: Promise<void> | null
+  __xirynUpdates?: { at: number; info: UpdateInfo } | null
+  __xirynUpdatesRunning?: Promise<void> | null
 }
 
 export function updateChecksEnabled() {
@@ -36,7 +36,7 @@ async function github<T>(route: string): Promise<{ status: number; body: T | nul
   const response = await fetch(`${API}${route}`, {
     headers: {
       Accept: "application/vnd.github+json",
-      "User-Agent": "oryn",
+      "User-Agent": "xiryn",
       "X-GitHub-Api-Version": "2022-11-28",
     },
     signal: AbortSignal.timeout(8000),
@@ -114,23 +114,23 @@ async function check(): Promise<UpdateInfo> {
 // What was last learned, without asking GitHub (for rendering the page)
 export function getUpdateInfo(): UpdateInfo | null {
   if (!updateChecksEnabled()) return null
-  return globalForUpdates.__orynUpdates?.info ?? null
+  return globalForUpdates.__xirynUpdates?.info ?? null
 }
 
 // Asks GitHub now. The page calls this once when it loads.
 export async function latestUpdateInfo(): Promise<UpdateInfo | null> {
   if (!updateChecksEnabled()) return null
-  const cached = globalForUpdates.__orynUpdates
+  const cached = globalForUpdates.__xirynUpdates
   if (cached && Date.now() - cached.at < REUSE_MS) return cached.info
-  globalForUpdates.__orynUpdatesRunning ??= check()
+  globalForUpdates.__xirynUpdatesRunning ??= check()
     .then((info) => {
-      globalForUpdates.__orynUpdates = { at: Date.now(), info }
+      globalForUpdates.__xirynUpdates = { at: Date.now(), info }
     })
     // Offline or rate-limited: keep what we knew
     .catch(() => {})
     .finally(() => {
-      globalForUpdates.__orynUpdatesRunning = null
+      globalForUpdates.__xirynUpdatesRunning = null
     })
-  await globalForUpdates.__orynUpdatesRunning
-  return globalForUpdates.__orynUpdates?.info ?? null
+  await globalForUpdates.__xirynUpdatesRunning
+  return globalForUpdates.__xirynUpdates?.info ?? null
 }

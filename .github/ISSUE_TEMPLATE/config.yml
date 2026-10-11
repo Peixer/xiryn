@@ -1,11 +1,11 @@
 blank_issues_enabled: false
 contact_links:
   - name: Security vulnerability
-    url: https://github.com/SouravBeraAkaSpeed/oryn/security/advisories/new
+    url: https://github.com/SouravBeraAkaSpeed/xiryn/security/advisories/new
     about: Please report security issues privately.
   - name: Setup guide
-    url: https://github.com/SouravBeraAkaSpeed/oryn#quick-start
+    url: https://github.com/SouravBeraAkaSpeed/xiryn#quick-start
     about: Installation and configuration steps.
   - name: Telegram remote access guide
-    url: https://github.com/SouravBeraAkaSpeed/oryn/blob/main/docs/telegram.md
+    url: https://github.com/SouravBeraAkaSpeed/xiryn/blob/main/docs/telegram.md
     about: Creating a bot with @BotFather and pairing it.

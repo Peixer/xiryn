@@ -1,15 +1,15 @@
 import { NextResponse, type NextRequest } from "next/server"
 
-// Oryn has no accounts: anyone who can reach the server can drive your
+// Xiryn has no accounts: anyone who can reach the server can drive your
 // agents. So it only answers on loopback, and refuses requests whose Host or
 // Origin point anywhere else (which also defeats DNS-rebinding attacks from
-// web pages you visit). Add hostnames to ORYN_ALLOWED_HOSTS — comma separated —
+// web pages you visit). Add hostnames to XIRYN_ALLOWED_HOSTS — comma separated —
 // if you deliberately expose it, e.g. behind your own authenticating proxy.
 
 const LOOPBACK = ["localhost", "127.0.0.1", "[::1]", "::1"]
 
 function allowedHosts() {
-  const extra = (process.env.ORYN_ALLOWED_HOSTS ?? "")
+  const extra = (process.env.XIRYN_ALLOWED_HOSTS ?? "")
     .split(",")
     .map((host) => host.trim().toLowerCase())
     .filter(Boolean)
@@ -26,7 +26,7 @@ export function proxy(request: NextRequest) {
   const allowed = allowedHosts()
   const host = request.headers.get("host")
   if (!host || !allowed.has(hostname(host))) {
-    return new NextResponse("Oryn only answers on localhost. See ORYN_ALLOWED_HOSTS.", {
+    return new NextResponse("Xiryn only answers on localhost. See XIRYN_ALLOWED_HOSTS.", {
       status: 403,
     })
   }

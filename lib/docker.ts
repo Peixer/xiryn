@@ -2,7 +2,7 @@ import { spawn } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
 
-// Oryn drives Docker through the docker command itself, so whatever it is
+// Xiryn drives Docker through the docker command itself, so whatever it is
 // pointed at (Docker Desktop, Docker Engine, Colima, OrbStack, a context)
 // just works, and there is no extra client library to keep in step.
 
@@ -58,14 +58,14 @@ export type RunOptions = {
 }
 
 const globalForDocker = globalThis as unknown as {
-  __orynDocker?: {
+  __xirynDocker?: {
     binary: string | null
     engine: { at: number; value: EngineState } | null
     probing: Promise<EngineState> | null
     starting: Promise<EngineState> | null
   }
 }
-const shared = (globalForDocker.__orynDocker ??= {
+const shared = (globalForDocker.__xirynDocker ??= {
   binary: null,
   engine: null,
   probing: null,

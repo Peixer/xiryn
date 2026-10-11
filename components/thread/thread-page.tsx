@@ -55,7 +55,7 @@ export async function ThreadPage({
       members={members}
       threads={threads}
       initialMessages={thread.messages}
-      workbenchOpen={(await cookies()).get("oryn_workbench")?.value !== "closed"}
+      workbenchOpen={(await cookies()).get("xiryn_workbench")?.value !== "closed"}
     />
   )
 }

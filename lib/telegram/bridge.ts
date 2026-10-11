@@ -12,7 +12,7 @@ import {
   subscribe,
   TurnError,
 } from "@/lib/agent/runtime"
-import type { OrynMessage, SecretRequest } from "@/lib/agent/tools"
+import type { XirynMessage, SecretRequest } from "@/lib/agent/tools"
 import { getSetting, setSetting } from "@/lib/config"
 import { getApproval, type Approval, type VaultItemView } from "@/lib/vault"
 import { answerPayment, answerSecret, type VaultMarker } from "@/lib/vault-requests"
@@ -33,7 +33,7 @@ import { markdownToTelegramHtml, plainText, splitMarkdown } from "@/lib/telegram
 /* ────────────────────────────────────────────────────────────────────
  * Remote access over Telegram.
  *
- * Oryn long-polls the Bot API from this machine, so it works behind any
+ * Xiryn long-polls the Bot API from this machine, so it works behind any
  * router or firewall: no public URL, no webhook, no tunnel. Only one
  * Telegram account — the one that pairs with the code shown in Settings —
  * can talk to the bot. Everyone else is politely turned away.
@@ -60,8 +60,8 @@ type BridgeState = {
   } | null
 }
 
-const globalForBridge = globalThis as unknown as { __orynTelegram?: BridgeState }
-const state = (globalForBridge.__orynTelegram ??= {
+const globalForBridge = globalThis as unknown as { __xirynTelegram?: BridgeState }
+const state = (globalForBridge.__xirynTelegram ??= {
   generation: 0,
   token: null,
   controller: null,
@@ -78,7 +78,7 @@ const COMMANDS = [
   { command: "agents", description: "Pick the agent or squad to talk to" },
   { command: "new", description: "Start a fresh thread" },
   { command: "stop", description: "Stop the turn in progress" },
-  { command: "status", description: "What Oryn is running" },
+  { command: "status", description: "What Xiryn is running" },
   { command: "help", description: "How this works" },
 ]
 
@@ -198,7 +198,7 @@ async function poll(generation: number, token: string, signal: AbortSignal) {
         { signal }
       ).catch(() => {})
       state.error = null
-      console.log(`[oryn] telegram: polling as @${state.bot.username}`)
+      console.log(`[xiryn] telegram: polling as @${state.bot.username}`)
       break
     } catch (error) {
       if (!live()) return
@@ -232,7 +232,7 @@ async function poll(generation: number, token: string, signal: AbortSignal) {
       if (!live()) return
       if (error instanceof TelegramError && error.code === 409) {
         state.error =
-          "Another program is using this bot token (another Oryn, or a webhook). Only one can poll at a time."
+          "Another program is using this bot token (another Xiryn, or a webhook). Only one can poll at a time."
         await sleep(15_000, signal)
       } else if (error instanceof TelegramError && error.code === 401) {
         state.error = "Telegram rejected the bot token. Copy it again from @BotFather."
@@ -260,7 +260,7 @@ function enqueue(token: string, update: TgUpdate) {
     .then(async () => {
       await handle(token, update)
     })
-    .catch((error: unknown) => console.error("[oryn] telegram: update failed:", error))
+    .catch((error: unknown) => console.error("[xiryn] telegram: update failed:", error))
   state.queues.set(chatId, next)
   void next.finally(() => {
     if (state.queues.get(chatId) === next) state.queues.delete(chatId)
@@ -339,7 +339,7 @@ async function handle(token: string, update: TgUpdate) {
       await say(
         token,
         message.chat.id,
-        `**Paired.** This Telegram account now controls your Oryn.\n\nJust write a message to talk to your agent. Use /agents to switch agents or squads, /new for a fresh thread, /stop to interrupt.`
+        `**Paired.** This Telegram account now controls your Xiryn.\n\nJust write a message to talk to your agent. Use /agents to switch agents or squads, /new for a fresh thread, /stop to interrupt.`
       )
       state.failedPairs = 0
       await sendAgentPicker(token, message.chat.id)
@@ -354,8 +354,8 @@ async function handle(token: string, update: TgUpdate) {
       token,
       message.chat.id,
       owner
-        ? "🔒 This is a private Oryn instance."
-        : "🔒 This Oryn isn't paired yet. Open **Settings → Remote access** on the computer running Oryn and use the pairing link or code shown there."
+        ? "🔒 This is a private Xiryn instance."
+        : "🔒 This Xiryn isn't paired yet. Open **Settings → Remote access** on the computer running Xiryn and use the pairing link or code shown there."
     )
     return
   }
@@ -424,8 +424,8 @@ async function handle(token: string, update: TgUpdate) {
 
 function helpText() {
   return [
-    "**Oryn — remote**",
-    "Write a message and your current agent answers, working on its own workstation while your computer keeps running Oryn.",
+    "**Xiryn — remote**",
+    "Write a message and your current agent answers, working on its own workstation while your computer keeps running Xiryn.",
     "",
     "/agents — pick an agent or squad",
     "/new — start a fresh thread",
@@ -433,7 +433,7 @@ function helpText() {
     "/status — what's running",
     "",
     "In a squad, start with `@Name` to address a specific member.",
-    "Threads you start here also appear in the Oryn app on your computer.",
+    "Threads you start here also appear in the Xiryn app on your computer.",
   ].join("\n")
 }
 
@@ -461,7 +461,7 @@ async function sendAgentPicker(token: string, chatId: number) {
     await say(
       token,
       chatId,
-      "You have no agents yet. Create one in the Oryn app on your computer, then come back."
+      "You have no agents yet. Create one in the Xiryn app on your computer, then come back."
     )
     return
   }
@@ -668,14 +668,14 @@ async function converse(
     role: "user",
     parts: [{ type: "text", text: body }],
     ...(vault && { metadata: { vault } }),
-  } as OrynMessage
+  } as XirynMessage
 
   let run
   try {
     run = await startTurn({ threadId, message, agentId, channel: "telegram" })
   } catch (error) {
     const reason =
-      error instanceof TurnError ? error.message : "Oryn couldn't start the turn."
+      error instanceof TurnError ? error.message : "Xiryn couldn't start the turn."
     await say(
       token,
       chatId,
@@ -756,7 +756,7 @@ async function converse(
         .get()
     : null
   const reply = saved
-    ? ({ ...saved, metadata: saved.metadata ?? undefined } as unknown as OrynMessage)
+    ? ({ ...saved, metadata: saved.metadata ?? undefined } as unknown as XirynMessage)
     : null
 
   let sentSomething = false
@@ -805,7 +805,7 @@ async function converse(
         await sendPhoto(token, chatId, {
           base64: part.output.image,
           mediaType: part.output.mediaType,
-        }).catch((error) => console.error("[oryn] telegram: sendPhoto failed:", error))
+        }).catch((error) => console.error("[xiryn] telegram: sendPhoto failed:", error))
         sentSomething = true
       }
     }
@@ -826,7 +826,7 @@ async function converse(
 /* ──────────────────────────── hand-offs ───────────────────────── */
 
 // Where the app is reachable on this computer, for links in notices
-const APP_URL = (process.env.ORYN_URL || "http://127.0.0.1:6796").replace(/\/+$/, "")
+const APP_URL = (process.env.XIRYN_URL || "http://127.0.0.1:6796").replace(/\/+$/, "")
 
 // Sent when an agent pauses and hands its desktop to the person — for any
 // turn, whether it started in the app or on Telegram. Their reply goes to the
@@ -853,7 +853,7 @@ export async function notifyTakeover({
     agent: agent.name,
     bot: state.bot.username,
   }).catch((error) => {
-    console.error("[oryn] telegram: no phone link for the hand-off:", error)
+    console.error("[xiryn] telegram: no phone link for the hand-off:", error)
     return null
   })
   const inApp = squadId
@@ -867,7 +867,7 @@ export async function notifyTakeover({
     "",
     link &&
       `📱 <a href="${escape(link.url)}">Take over from this device</a> — opens the live desktop (link expires in ${link.minutes} min).`,
-    `💻 At your computer: <a href="${escape(inApp)}">open in Oryn</a> and press <b>Take over</b>.`,
+    `💻 At your computer: <a href="${escape(inApp)}">open in Xiryn</a> and press <b>Take over</b>.`,
     "",
     `When you're done, reply here — just "done", or anything ${escape(agent.name)} should know — and it carries on.`,
   ].filter((line): line is string => typeof line === "string")
@@ -929,7 +929,7 @@ export async function notifyFinished({
         ? `⚠️ **${name}** stopped after ${spoken(durationMs)}: ${error}`
         : `✅ **${name}** finished · ${spoken(durationMs)}`,
       body,
-      `[Open in Oryn](${inApp}) · reply here to continue`,
+      `[Open in Xiryn](${inApp}) · reply here to continue`,
     ]
       .filter(Boolean)
       .join("\n\n")
@@ -984,7 +984,7 @@ export async function notifyPayment({
     "",
     methods.length
       ? "Approve with a saved method, pay yourself, or decline. Nothing is paid until you choose."
-      : `Nothing is saved to pay with yet. <a href="${escape(inApp)}">Add a card or UPI ID in Oryn</a> to let ${escape(agent.name)} pay, or pay yourself.`,
+      : `Nothing is saved to pay with yet. <a href="${escape(inApp)}">Add a card or UPI ID in Xiryn</a> to let ${escape(agent.name)} pay, or pay yourself.`,
   ].filter((line): line is string => typeof line === "string")
 
   const keyboard: InlineKeyboard = [
@@ -1013,9 +1013,9 @@ export async function notifyPayment({
 // Telegram messages asking for a payment decision, so a decision made in
 // the app can take the buttons away
 const globalForNotices = globalThis as unknown as {
-  __orynPaymentNotices?: Map<string, { chatId: number; messageId: number }>
+  __xirynPaymentNotices?: Map<string, { chatId: number; messageId: number }>
 }
-const paymentNotices = (globalForNotices.__orynPaymentNotices ??= new Map())
+const paymentNotices = (globalForNotices.__xirynPaymentNotices ??= new Map())
 
 export async function closePaymentNotice(approvalId: string, outcome: string) {
   const notice = paymentNotices.get(approvalId)
@@ -1026,7 +1026,7 @@ export async function closePaymentNotice(approvalId: string, outcome: string) {
     token,
     notice.chatId,
     notice.messageId,
-    `💳 <b>${escape(outcome)}</b> · decided in Oryn`
+    `💳 <b>${escape(outcome)}</b> · decided in Xiryn`
   ).catch(() => {})
 }
 
@@ -1148,7 +1148,7 @@ export async function notifySecret({
           "",
           escape(request.reason),
           "",
-          `For your safety, enter it in Oryn on your computer, not in this chat: <a href="${escape(inApp)}">open the thread</a>. It goes into your encrypted vault, and ${name} only ever sees a masked hint.`,
+          `For your safety, enter it in Xiryn on your computer, not in this chat: <a href="${escape(inApp)}">open the thread</a>. It goes into your encrypted vault, and ${name} only ever sees a masked hint.`,
         ]
   await callTelegram(token, "sendMessage", {
     chat_id: owner,

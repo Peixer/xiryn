@@ -1,4 +1,4 @@
-// Runs once when the Oryn server boots
+// Runs once when the Xiryn server boots
 export async function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") return
 
@@ -26,12 +26,12 @@ export async function register() {
     getImageState()
       .then((image) => {
         if (image.state === "absent") {
-          console.log("[oryn] building the agent workstation image (first run only)…")
+          console.log("[xiryn] building the agent workstation image (first run only)…")
           return buildImage().then((tag) =>
-            console.log(`[oryn] workstation image ready: ${tag}`)
+            console.log(`[xiryn] workstation image ready: ${tag}`)
           )
         }
       })
-      .catch((error) => console.error("[oryn] workstation image:", error))
+      .catch((error) => console.error("[xiryn] workstation image:", error))
   }
 }

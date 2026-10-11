@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// oryn-mask: shows the focused field as dots, like a password, on every page
-// and frame of the browser. Used right after Oryn fills a card number, a
+// xiryn-mask: shows the focused field as dots, like a password, on every page
+// and frame of the browser. Used right after Xiryn fills a card number, a
 // security code or a UPI ID, so screenshots (and anyone watching) don't show
 // it. The value itself is unchanged and is submitted normally.
 

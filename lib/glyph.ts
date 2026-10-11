@@ -35,7 +35,7 @@ export type GlyphSpec = {
 const LATTICE = [6, 11, 16, 21, 26]
 
 export function glyphSpec(seed: string): GlyphSpec {
-  const random = mulberry32(fnv1a(seed || "oryn"))
+  const random = mulberry32(fnv1a(seed || "xiryn"))
   const hue = HUES[Math.floor(random() * HUES.length)]
   const count = 4 + Math.floor(random() * 3)
 

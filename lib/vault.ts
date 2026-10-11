@@ -16,14 +16,14 @@ import { vaultApprovals, vaultItems } from "@/db/schema"
 // database: the operating system keeps it (macOS Keychain, Windows DPAPI,
 // the Linux Secret Service), or, where none of those exist, a file readable
 // only by you outside the data folder. Agents see labels and hints; when a
-// value is needed, Oryn types it into the page itself.
+// value is needed, Xiryn types it into the page itself.
 
 export type VaultKind = "card" | "upi" | "login" | "identity" | "code"
 
 /* ───────────────────────────── the key ───────────────────────────── */
 
-const SERVICE = "oryn-vault"
-// One key per installation, so two copies of Oryn don't share one
+const SERVICE = "xiryn-vault"
+// One key per installation, so two copies of Xiryn don't share one
 const ACCOUNT = createHash("sha256").update(DB_PATH).digest("hex").slice(0, 16)
 
 export type KeySource = "env" | "keychain" | "dpapi" | "secret-service" | "file"
@@ -32,7 +32,7 @@ export class VaultLockedError extends Error {
   name = "VaultLockedError"
   constructor() {
     super(
-      "The vault's key is missing, so saved items can't be opened. If you moved Oryn to another computer or user account, add them again."
+      "The vault's key is missing, so saved items can't be opened. If you moved Xiryn to another computer or user account, add them again."
     )
   }
 }
@@ -52,9 +52,9 @@ const run = (
   })
 
 const keyFileDir =
-  process.env.ORYN_VAULT_KEY_DIR ||
+  process.env.XIRYN_VAULT_KEY_DIR ||
   // In a container the home folder doesn't survive; the data volume does
-  (fs.existsSync("/.dockerenv") ? DATA_DIR : path.join(os.homedir(), ".oryn"))
+  (fs.existsSync("/.dockerenv") ? DATA_DIR : path.join(os.homedir(), ".xiryn"))
 const keyFile = path.join(keyFileDir, `vault-${ACCOUNT}.key`)
 const dpapiFile = path.join(DATA_DIR, "vault.key.dpapi")
 
@@ -65,12 +65,12 @@ type Store = {
 }
 
 const PS_DPAPI = (verb: "Protect" | "Unprotect") =>
-  `Add-Type -AssemblyName System.Security; $b=[Convert]::FromBase64String($env:ORYN_VAULT_IN); [Convert]::ToBase64String([Security.Cryptography.ProtectedData]::${verb}($b,$null,'CurrentUser'))`
+  `Add-Type -AssemblyName System.Security; $b=[Convert]::FromBase64String($env:XIRYN_VAULT_IN); [Convert]::ToBase64String([Security.Cryptography.ProtectedData]::${verb}($b,$null,'CurrentUser'))`
 
 const stores: Store[] = [
   {
     source: "env",
-    read: () => process.env.ORYN_VAULT_KEY?.trim() || null,
+    read: () => process.env.XIRYN_VAULT_KEY?.trim() || null,
     write: () => false,
   },
   ...(process.platform === "darwin"
@@ -97,7 +97,7 @@ const stores: Store[] = [
               "-a",
               ACCOUNT,
               "-l",
-              "Oryn vault",
+              "Xiryn vault",
               "-w",
               base64,
             ]).status === 0,
@@ -115,7 +115,7 @@ const stores: Store[] = [
               ["-NoProfile", "-NonInteractive", "-Command", PS_DPAPI("Unprotect")],
               undefined,
               {
-                ORYN_VAULT_IN: fs.readFileSync(dpapiFile, "utf8").trim(),
+                XIRYN_VAULT_IN: fs.readFileSync(dpapiFile, "utf8").trim(),
               }
             )
             return result.status === 0 ? result.stdout.trim() || null : null
@@ -126,7 +126,7 @@ const stores: Store[] = [
               ["-NoProfile", "-NonInteractive", "-Command", PS_DPAPI("Protect")],
               undefined,
               {
-                ORYN_VAULT_IN: base64,
+                XIRYN_VAULT_IN: base64,
               }
             )
             if (result.status !== 0 || !result.stdout.trim()) return false
@@ -154,7 +154,7 @@ const stores: Store[] = [
           write: (base64: string) =>
             run(
               "secret-tool",
-              ["store", "--label=Oryn vault", "service", SERVICE, "account", ACCOUNT],
+              ["store", "--label=Xiryn vault", "service", SERVICE, "account", ACCOUNT],
               base64
             ).status === 0,
         },
@@ -173,7 +173,7 @@ const stores: Store[] = [
 ]
 
 const globalForVault = globalThis as unknown as {
-  __orynVault?: { key: Buffer; source: KeySource } | null
+  __xirynVault?: { key: Buffer; source: KeySource } | null
 }
 
 function decodeKey(base64: string) {
@@ -184,11 +184,11 @@ function decodeKey(base64: string) {
 // The vault key, created on first use. Never recreated while items exist:
 // that would make them unreadable instead of revealing the problem.
 function vaultKey(): { key: Buffer; source: KeySource } {
-  if (globalForVault.__orynVault) return globalForVault.__orynVault
+  if (globalForVault.__xirynVault) return globalForVault.__xirynVault
   for (const store of stores) {
     const found = store.read()
     const key = found ? decodeKey(found) : null
-    if (key) return (globalForVault.__orynVault = { key, source: store.source })
+    if (key) return (globalForVault.__xirynVault = { key, source: store.source })
   }
   if (db.select({ id: vaultItems.id }).from(vaultItems).limit(1).get()) {
     throw new VaultLockedError()
@@ -196,7 +196,7 @@ function vaultKey(): { key: Buffer; source: KeySource } {
   const fresh = randomBytes(32)
   for (const store of stores) {
     if (store.write(fresh.toString("base64"))) {
-      return (globalForVault.__orynVault = { key: fresh, source: store.source })
+      return (globalForVault.__xirynVault = { key: fresh, source: store.source })
     }
   }
   throw new Error("Couldn't store the vault key anywhere on this computer.")

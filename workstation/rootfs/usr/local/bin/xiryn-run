@@ -1,5 +1,5 @@
 #!/bin/bash
-# oryn-run <seconds> <command>
+# xiryn-run <seconds> <command>
 # What an agent's `shell` tool runs. Output goes through a file, so a program
 # left running in the background can't hold the call open, and very long
 # output comes back as its beginning and its end.
@@ -8,9 +8,9 @@ set -u
 
 seconds="$1"
 command="$2"
-mkdir -p /tmp/oryn
-out=$(mktemp /tmp/oryn/run.XXXXXX)
-touch /tmp/oryn/active
+mkdir -p /tmp/xiryn
+out=$(mktemp /tmp/xiryn/run.XXXXXX)
+touch /tmp/xiryn/active
 
 timeout -k 5 "$seconds" bash -lc "$command" </dev/null >"$out" 2>&1
 code=$?
@@ -24,7 +24,7 @@ else
   cat "$out"
 fi
 rm -f "$out"
-touch /tmp/oryn/active
+touch /tmp/xiryn/active
 
 [ "$code" -eq 124 ] && printf '\n[timed out after %ss]\n' "$seconds"
 exit "$code"

@@ -1,9 +1,9 @@
 # Remote access with Telegram
 
-Talk to your Oryn agents from your phone, from anywhere, while Oryn keeps
+Talk to your Xiryn agents from your phone, from anywhere, while Xiryn keeps
 running on your computer.
 
-**How it works.** Oryn *long-polls* the Telegram Bot API from your machine — it
+**How it works.** Xiryn *long-polls* the Telegram Bot API from your machine — it
 asks Telegram "any new messages?" and Telegram answers. Because the connection
 always goes **out** from your computer, there is nothing to expose: no public
 URL, no port forwarding, no tunnel, no webhook, no cloud account. If your
@@ -26,9 +26,9 @@ BotFather is Telegram's official bot for making bots.
 2. Tap **Start**.
 3. Send **`/newbot`**.
 4. BotFather asks for a **name** — this is the display name people see, e.g.
-   `My Oryn`. Anything works.
+   `My Xiryn`. Anything works.
 5. BotFather asks for a **username** — it must be unique across Telegram and
-   **end in `bot`**, e.g. `myname_oryn_bot`. If it's taken, try another.
+   **end in `bot`**, e.g. `myname_xiryn_bot`. If it's taken, try another.
 6. BotFather replies with a message containing your **token**, which looks like:
 
    ```
@@ -40,16 +40,16 @@ BotFather is Telegram's official bot for making bots.
 
 > Optional polish, all in BotFather: `/setuserpic` to give the bot an avatar,
 > `/setdescription` for the text people see before pressing Start. You don't
-> need `/setcommands` — Oryn registers its commands automatically.
+> need `/setcommands` — Xiryn registers its commands automatically.
 
-## 2 · Give the token to Oryn
+## 2 · Give the token to Xiryn
 
 Pick one:
 
 - **In the app (recommended):** open **Settings → Remote access**, paste the
   token into step 2 and press **Connect**. Within a second it shows
   `polling as @your_bot`.
-- **In `.env`:** add `TELEGRAM_BOT_TOKEN=123456789:AAH…` and restart Oryn.
+- **In `.env`:** add `TELEGRAM_BOT_TOKEN=123456789:AAH…` and restart Xiryn.
 
 ## 3 · Pair your Telegram account
 
@@ -89,7 +89,7 @@ Just write to the bot like you'd write to an agent in the app.
 
 Start something at your computer and walk away: when a task that took a
 minute or more finishes, the bot sends you the agent's answer, with a link to
-the thread. Reply and the same thread carries on. Set `ORYN_TELEGRAM_NOTIFY`
+the thread. Reply and the same thread carries on. Set `XIRYN_TELEGRAM_NOTIFY`
 to `all` to hear about every reply, or `off` to stop these notices (hand-offs
 always come through).
 
@@ -125,7 +125,7 @@ The fare is selected and the passenger details are filled in.
 The payment page is open and waiting for your card.
 
 📱 Take over from this device — opens the live desktop (link expires in 30 min).
-💻 At your computer: open in Oryn and press Take over.
+💻 At your computer: open in Xiryn and press Take over.
 
 When you're done, reply here — just "done", or anything Atlas should know — and it carries on.
 ```
@@ -136,7 +136,7 @@ When you're done, reply here — just "done", or anything Atlas should know — 
   and Ctrl are on the bar under the screen). Finish the payment, enter the
   code, solve the CAPTCHA, then tap **Done**. Turn the phone sideways for a
   bigger screen.
-- **💻** opens the thread in Oryn on your computer, ready for you to take over.
+- **💻** opens the thread in Xiryn on your computer, ready for you to take over.
 - When you're done, **reply to the bot** (`done`, or anything the agent should
   know — "paid, booking ref is ABC123"). The agent takes a fresh look at the
   screen and carries on from there.
@@ -146,10 +146,10 @@ temporary [Cloudflare quick tunnel](https://try.cloudflare.com) that closes
 itself after 30 minutes. It carries the desktop's password, so treat it like a
 password while it's valid: anyone who has it can see and use that agent's
 desktop until it expires. Turn phone links off in Settings → Workstations (or
-`ORYN_PHONE_TAKEOVER=off`) and the notice only points you to your computer.
+`XIRYN_PHONE_TAKEOVER=off`) and the notice only points you to your computer.
 
-If Oryn is reachable at a different address than `http://127.0.0.1:6796`
-(another port, or your own authenticating proxy), set `ORYN_URL` so the 💻 link
+If Xiryn is reachable at a different address than `http://127.0.0.1:6796`
+(another port, or your own authenticating proxy), set `XIRYN_URL` so the 💻 link
 points to the right place.
 
 ---
@@ -157,7 +157,7 @@ points to the right place.
 ## Troubleshooting
 
 **The bot doesn't answer.**
-Oryn must be running and your computer awake and online. Check the status line
+Xiryn must be running and your computer awake and online. Check the status line
 in Settings → Remote access.
 
 **"Telegram rejected the bot token."**
@@ -165,7 +165,7 @@ The token was mistyped or revoked. Copy it again from BotFather (send `/token`
 there and pick your bot) and paste it.
 
 **"Another program is using this bot token."**
-Only one program can poll a bot at a time. Stop the other Oryn (or whatever
+Only one program can poll a bot at a time. Stop the other Xiryn (or whatever
 else uses the token), or create a separate bot for each machine.
 
 **I want to switch phones / accounts.**
@@ -178,7 +178,7 @@ Set `TELEGRAM_OWNER_ID` in `.env` to your numeric Telegram user id (ask
 
 ## Security notes
 
-- The token is stored in `.env` or in your local database (`data/oryn.db`) and
+- The token is stored in `.env` or in your local database (`data/xiryn.db`) and
   never sent anywhere except to Telegram.
 - Only the paired account is answered. A pairing code is single-use and is
   replaced automatically after a few wrong guesses.

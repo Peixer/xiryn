@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="docs/assets/banner.png" alt="Oryn — the open-source Muse, Grok Bot and Dots, on your machine" width="100%">
+  <img src="docs/assets/banner.png" alt="Xiryn — the open-source Muse, Grok Bot and Dots, on your machine" width="100%">
 </p>
 
-<h1 align="center">Oryn</h1>
+<h1 align="center">Xiryn</h1>
 
 <p align="center">
   <strong>The open-source Muse, Grok Bot &amp; Dots — on your machine, with your keys.</strong><br>
@@ -11,16 +11,16 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/SouravBeraAkaSpeed/oryn/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/SouravBeraAkaSpeed/oryn/ci.yml?branch=main&style=flat-square&label=CI&labelColor=0b0e14"></a>
+  <a href="https://github.com/SouravBeraAkaSpeed/xiryn/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/SouravBeraAkaSpeed/xiryn/ci.yml?branch=main&style=flat-square&label=CI&labelColor=0b0e14"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-7cc4ff?style=flat-square&labelColor=0b0e14"></a>
-  <a href="https://github.com/SouravBeraAkaSpeed/oryn/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/SouravBeraAkaSpeed/oryn?style=flat-square&color=7cc4ff&labelColor=0b0e14"></a>
+  <a href="https://github.com/SouravBeraAkaSpeed/xiryn/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/SouravBeraAkaSpeed/xiryn?style=flat-square&color=7cc4ff&labelColor=0b0e14"></a>
   <img alt="Node 20.9+" src="https://img.shields.io/badge/node-%E2%89%A520.9-7cc4ff?style=flat-square&labelColor=0b0e14">
   <a href="CONTRIBUTING.md"><img alt="PRs welcome" src="https://img.shields.io/badge/PRs-welcome-7cc4ff?style=flat-square&labelColor=0b0e14"></a>
 </p>
 
 <p align="center">
   <a href="#quick-start">Quick start</a> ·
-  <a href="#why-oryn">Why Oryn</a> ·
+  <a href="#why-xiryn">Why Xiryn</a> ·
   <a href="#how-it-compares">Compare</a> ·
   <a href="docs/telegram.md">Telegram</a> ·
   <a href="docs/architecture.md">Architecture</a> ·
@@ -35,29 +35,29 @@
 
 This year every major lab shipped a personal agent that works on a cloud machine for you — **Muse** from Meta, **Grok Bot** from xAI, **Dots** from OpenAI. They're impressive. They're also closed, gated behind subscriptions, and they run on someone else's servers with your conversations, your logins and — when they shop for you — your payment details.
 
-**Oryn is the same idea as one open-source app you run yourself.** Clone it, add your API keys, and you have a team of agents that each own a sandboxed Linux workstation, remember what matters, browse and research the web, write and run code, and hand work to one another. Nothing is stored anywhere but your computer, and you can message them from your phone.
+**Xiryn is the same idea as one open-source app you run yourself.** Clone it, add your API keys, and you have a team of agents that each own a sandboxed Linux workstation, remember what matters, browse and research the web, write and run code, and hand work to one another. Nothing is stored anywhere but your computer, and you can message them from your phone.
 
-**One command sets everything up** — Git, Node.js, Docker, the agents' desktop — and starts Oryn:
+**One command sets everything up** — Git, Node.js, Docker, the agents' desktop — and starts Xiryn:
 
 ```bash
 # macOS / Linux
-curl -fsSL https://raw.githubusercontent.com/SouravBeraAkaSpeed/oryn/main/setup.sh | bash
+curl -fsSL https://raw.githubusercontent.com/SouravBeraAkaSpeed/xiryn/main/setup.sh | bash
 ```
 
 ```powershell
 # Windows (PowerShell)
-irm https://raw.githubusercontent.com/SouravBeraAkaSpeed/oryn/main/setup.ps1 | iex
+irm https://raw.githubusercontent.com/SouravBeraAkaSpeed/xiryn/main/setup.ps1 | iex
 ```
 
-**Have a coding agent?** Paste [one prompt](#set-up-with-your-coding-agent) into Claude Code, Codex or Cursor — it installs everything, asks you for your keys and starts Oryn.
+**Have a coding agent?** Paste [one prompt](#set-up-with-your-coding-agent) into Claude Code, Codex or Cursor — it installs everything, asks you for your keys and starts Xiryn.
 
-## Why Oryn
+## Why Xiryn
 
 **🔒 Private by design.** No account, no sign-up. Conversations, memory, settings and keys live in a single SQLite file on your disk; logins and cards, if you choose to save them, live in an encrypted vault whose key your operating system holds — and agents never see them. Even the agents' machines run on your computer. The only things that leave it are the calls you configure (your model provider, plus Firecrawl or Telegram if you turn them on). Run a local model through Ollama and not even your prompts leave.
 
 **🖥️ It never touches your computer.** Every agent works on its **own** sandboxed Linux desktop — a Docker container with a shell, files and a real Chromium — completely separate from your system. It doesn't move your mouse, take over your screen or read your files. Watch a movie, play a game or keep coding while it works. Or watch it work, live, and take the wheel whenever you want.
 
-**📱 Control it from anywhere.** Pair Telegram in two minutes — scan a QR code and you're done. No public URL, no tunnel, no port forwarding: Oryn polls Telegram from your machine. Your agents answer from wherever you are, with live progress and screenshots.
+**📱 Control it from anywhere.** Pair Telegram in two minutes — scan a QR code and you're done. No public URL, no tunnel, no port forwarding: Xiryn polls Telegram from your machine. Your agents answer from wherever you are, with live progress and screenshots.
 
 **🧠 Any model, your keys.** OpenAI, Anthropic, Google, xAI, Groq, Mistral, DeepSeek, OpenRouter, Ollama, LM Studio, or any OpenAI-compatible endpoint. Pick a model per agent. No subscription — you pay providers directly for what you use.
 
@@ -67,7 +67,7 @@ irm https://raw.githubusercontent.com/SouravBeraAkaSpeed/oryn/main/setup.ps1 | i
 
 ## How it compares
 
-|  | **Oryn** | Hosted agents<br><sub>Muse · Grok Bot · Dots</sub> | Local computer-use agents<br><sub>e.g. OpenClaw</sub> |
+|  | **Xiryn** | Hosted agents<br><sub>Muse · Grok Bot · Dots</sub> | Local computer-use agents<br><sub>e.g. OpenClaw</sub> |
 | --- | --- | --- | --- |
 | Source | ✅ Open source (MIT) | ❌ Closed | ✅ Open source |
 | Where the agent works | Its own sandboxed desktop (Docker, on your machine) | Vendor's cloud computer | Your computer |
@@ -135,7 +135,7 @@ Anything that can be done with a terminal, a browser and a desktop — while you
 - **Build and debug** — clone a repo, install, run the tests, fix what fails, show you the diff.
 - **Research** — search, read primary sources, and come back with a cited summary.
 - **Write** — launch posts, docs, reports, saved as files on its workstation.
-- **Work the web** — fill forms, compare options, prepare a booking or an order. When a site needs your login, a payment or a CAPTCHA, the agent **stops and hands you the screen**; your card never touches Oryn.
+- **Work the web** — fill forms, compare options, prepare a booking or an order. When a site needs your login, a payment or a CAPTCHA, the agent **stops and hands you the screen**; your card never touches Xiryn.
 - **Run as a team** — ask a squad, and the right specialist takes it.
 
 Agents ask when they need a decision, confirm before anything irreversible, and remember what you tell them.
@@ -149,7 +149,7 @@ Agents ask when they need a decision, confirm before anything irreversible, and 
 ### Your vault, your approval
 
 - **An encrypted vault** for logins, cards, UPI IDs and personal details. Add them in **Settings → Vault**, or when an agent asks, through a secure form in the chat. They're encrypted with AES-256-GCM, and the key is held by your operating system (macOS Keychain, Windows DPAPI, the Linux Secret Service) — never next to the data.
-- **Agents never see the values.** An agent gets "Visa ···· 4242"; Oryn types the card into the page itself and shows the field as dots.
+- **Agents never see the values.** An agent gets "Visa ···· 4242"; Xiryn types the card into the page itself and shows the field as dots.
 - **Every payment needs your yes.** At checkout the agent asks — *"Atlas wants to pay ₹19,062 to MakeMyTrip"* — and you choose **Approve** (it pays with the card you pick), **I'll pay myself** (you take over its screen) or **Decline**, in the app or with one tap on Telegram.
 - **Phishing-proof by design.** A saved login only fills on its own site; an approved card only on the site you approved.
 - **Stays signed in.** Each agent's browser keeps your sessions between tasks until the site signs you out. One-time codes you reply to the Telegram bot go straight into the vault, not the chat.
@@ -164,44 +164,44 @@ Agents ask when they need a decision, confirm before anything irreversible, and 
 
 | Your system | Run this in a terminal |
 | --- | --- |
-| **macOS / Linux** | `curl -fsSL https://raw.githubusercontent.com/SouravBeraAkaSpeed/oryn/main/setup.sh \| bash` |
-| **Windows** (PowerShell) | `irm https://raw.githubusercontent.com/SouravBeraAkaSpeed/oryn/main/setup.ps1 \| iex` |
+| **macOS / Linux** | `curl -fsSL https://raw.githubusercontent.com/SouravBeraAkaSpeed/xiryn/main/setup.sh \| bash` |
+| **Windows** (PowerShell) | `irm https://raw.githubusercontent.com/SouravBeraAkaSpeed/xiryn/main/setup.ps1 \| iex` |
 
 Already cloned the repo? Run `./setup.sh` on macOS/Linux, or double-click **`setup.cmd`** on Windows.
 
 The setup asks once, then does the rest:
 
 1. Installs what's missing — **Git**, **Node.js**, and **Docker** (Docker Desktop through `winget` on Windows or Homebrew on macOS; Docker Engine through `get.docker.com` on Linux).
-2. Clones Oryn into `./oryn` and installs its packages.
+2. Clones Xiryn into `./xiryn` and installs its packages.
 3. Starts Docker and builds the agents' desktop image — a few minutes, once.
-4. Creates `.env` and starts Oryn at **<http://127.0.0.1:6796>**.
+4. Creates `.env` and starts Xiryn at **<http://127.0.0.1:6796>**.
 
 > The first time, Docker Desktop may ask you to accept its terms, and on Windows it can ask for a restart to turn on WSL 2. Afterwards run the setup again; it skips everything that's already done.
 
 ### Set up with your coding agent
 
-Using Claude Code, Codex, Cursor or another coding agent? Paste this prompt into it. It installs everything, asks you for your keys and starts Oryn:
+Using Claude Code, Codex, Cursor or another coding agent? Paste this prompt into it. It installs everything, asks you for your keys and starts Xiryn:
 
 ```text
-Install and start Oryn for me — an open-source app that runs AI agents on my own computer: https://github.com/SouravBeraAkaSpeed/oryn
+Install and start Xiryn for me — an open-source app that runs AI agents on my own computer: https://github.com/SouravBeraAkaSpeed/xiryn
 
-1. From my home folder, run Oryn's setup without prompts. It clones Oryn into ./oryn (or reuses it), installs Git, Node.js and Docker if they're missing, installs the packages and builds the agents' desktop image, which takes several minutes the first time — let it finish:
-   - macOS / Linux:  curl -fsSL https://raw.githubusercontent.com/SouravBeraAkaSpeed/oryn/main/setup.sh | ORYN_YES=1 ORYN_NO_START=1 bash
-   - Windows (PowerShell):  $env:ORYN_YES="1"; $env:ORYN_NO_START="1"; irm https://raw.githubusercontent.com/SouravBeraAkaSpeed/oryn/main/setup.ps1 | iex
+1. From my home folder, run Xiryn's setup without prompts. It clones Xiryn into ./xiryn (or reuses it), installs Git, Node.js and Docker if they're missing, installs the packages and builds the agents' desktop image, which takes several minutes the first time — let it finish:
+   - macOS / Linux:  curl -fsSL https://raw.githubusercontent.com/SouravBeraAkaSpeed/xiryn/main/setup.sh | XIRYN_YES=1 XIRYN_NO_START=1 bash
+   - Windows (PowerShell):  $env:XIRYN_YES="1"; $env:XIRYN_NO_START="1"; irm https://raw.githubusercontent.com/SouravBeraAkaSpeed/xiryn/main/setup.ps1 | iex
    (If you'd rather not pipe a script, clone the repo and run ./setup.sh or .\setup.ps1 inside it with the same two variables.)
    - If it stops and shows a command that needs my password, show me that command, wait for me to run it in my own terminal, then run the setup again.
    - If Docker Desktop was just installed or isn't running, ask me to open it and accept its terms (Windows may also ask for a restart). Wait until `docker info` works, then run the setup again.
-   - Node.js may have been installed into ~/.oryn/node/bin; add that to PATH in your shell if `node` isn't found.
+   - Node.js may have been installed into ~/.xiryn/node/bin; add that to PATH in your shell if `node` isn't found.
 
 2. Ask me for my keys. Explain each in one sentence with where to get it, and let me skip the optional ones:
    - Required, at least one model provider: OpenAI (OPENAI_API_KEY, platform.openai.com/api-keys), Anthropic (ANTHROPIC_API_KEY, console.anthropic.com), Google Gemini (GOOGLE_GENERATIVE_AI_API_KEY, aistudio.google.com/apikey) — or any other provider listed in .env.example, including a local Ollama or LM Studio.
    - Optional: FIRECRAWL_API_KEY (firecrawl.dev) for fast web search.
    - Optional: TELEGRAM_BOT_TOKEN to talk to my agents from my phone. Tell me how to get it: in Telegram, message @BotFather, send /newbot, choose a name and a username ending in "bot", and copy the token it replies with.
-   Put what I give you into the matching lines of oryn/.env. Never repeat the keys back to me, log them or commit .env.
+   Put what I give you into the matching lines of xiryn/.env. Never repeat the keys back to me, log them or commit .env.
 
-3. Start Oryn with `npm run dev` inside the oryn folder, in the background. Wait until http://127.0.0.1:6796 responds, then open it in my browser.
+3. Start Xiryn with `npm run dev` inside the xiryn folder, in the background. Wait until http://127.0.0.1:6796 responds, then open it in my browser.
 
-4. Finish with a short summary: what got installed, which keys are set, how to start Oryn next time (cd oryn && npm run dev), and — if I added a Telegram token — that I should open Settings → Remote access in Oryn and scan the QR code with my phone to pair it.
+4. Finish with a short summary: what got installed, which keys are set, how to start Xiryn next time (cd xiryn && npm run dev), and — if I added a Telegram token — that I should open Settings → Remote access in Xiryn and scan the QR code with my phone to pair it.
 ```
 
 <details>
@@ -210,8 +210,8 @@ Install and start Oryn for me — an open-source app that runs AI agents on my o
 Install [Node.js 20.9+](https://nodejs.org) and [Docker](https://docs.docker.com/get-started/get-docker/), then:
 
 ```bash
-git clone https://github.com/SouravBeraAkaSpeed/oryn.git
-cd oryn
+git clone https://github.com/SouravBeraAkaSpeed/xiryn.git
+cd xiryn
 npm install
 npm run setup     # checks Docker, builds the agents' desktop image, creates .env
 npm run dev
@@ -231,38 +231,38 @@ FIRECRAWL_API_KEY=fc-...       # optional: web search & reading
 ### 3 · Start it any time
 
 ```bash
-cd oryn
+cd xiryn
 npm run dev                    # or: npm run build && npm start
 ```
 
-Open **<http://127.0.0.1:6796>** and deploy your first agent. *(6796 spells O-R-Y-N on a phone keypad.)* Prefer containers all the way down? `docker compose up -d` runs Oryn itself in Docker too.
+Open **<http://127.0.0.1:6796>** and deploy your first agent. *(6796 spells O-R-Y-N on a phone keypad.)* Prefer containers all the way down? `docker compose up -d` runs Xiryn itself in Docker too.
 
-Click **alerts** in the status bar once to allow desktop notifications: you'll hear a chime and get a notification whenever an agent finishes, fails or needs you — even with Oryn in the background.
+Click **alerts** in the status bar once to allow desktop notifications: you'll hear a chime and get a notification whenever an agent finishes, fails or needs you — even with Xiryn in the background.
 
 ## Updating
 
-When something new is pushed, an **update** button appears next to the Oryn logo; it brings you here.
+When something new is pushed, an **update** button appears next to the Xiryn logo; it brings you here.
 
 ```bash
-cd oryn
+cd xiryn
 git pull
 ./setup.sh        # Windows: setup.cmd
 ```
 
-`setup` installs any new packages and rebuilds the agents' desktop image if it changed (each agent's machine moves to it the next time it starts, keeping its files). Then start Oryn as usual with `npm run dev`.
+`setup` installs any new packages and rebuilds the agents' desktop image if it changed (each agent's machine moves to it the next time it starts, keeping its files). Then start Xiryn as usual with `npm run dev`.
 
 <details>
-<summary>Running Oryn in Docker?</summary>
+<summary>Running Xiryn in Docker?</summary>
 
 ```bash
-cd oryn
+cd xiryn
 git pull
 docker compose up -d --build
 ```
 
 </details>
 
-Your data — `data/oryn.db`, the vault and the agents' home folders — is untouched by updates.
+Your data — `data/xiryn.db`, the vault and the agents' home folders — is untouched by updates.
 
 ## Remote control from Telegram
 
@@ -292,9 +292,9 @@ graph LR
     tg -.->|long-poll from your machine| app
 
     subgraph machine [Your computer]
-        app[Oryn · Next.js server]
+        app[Xiryn · Next.js server]
         app --> runtime[Agent runtime]
-        app --> db[(SQLite · data/oryn.db)]
+        app --> db[(SQLite · data/xiryn.db)]
         runtime --> db
         runtime -->|docker| ws[Workstations · one container per agent]
     end
@@ -318,34 +318,34 @@ One process, one file. The Next.js server serves the UI, runs agent turns in-pro
 
 ## Configuration
 
-Every setting can come from `.env` **or** from **Settings** in the app. Values saved in the app win, are stored only in `data/oryn.db`, and are shown back to the browser masked. The annotated list is in [`.env.example`](.env.example); providers are covered in [docs/providers.md](docs/providers.md).
+Every setting can come from `.env` **or** from **Settings** in the app. Values saved in the app win, are stored only in `data/xiryn.db`, and are shown back to the browser masked. The annotated list is in [`.env.example`](.env.example); providers are covered in [docs/providers.md](docs/providers.md).
 
 | Variable | Purpose |
 | --- | --- |
 | `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_GENERATIVE_AI_API_KEY`, `XAI_API_KEY`, `GROQ_API_KEY`, `MISTRAL_API_KEY`, `DEEPSEEK_API_KEY`, `OPENROUTER_API_KEY` | Hosted model providers |
 | `OLLAMA_BASE_URL`, `LMSTUDIO_BASE_URL`, `CUSTOM_BASE_URL` | Local runtimes and any OpenAI-compatible API |
-| `ORYN_DEFAULT_MODEL`, `ORYN_MAX_STEPS` | Default `provider/model`, max tool calls per turn |
-| `ORYN_WORKSTATION_CPUS`, `ORYN_WORKSTATION_MEMORY_GB` | Limits for each agent's machine (default 2 CPUs, 4 GB) |
-| `ORYN_WORKSTATION_AUTO_STOP_MINUTES`, `ORYN_WORKSTATION_AUTO_DELETE_MINUTES` | Idle stop; disposable machines |
-| `ORYN_PHONE_TAKEOVER` | `off` leaves the phone link out of Telegram hand-offs |
+| `XIRYN_DEFAULT_MODEL`, `XIRYN_MAX_STEPS` | Default `provider/model`, max tool calls per turn |
+| `XIRYN_WORKSTATION_CPUS`, `XIRYN_WORKSTATION_MEMORY_GB` | Limits for each agent's machine (default 2 CPUs, 4 GB) |
+| `XIRYN_WORKSTATION_AUTO_STOP_MINUTES`, `XIRYN_WORKSTATION_AUTO_DELETE_MINUTES` | Idle stop; disposable machines |
+| `XIRYN_PHONE_TAKEOVER` | `off` leaves the phone link out of Telegram hand-offs |
 | `FIRECRAWL_API_KEY` | Web search and reading |
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_OWNER_ID` | Remote access |
-| `ORYN_TELEGRAM_NOTIFY` | Telegram notice when a task finishes: `long` (a minute or more, default), `all` or `off` |
-| `ORYN_DATA_DIR`, `ORYN_ALLOWED_HOSTS` | Data location; extra hostnames behind your own proxy |
-| `ORYN_URL` | Where you open Oryn, for links in Telegram hand-offs |
-| `ORYN_UPDATE_CHECK` | `off` stops the update check and star count |
+| `XIRYN_TELEGRAM_NOTIFY` | Telegram notice when a task finishes: `long` (a minute or more, default), `all` or `off` |
+| `XIRYN_DATA_DIR`, `XIRYN_ALLOWED_HOSTS` | Data location; extra hostnames behind your own proxy |
+| `XIRYN_URL` | Where you open Xiryn, for links in Telegram hand-offs |
+| `XIRYN_UPDATE_CHECK` | `off` stops the update check and star count |
 
 ## Security & privacy
 
-Oryn has no user accounts, so it's built never to be reachable by anyone but you:
+Xiryn has no user accounts, so it's built never to be reachable by anyone but you:
 
 - Binds to **127.0.0.1** only, and refuses any request whose `Host` or `Origin` isn't loopback — which also blocks DNS-rebinding attacks from web pages you visit.
 - API keys never reach the browser; the UI only sees masked values, and keys are kept out of logs.
 - Telegram answers exactly **one** paired account; pairing codes are single-use and rotate after wrong guesses.
 - Agents execute only inside their own containers — never on your desktop or in your files. Their browsers have password saving and card autofill switched off.
-- Saved logins, cards and personal details are encrypted (AES-256-GCM) with a key your operating system's keychain holds. Agents get masked hints only; Oryn types values into pages itself, logins only on their own site, payment details only after you approve that payment.
+- Saved logins, cards and personal details are encrypted (AES-256-GCM) with a key your operating system's keychain holds. Agents get masked hints only; Xiryn types values into pages itself, logins only on their own site, payment details only after you approve that payment.
 - Each live desktop is published on 127.0.0.1 only and asks for its own random password.
-- No telemetry. No analytics. The only request Oryn makes on its own is an update check against GitHub's public API when you open Oryn, sending nothing about you. Switch it off in **Settings → System** or with `ORYN_UPDATE_CHECK=off`.
+- No telemetry. No analytics. The only request Xiryn makes on its own is an update check against GitHub's public API when you open Xiryn, sending nothing about you. Switch it off in **Settings → System** or with `XIRYN_UPDATE_CHECK=off`.
 
 See [SECURITY.md](SECURITY.md) for the full model and how to report a vulnerability.
 
@@ -361,7 +361,7 @@ It can do the legwork on real websites — search, compare, fill in the details 
 Hover it under **Recent threads** in the sidebar and click the trash icon, or open the thread menu (⋯) in its header → **Delete thread**. The agent, its memory and its workstation stay.
 
 **Where is my data?**
-In `data/oryn.db` on your disk. Back it up by copying the file; erase everything by deleting it.
+In `data/xiryn.db` on your disk. Back it up by copying the file; erase everything by deleting it.
 
 **Does it work without Docker or Firecrawl?**
 Without Docker, agents chat, remember and (with Firecrawl) research, but can't run code or use a desktop. Without Firecrawl, they search and read the web with their own browser. The app tells you what's missing.
@@ -370,11 +370,11 @@ Without Docker, agents chat, remember and (with Firecrawl) research, but can't r
 Yes — point `OLLAMA_BASE_URL` or `LMSTUDIO_BASE_URL` at your runtime and pick a model with tool calling.
 
 **What does it cost?**
-Oryn is free and MIT-licensed. Agents' machines run on your own computer, so they cost nothing. Your model provider (and Firecrawl, if you use it) bill you directly; the **Usage** page shows tokens per model and agent.
+Xiryn is free and MIT-licensed. Agents' machines run on your own computer, so they cost nothing. Your model provider (and Firecrawl, if you use it) bill you directly; the **Usage** page shows tokens per model and agent.
 
 ## Roadmap
 
-Ideas we're exploring — not shipped yet. Have opinions? [Open an issue](https://github.com/SouravBeraAkaSpeed/oryn/issues/new/choose).
+Ideas we're exploring — not shipped yet. Have opinions? [Open an issue](https://github.com/SouravBeraAkaSpeed/xiryn/issues/new/choose).
 
 - [ ] Scheduled and recurring tasks — standing goals that run while you sleep
 - [ ] More remote channels: WhatsApp, Discord, Slack
@@ -393,17 +393,17 @@ npm run build
 
 ## Star history
 
-<a href="https://star-history.com/#SouravBeraAkaSpeed/oryn&Date">
-  <img src="https://api.star-history.com/svg?repos=SouravBeraAkaSpeed/oryn&type=Date" alt="Star history" width="100%">
+<a href="https://star-history.com/#SouravBeraAkaSpeed/xiryn&Date">
+  <img src="https://api.star-history.com/svg?repos=SouravBeraAkaSpeed/xiryn&type=Date" alt="Star history" width="100%">
 </a>
 
 ## Author
 
 Built by **[Sourav Bera](https://souravbera.vercel.app)**.
-If Oryn is useful to you, a ⭐ helps other people find it.
+If Xiryn is useful to you, a ⭐ helps other people find it.
 
 ## License
 
 [MIT](LICENSE) © 2026 Sourav Bera
 
-<sub>Muse, Grok Bot, Dots and OpenClaw are trademarks of their respective owners. Oryn is an independent project and is not affiliated with or endorsed by Meta, xAI, OpenAI or the OpenClaw project.</sub>
+<sub>Muse, Grok Bot, Dots and OpenClaw are trademarks of their respective owners. Xiryn is an independent project and is not affiliated with or endorsed by Meta, xAI, OpenAI or the OpenClaw project.</sub>

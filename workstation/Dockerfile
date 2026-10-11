@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
-# The machine every Oryn agent works on: a Linux desktop with a real browser,
-# streamed over noVNC, plus the everyday developer tools. Oryn builds it once
+# The machine every Xiryn agent works on: a Linux desktop with a real browser,
+# streamed over noVNC, plus the everyday developer tools. Xiryn builds it once
 # on your computer (`npm run setup`, or on first use) and runs one container
 # per agent from it.
 
@@ -13,7 +13,7 @@ ARG CLOUDFLARED_VERSION=2026.9.1
 ENV DEBIAN_FRONTEND=noninteractive \
     LANG=C.UTF-8 \
     DISPLAY=:1 \
-    ORYN_SCREEN=1280x800 \
+    XIRYN_SCREEN=1280x800 \
     PIP_BREAK_SYSTEM_PACKAGES=1
 
 RUN apt-get update \
@@ -41,22 +41,22 @@ RUN arch="$(dpkg --print-architecture)" \
 
 # The agent works as an ordinary user with passwordless sudo: it can install
 # what a task needs, and none of it touches your computer
-RUN useradd --create-home --uid 1000 --shell /bin/bash oryn \
+RUN useradd --create-home --uid 1000 --shell /bin/bash xiryn \
  && mkdir -p /tmp/.X11-unix && chmod 1777 /tmp/.X11-unix \
- && echo 'oryn ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/oryn \
- && chmod 0440 /etc/sudoers.d/oryn
+ && echo 'xiryn ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/xiryn \
+ && chmod 0440 /etc/sudoers.d/xiryn
 
 COPY rootfs/ /
 
 # Scripts must stay runnable even if a checkout converted line endings.
-# Only Oryn's own: node and cloudflared live in the same folder.
-RUN sed -i 's/\r$//' /usr/local/bin/oryn-* /usr/local/bin/browser /etc/chromium.d/oryn \
- && chmod +x /usr/local/bin/oryn-* /usr/local/bin/browser \
- && chown -R oryn:oryn /home/oryn
+# Only Xiryn's own: node and cloudflared live in the same folder.
+RUN sed -i 's/\r$//' /usr/local/bin/xiryn-* /usr/local/bin/browser /etc/chromium.d/xiryn \
+ && chmod +x /usr/local/bin/xiryn-* /usr/local/bin/browser \
+ && chown -R xiryn:xiryn /home/xiryn
 
-USER oryn
-WORKDIR /home/oryn
+USER xiryn
+WORKDIR /home/xiryn
 EXPOSE 6080
 
 ENTRYPOINT ["/usr/bin/tini", "--"]
-CMD ["oryn-desktop"]
+CMD ["xiryn-desktop"]

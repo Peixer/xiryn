@@ -41,7 +41,7 @@ const KEY_SOURCE: Record<KeySource, string> = {
   dpapi: "key protected by Windows (DPAPI)",
   "secret-service": "key in the system keyring",
   file: "key in a private file outside the data folder",
-  env: "key from ORYN_VAULT_KEY",
+  env: "key from XIRYN_VAULT_KEY",
 }
 
 const ADDABLE: VaultKind[] = ["card", "upi", "login", "identity"]
@@ -75,7 +75,7 @@ export function VaultPanel() {
           <span className="text-[14px] font-semibold">Vault</span>
           <p className="text-[12.5px] leading-relaxed text-muted-foreground">
             Logins, cards, UPI IDs and personal details, encrypted on this computer.
-            Agents see only a masked hint like “Visa ···· 4242”; Oryn types the values
+            Agents see only a masked hint like “Visa ···· 4242”; Xiryn types the values
             into the page itself. Logins fill only on their own site, and nothing is paid
             without your approval each time.
           </p>

@@ -97,7 +97,7 @@ export default function Home() {
               <span className="size-2.5 rounded-full bg-foreground/10" />
             </span>
             <span className="ml-2 font-mono text-[11px] text-muted-foreground">
-              oryn — system check
+              xiryn — system check
             </span>
             <span
               className={cn(

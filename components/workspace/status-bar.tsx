@@ -121,7 +121,7 @@ export function StatusBar() {
         sqlite
       </Cell>
       <Cell className="max-md:hidden">node {status.node.replace(/^v/, "")}</Cell>
-      <Cell>oryn {status.version}</Cell>
+      <Cell>xiryn {status.version}</Cell>
     </footer>
   )
 }
