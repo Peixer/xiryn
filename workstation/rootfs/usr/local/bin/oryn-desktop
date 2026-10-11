@@ -10,6 +10,12 @@ set -u
 
 state=/tmp/oryn
 mkdir -p "$state"
+
+# A machine that was stopped keeps its /tmp. Locks left by the last run's X
+# server would make this one refuse to start, so clear them: nothing is
+# running yet.
+display_number="${DISPLAY#:}"
+rm -f "/tmp/.X${display_number}-lock" "/tmp/.X11-unix/X${display_number}"
 touch "$state/active"
 echo "${ORYN_IDLE_MINUTES:-15}" > "$state/idle-minutes"
 

@@ -73,3 +73,9 @@ jobs:
           docker exec ws xdotool mousemove 10 10 click 1
           docker exec ws oryn-shot | base64 -d | head -c 3 | od -An -tx1 | grep -q 'ff d8 ff'
           docker exec ws sh -c 'curl -sf -o /dev/null http://localhost:6080/vnc.html'
+          # A stopped machine must start again (idle machines stop themselves)
+          docker stop --time 5 ws
+          docker start ws
+          docker exec ws oryn-ready
+          # The browser's debugging port, which tells Oryn which site a page is on
+          docker exec ws sh -c 'for i in $(seq 30); do curl -sf -o /dev/null http://127.0.0.1:9222/json/version && exit 0; sleep 1; done; exit 1'
