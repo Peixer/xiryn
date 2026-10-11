@@ -1,6 +1,6 @@
 {
   "name": "xiryn",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Xiryn, the open-source personal agent: does everything Muse, Grok Bot and Dots do on your own computer. Each agent gets its own Linux desktop in Docker, with your keys and any model.",
   "keywords": [
     "ai-agents",
