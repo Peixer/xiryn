@@ -239,6 +239,31 @@ Open **<http://127.0.0.1:6796>** and deploy your first agent. *(6796 spells O-R-
 
 Click **alerts** in the status bar once to allow desktop notifications: you'll hear a chime and get a notification whenever an agent finishes, fails or needs you — even with Oryn in the background.
 
+## Updating
+
+When something new is pushed, an **update** button appears next to the Oryn logo; it brings you here.
+
+```bash
+cd oryn
+git pull
+./setup.sh        # Windows: setup.cmd
+```
+
+`setup` installs any new packages and rebuilds the agents' desktop image if it changed (each agent's machine moves to it the next time it starts, keeping its files). Then start Oryn as usual with `npm run dev`.
+
+<details>
+<summary>Running Oryn in Docker?</summary>
+
+```bash
+cd oryn
+git pull
+docker compose up -d --build
+```
+
+</details>
+
+Your data — `data/oryn.db`, the vault and the agents' home folders — is untouched by updates.
+
 ## Remote control from Telegram
 
 <img src="docs/assets/telegram.png" alt="Telegram remote access setup in Settings" width="100%">
@@ -308,6 +333,7 @@ Every setting can come from `.env` **or** from **Settings** in the app. Values s
 | `ORYN_TELEGRAM_NOTIFY` | Telegram notice when a task finishes: `long` (a minute or more, default), `all` or `off` |
 | `ORYN_DATA_DIR`, `ORYN_ALLOWED_HOSTS` | Data location; extra hostnames behind your own proxy |
 | `ORYN_URL` | Where you open Oryn, for links in Telegram hand-offs |
+| `ORYN_UPDATE_CHECK` | `off` stops the update check and star count |
 
 ## Security & privacy
 
@@ -319,7 +345,7 @@ Oryn has no user accounts, so it's built never to be reachable by anyone but you
 - Agents execute only inside their own containers — never on your desktop or in your files. Their browsers have password saving and card autofill switched off.
 - Saved logins, cards and personal details are encrypted (AES-256-GCM) with a key your operating system's keychain holds. Agents get masked hints only; Oryn types values into pages itself, logins only on their own site, payment details only after you approve that payment.
 - Each live desktop is published on 127.0.0.1 only and asks for its own random password.
-- No telemetry. No analytics. No calls home.
+- No telemetry. No analytics. The only request Oryn makes on its own is an update check against GitHub's public API — a few times a day, sending nothing about you. Switch it off in **Settings → System** or with `ORYN_UPDATE_CHECK=off`.
 
 See [SECURITY.md](SECURITY.md) for the full model and how to report a vulnerability.
 

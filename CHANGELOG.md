@@ -9,6 +9,8 @@ All notable changes to Oryn are documented here. The format follows [Keep a Chan
 - **Voice typing:** a mic button in the composer. Speech is recognised by the browser — on the device where the browser supports it — and lands in the box to review before sending.
 - **A phone take-over page:** Telegram hand-off links open a page made for phones, with a keyboard button that types on the agent's desktop, a key bar (Enter, Backspace, Tab, Esc, arrows, Ctrl), Paste text, a countdown and Done. On an upright phone the desktop sits above the keys, clear of the keyboard.
 
+- **Update button:** when GitHub has commits (or a release) newer than your copy, an update button next to the logo links to the README's new Updating section. The project's star count shows there too once it's past 20. Off with `ORYN_UPDATE_CHECK=off` or in Settings → System.
+
 ### Changed
 
 - The desktop's password in a phone link travels after the `#`, so it never reaches the tunnel's logs, and links are sent only once their address answers.
