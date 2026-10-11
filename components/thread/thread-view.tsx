@@ -31,6 +31,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuGroup,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
@@ -196,8 +197,8 @@ function ThreadHeader({
             New thread
           </DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuLabel className="label-mono">Threads</DropdownMenuLabel>
-          <div className="max-h-80 overflow-y-auto">
+          <DropdownMenuGroup className="max-h-80 overflow-y-auto">
+            <DropdownMenuLabel className="label-mono">Threads</DropdownMenuLabel>
             {threads.map((thread) => (
               <DropdownMenuItem
                 key={thread.id}
@@ -212,7 +213,7 @@ function ThreadHeader({
                 </span>
               </DropdownMenuItem>
             ))}
-          </div>
+          </DropdownMenuGroup>
         </DropdownMenuContent>
       </DropdownMenu>
 
