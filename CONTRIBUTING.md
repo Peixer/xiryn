@@ -4,8 +4,8 @@ Thanks for wanting to make Oryn better. This guide gets you from clone to merged
 
 ## Ground rules
 
-- **Local-first is the product.** Changes must not add accounts, telemetry, hosted backends or any third-party service beyond the ones a user explicitly configures (model providers, Daytona, Firecrawl, Telegram).
-- **Agents never act on the user's machine.** Anything an agent executes runs in its workstation sandbox.
+- **Local-first is the product.** Changes must not add accounts, telemetry, hosted backends or any third-party service beyond the ones a user explicitly configures (model providers, Firecrawl, Telegram).
+- **Agents never act on the user's machine.** Anything an agent executes runs in its own workstation container.
 - **Secrets stay server-side.** The browser may only ever see masked values.
 - Be kind. See the [Code of Conduct](CODE_OF_CONDUCT.md).
 
@@ -21,7 +21,7 @@ npm run setup        # creates .env from .env.example
 npm run dev          # http://127.0.0.1:6796
 ```
 
-You don't need Daytona or Firecrawl keys to work on most of the UI; the app tells you which capabilities are off.
+You don't need Docker or a Firecrawl key to work on most of the UI; the app tells you which capabilities are off. To work on workstations, the image is built from `workstation/` (`npm run workstation:build` rebuilds it after you change it).
 
 ### Testing the Telegram bridge without a phone
 

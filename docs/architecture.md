@@ -19,10 +19,10 @@ graph TB
     end
 
     runtime -->|your key| models[Model provider]
-    runtime -->|your key| daytona[Daytona<br/>one sandbox per agent]
-    runtime -->|your key| firecrawl[Firecrawl]
+    runtime -->|docker CLI| ws[Workstations<br/>one container per agent]
+    runtime -.->|your key| firecrawl[Firecrawl]
     bridge -->|long-poll| telegram[Telegram Bot API]
-    ui -.->|noVNC · signed URL| daytona
+    ui -.->|noVNC · 127.0.0.1 + password| ws
 ```
 
 ## Request flow of a turn
@@ -41,8 +41,8 @@ Defined in `lib/agent/tools.ts`. Every tool resolves "the agent holding the turn
 
 | Group | Tools | Backed by |
 | --- | --- | --- |
-| Workstation | `shell`, `fs_read`, `fs_write`, `fs_list` | Daytona process + filesystem APIs |
-| Desktop | `screen_capture`, `screen_share`, `pointer_*`, `key_*` | Daytona computer-use APIs |
+| Workstation | `shell`, `fs_read`, `fs_write`, `fs_list` | `docker exec` into the agent's container |
+| Desktop | `screen_capture`, `screen_share`, `pointer_*`, `key_*` | `scrot` and `xdotool` on the container's X display |
 | Memory | `memory_write`, `memory_forget` | Local SQLite |
 | Web | `web_search`, `web_fetch` | Firecrawl v2 |
 | Squad | `delegate` | Runtime (swaps agent, instructions and model) |
@@ -55,7 +55,11 @@ Screenshots are returned to the model as images. Before every step, `prepareStep
 Either side can hand the desktop over.
 
 - **You take over.** The workbench's *Take over* button stops a running turn (the same `DELETE` as *Stop*) and opens the desktop full-size with input enabled. *Hand back* sends an ordinary user message carrying `metadata.handback` with your optional note; the transcript renders it as a divider, and the instructions tell the agent to take a fresh `screen_capture` before doing anything else, since the screen may have changed.
-- **The agent hands off.** At a login, payment, one-time code or CAPTCHA the agent calls `request_takeover({ reason })`. `stopWhen` includes `hasToolCall("request_takeover")`, so the turn ends right there. The UI sees the fresh tool call and opens the take-over view; if Telegram is paired, `notifyTakeover` sends the owner the reason, a 30-minute signed noVNC link to that sandbox (usable from a phone) and a deep link to `/a/:agent/:thread?takeover=1`, and points the chat at that thread so the reply continues it.
+- **The agent hands off.** At a login, payment, one-time code or CAPTCHA the agent calls `request_takeover({ reason })`. `stopWhen` includes `hasToolCall("request_takeover")`, so the turn ends right there. The UI sees the fresh tool call and opens the take-over view; if Telegram is paired, `notifyTakeover` sends the owner the reason, a 30-minute link to that desktop through a Cloudflare quick tunnel (usable from a phone) and a deep link to `/a/:agent/:thread?takeover=1`, and points the chat at that thread so the reply continues it.
+
+## Notifications
+
+The runtime emits an event when a turn finishes (or fails) and when an agent hands over its screen (`lib/events.ts`). The browser follows them over a server-sent event stream at `/api/events`: the notifier plays a short synthesized chime and shows a desktop notification when Oryn isn't the window in focus, or a toast when you're elsewhere in the app. A finished turn that started in the app is also sent to the paired Telegram account when it took a minute or more (`ORYN_TELEGRAM_NOTIFY`).
 
 ## Squads and delegation
 
@@ -63,7 +67,12 @@ A squad thread has an ordered list of members. A message is addressed to one of 
 
 ## Workstations
 
-`lib/workstation.ts` provisions a Daytona sandbox the first time an agent needs one and records its id on the agent. Sandboxes stop after `DAYTONA_AUTO_STOP_MINUTES` idle and are woken on demand. With `DAYTONA_AUTO_DELETE_MINUTES` they are destroyed after stopping, and a fresh one is created next time. Deleting or resetting an agent always destroys its sandbox. The live desktop connects the browser directly to the sandbox's noVNC port through a signed, expiring preview URL.
+Each agent's workstation is a Docker container named `oryn-ws-<agent id>`, run from an image built on your computer out of [`workstation/`](../workstation): Debian with Xvfb, xfwm4 and a panel, Chromium, x11vnc + noVNC, xdotool, Node.js, Python and passwordless `sudo`. Oryn talks to Docker only through the `docker` CLI (`lib/docker.ts`), so Docker Desktop, Docker Engine, Colima or OrbStack all work, as does whatever context the CLI points at.
+
+- **Image.** Its tag is a fingerprint of the `workstation/` folder (`lib/workstation-image.ts`). `npm run setup` builds it, or Oryn does at boot or on first use. When an update changes the folder, the new image is built once and each agent moves to it the next time its machine starts.
+- **Lifecycle.** The first tool call that needs a machine creates it (starting Docker Desktop if it isn't running), with the agent's home folder in a named volume, `oryn-home-<agent id>`, so files survive restarts and image updates. Inside the container a watchdog stops it after `ORYN_WORKSTATION_AUTO_STOP_MINUTES` without activity (a running command or someone watching counts), even if Oryn itself is closed. A janitor in the server removes machines of deleted agents and, with `ORYN_WORKSTATION_AUTO_DELETE_MINUTES`, machines stopped for longer than that. Resetting or deleting an agent removes its container and volume.
+- **Commands.** `shell` runs `oryn-run`, which writes output to a file, so a program left running in the background can't hold the call open, and returns the beginning and end of very long output.
+- **Live desktop.** noVNC listens on port 6080 inside the container, published on `127.0.0.1` with a random host port. The browser connects there directly with the container's random VNC password, which only the server hands out. For phone take-overs, `oryn-tunnel` starts a Cloudflare quick tunnel inside the container that closes itself after 30 minutes.
 
 ## Data
 

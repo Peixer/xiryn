@@ -6,7 +6,7 @@
 
 <p align="center">
   <strong>The open-source Muse, Grok Bot &amp; Dots — on your machine, with your keys.</strong><br>
-  AI agents that do real work on their <em>own</em> Linux computers — never on yours.<br>
+  AI agents that do real work on their <em>own</em> sandboxed Linux desktops — never on yours.<br>
   Your data stays on your disk. Bring any model. Text your agents from anywhere.
 </p>
 
@@ -28,7 +28,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/assets/workstation.png" alt="An Oryn agent browsing on its own sandboxed desktop while the transcript streams its tool calls" width="100%">
+  <img src="docs/assets/workstation.png" alt="Atlas lists the nonstop Bengaluru to Lucknow flights it found on MakeMyTrip, with its live sandboxed desktop beside the chat" width="100%">
 </p>
 
 ---
@@ -37,23 +37,29 @@ This year every major lab shipped a personal agent that works on a cloud machine
 
 **Oryn is the same idea as one open-source app you run yourself.** Clone it, add your API keys, and you have a team of agents that each own a sandboxed Linux workstation, remember what matters, browse and research the web, write and run code, and hand work to one another. Nothing is stored anywhere but your computer, and you can message them from your phone.
 
+**One command sets everything up** — Git, Node.js, Docker, the agents' desktop — and starts Oryn:
+
 ```bash
-git clone https://github.com/SouravBeraAkaSpeed/oryn.git && cd oryn
-npm install && npm run setup     # creates .env — add your keys
-npm run dev                      # → http://127.0.0.1:6796
+# macOS / Linux
+curl -fsSL https://raw.githubusercontent.com/SouravBeraAkaSpeed/oryn/main/setup.sh | bash
+```
+
+```powershell
+# Windows (PowerShell)
+irm https://raw.githubusercontent.com/SouravBeraAkaSpeed/oryn/main/setup.ps1 | iex
 ```
 
 ## Why Oryn
 
-**🔒 Private by design.** No account, no sign-up, no payment details — ever. Conversations, memory, settings and keys live in a single SQLite file on your disk. The only things that leave your machine are the calls you configure (your model provider, Daytona, Firecrawl, Telegram). Run a local model through Ollama and not even your prompts leave.
+**🔒 Private by design.** No account, no sign-up, no payment details — ever. Conversations, memory, settings and keys live in a single SQLite file on your disk. Even the agents' machines run on your computer. The only things that leave it are the calls you configure (your model provider, plus Firecrawl or Telegram if you turn them on). Run a local model through Ollama and not even your prompts leave.
 
-**🖥️ It never touches your computer.** Every agent works on its **own** Linux sandbox — shell, files, browser and a full desktop — in *your* Daytona account. It doesn't move your mouse, take over your screen or read your files. Watch a movie, play a game or keep coding while it works. Or watch it work, live, and take the wheel whenever you want.
+**🖥️ It never touches your computer.** Every agent works on its **own** sandboxed Linux desktop — a Docker container with a shell, files and a real Chromium — completely separate from your system. It doesn't move your mouse, take over your screen or read your files. Watch a movie, play a game or keep coding while it works. Or watch it work, live, and take the wheel whenever you want.
 
 **📱 Control it from anywhere.** Pair Telegram in two minutes — scan a QR code and you're done. No public URL, no tunnel, no port forwarding: Oryn polls Telegram from your machine. Your agents answer from wherever you are, with live progress and screenshots.
 
 **🧠 Any model, your keys.** OpenAI, Anthropic, Google, xAI, Groq, Mistral, DeepSeek, OpenRouter, Ollama, LM Studio, or any OpenAI-compatible endpoint. Pick a model per agent. No subscription — you pay providers directly for what you use.
 
-**🗑️ Disposable machines.** Reset an agent and its sandbox is destroyed. Delete it and it's gone. Turn on auto-delete and workstations vanish after every session — while the agent's memory stays safe on your disk.
+**🗑️ Disposable machines.** Reset an agent and its container is destroyed. Delete it and it's gone. Turn on auto-delete and workstations vanish after every session — while the agent's memory stays safe on your disk.
 
 **👥 Agents that work as a team.** Put several agents in a squad. Ask any of them; they delegate to whoever fits the job — each on its own model and its own machine.
 
@@ -62,8 +68,9 @@ npm run dev                      # → http://127.0.0.1:6796
 |  | **Oryn** | Hosted agents<br><sub>Muse · Grok Bot · Dots</sub> | Local computer-use agents<br><sub>e.g. OpenClaw</sub> |
 | --- | --- | --- | --- |
 | Source | ✅ Open source (MIT) | ❌ Closed | ✅ Open source |
-| Where the agent works | Its own cloud sandbox | Vendor's cloud computer | Your computer |
+| Where the agent works | Its own sandboxed desktop (Docker, on your machine) | Vendor's cloud computer | Your computer |
 | Uses your mouse, screen or files | **Never** | No — vendor cloud | Yes — shell, files and apps on your machine |
+| Browses from | **Your own connection** | Vendor data centers | Your own connection |
 | Where your data lives | **Your disk** | Vendor's servers | Your disk |
 | Account required | **No** | Yes | No |
 | Card on file to shop for you | **Never** — you pay by taking control | Supported by some | Depends on setup |
@@ -83,7 +90,7 @@ npm run dev                      # → http://127.0.0.1:6796
 Name, role, standing orders, and a model of their own. Start from templates or write your own.
 
 **A workstation per agent**<br>
-A persistent Daytona sandbox with shell, filesystem and a 1024×768 desktop — created on first use, auto-stopped when idle.
+A Docker container with a shell, a persistent home folder and a 1280×800 desktop with Chromium — created on first use, stopped when idle, never touching your own files.
 
 **Live desktop, take over any time**<br>
 Watch the agent click and type in real time. Hit **Take over** and it pauses; hand it back with a note and it picks up from what you did.
@@ -100,12 +107,15 @@ Search and clean page reading through Firecrawl, with cited sources.
 **Durable turns**<br>
 Close the tab mid-task — the agent keeps going. Reopen and you're re-attached to the live stream. Stop it any time.
 
+**It tells you when it's done**<br>
+A chime and a desktop notification when an agent finishes, fails or needs you — and a Telegram message when you're away from the computer.
+
 </td>
 </tr>
 </table>
 
 <p align="center">
-  <img src="docs/assets/engineer.png" alt="An engineer agent writes and runs a Python script in its sandbox" width="49%">
+  <img src="docs/assets/engineer.png" alt="An engineer agent writes and runs a Python script; the Machine tab shows its Docker workstation" width="49%">
   <img src="docs/assets/squad.png" alt="In a squad, the engineer delegates a writing task to the writer agent" width="49%">
 </p>
 <p align="center">
@@ -131,36 +141,64 @@ Agents ask when they need a decision, confirm before anything irreversible, and 
 - **Hand-offs** — at a login, a payment page, a one-time code or a CAPTCHA, the agent stops by itself and tells you exactly where it is and what's left. The take-over view opens on your screen, and if Telegram is paired you get a message with a **live link to the desktop that works from your phone**. Pay on the agent's screen, reply "done", and it wraps up.
 - **Browses like a person** — agents open a site's home page and use its own search forms and filters instead of guessing deep links, so you can follow along and step in at any point.
 
-> **Note on browsing.** Agents can always read any page through Firecrawl. Driving arbitrary websites in the sandbox's own browser needs a Daytona organization with full internet access — lower Daytona tiers limit sandboxes to essential services (GitHub, package registries, AI APIs). The **Machine** tab has a one-click test.
+> **Real browsing, from your own connection.** Agents' machines run on your computer, so sites see an ordinary home connection rather than a data center — no blocked sites, far fewer CAPTCHAs.
 
 ## Quick start
 
-**You need:** Node.js 20.9+ and a key for at least one model provider. [Daytona](https://app.daytona.io) (workstations) and [Firecrawl](https://www.firecrawl.dev) (web) are optional but are what make agents capable — both have free tiers.
+**You need:** a computer with about 4 GB of free disk, and an API key for at least one model provider. The setup installs everything else. [Firecrawl](https://www.firecrawl.dev) (fast web search) is optional.
+
+### 1 · Set up — one command
+
+| Your system | Run this in a terminal |
+| --- | --- |
+| **macOS / Linux** | `curl -fsSL https://raw.githubusercontent.com/SouravBeraAkaSpeed/oryn/main/setup.sh \| bash` |
+| **Windows** (PowerShell) | `irm https://raw.githubusercontent.com/SouravBeraAkaSpeed/oryn/main/setup.ps1 \| iex` |
+
+Already cloned the repo? Run `./setup.sh` on macOS/Linux, or double-click **`setup.cmd`** on Windows.
+
+The setup asks once, then does the rest:
+
+1. Installs what's missing — **Git**, **Node.js**, and **Docker** (Docker Desktop through `winget` on Windows or Homebrew on macOS; Docker Engine through `get.docker.com` on Linux).
+2. Clones Oryn into `./oryn` and installs its packages.
+3. Starts Docker and builds the agents' desktop image — a few minutes, once.
+4. Creates `.env` and starts Oryn at **<http://127.0.0.1:6796>**.
+
+> The first time, Docker Desktop may ask you to accept its terms, and on Windows it can ask for a restart to turn on WSL 2. Afterwards run the setup again; it skips everything that's already done.
+
+<details>
+<summary>Prefer to do it by hand?</summary>
+
+Install [Node.js 20.9+](https://nodejs.org) and [Docker](https://docs.docker.com/get-started/get-docker/), then:
 
 ```bash
 git clone https://github.com/SouravBeraAkaSpeed/oryn.git
 cd oryn
 npm install
-npm run setup
+npm run setup     # checks Docker, builds the agents' desktop image, creates .env
+npm run dev
 ```
 
-Add keys to `.env` — or skip this and paste them into **Settings** once Oryn is running:
+</details>
+
+### 2 · Add a key
+
+Paste a model provider key into **Settings** in the app — or put it in `.env`:
 
 ```bash
 OPENAI_API_KEY=sk-...          # or any other provider
-DAYTONA_API_KEY=dtn_...        # agent workstations
-FIRECRAWL_API_KEY=fc-...       # web search & reading
+FIRECRAWL_API_KEY=fc-...       # optional: web search & reading
 ```
 
-Run it:
+### 3 · Start it any time
 
 ```bash
-npm run dev                    # development
-npm run build && npm start     # production
-docker compose up -d           # or in Docker
+cd oryn
+npm run dev                    # or: npm run build && npm start
 ```
 
-Open **<http://127.0.0.1:6796>** and deploy your first agent. *(6796 spells O-R-Y-N on a phone keypad.)*
+Open **<http://127.0.0.1:6796>** and deploy your first agent. *(6796 spells O-R-Y-N on a phone keypad.)* Prefer containers all the way down? `docker compose up -d` runs Oryn itself in Docker too.
+
+Click **alerts** in the status bar once to allow desktop notifications: you'll hear a chime and get a notification whenever an agent finishes, fails or needs you — even with Oryn in the background.
 
 ## Remote control from Telegram
 
@@ -177,7 +215,7 @@ Done — only your account can use the bot.
 /stop     interrupt the agent         /status  what's running
 ```
 
-When an agent needs you — a payment, a login, a code — the bot pings you with a live link to the agent's desktop. Finish the step from your phone, reply "done", and the agent carries on.
+When an agent needs you — a payment, a login, a code — the bot pings you with a live link to the agent's desktop. Finish the step from your phone, reply "done", and the agent carries on. Longer tasks you started at your computer report back here too when they finish, so you can walk away.
 
 Full walkthrough: **[docs/telegram.md](docs/telegram.md)**.
 
@@ -194,12 +232,12 @@ graph LR
         app --> runtime[Agent runtime]
         app --> db[(SQLite · data/oryn.db)]
         runtime --> db
+        runtime -->|docker| ws[Workstations · one container per agent]
     end
 
     runtime -->|your key| llm[Model provider]
-    runtime -->|your key| daytona[Daytona · one sandbox per agent]
-    runtime -->|your key| firecrawl[Firecrawl]
-    you -->|live desktop · noVNC| daytona
+    runtime -.->|your key, optional| firecrawl[Firecrawl]
+    you -->|live desktop · noVNC on 127.0.0.1| ws
 ```
 
 One process, one file. The Next.js server serves the UI, runs agent turns in-process through the [AI SDK](https://ai-sdk.dev), and owns the SQLite database — no queue, no worker, no backend of ours. Details in **[docs/architecture.md](docs/architecture.md)**.
@@ -209,7 +247,8 @@ One process, one file. The Next.js server serves the UI, runs agent turns in-pro
 | `lib/agent/` | Runtime, tool belt, instruction builder |
 | `lib/providers/` | Provider catalog, model factory, live model discovery |
 | `lib/telegram/` | Bot API client, formatter and the bridge |
-| `lib/workstation.ts`, `lib/web.ts` | Daytona and Firecrawl |
+| `lib/workstation.ts`, `lib/docker.ts`, `workstation/` | Agents' machines: containers, desktop control and the image they run |
+| `lib/web.ts` | Firecrawl |
 | `db/` | Drizzle schema and migrations |
 | `app/`, `components/` | The interface |
 
@@ -222,10 +261,12 @@ Every setting can come from `.env` **or** from **Settings** in the app. Values s
 | `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_GENERATIVE_AI_API_KEY`, `XAI_API_KEY`, `GROQ_API_KEY`, `MISTRAL_API_KEY`, `DEEPSEEK_API_KEY`, `OPENROUTER_API_KEY` | Hosted model providers |
 | `OLLAMA_BASE_URL`, `LMSTUDIO_BASE_URL`, `CUSTOM_BASE_URL` | Local runtimes and any OpenAI-compatible API |
 | `ORYN_DEFAULT_MODEL`, `ORYN_MAX_STEPS` | Default `provider/model`, max tool calls per turn |
-| `DAYTONA_API_KEY`, `DAYTONA_TARGET` | Agent workstations |
-| `DAYTONA_AUTO_STOP_MINUTES`, `DAYTONA_AUTO_DELETE_MINUTES` | Idle stop; disposable sandboxes |
+| `ORYN_WORKSTATION_CPUS`, `ORYN_WORKSTATION_MEMORY_GB` | Limits for each agent's machine (default 2 CPUs, 4 GB) |
+| `ORYN_WORKSTATION_AUTO_STOP_MINUTES`, `ORYN_WORKSTATION_AUTO_DELETE_MINUTES` | Idle stop; disposable machines |
+| `ORYN_PHONE_TAKEOVER` | `off` leaves the phone link out of Telegram hand-offs |
 | `FIRECRAWL_API_KEY` | Web search and reading |
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_OWNER_ID` | Remote access |
+| `ORYN_TELEGRAM_NOTIFY` | Telegram notice when a task finishes: `long` (a minute or more, default), `all` or `off` |
 | `ORYN_DATA_DIR`, `ORYN_ALLOWED_HOSTS` | Data location; extra hostnames behind your own proxy |
 | `ORYN_URL` | Where you open Oryn, for links in Telegram hand-offs |
 
@@ -236,7 +277,8 @@ Oryn has no user accounts, so it's built never to be reachable by anyone but you
 - Binds to **127.0.0.1** only, and refuses any request whose `Host` or `Origin` isn't loopback — which also blocks DNS-rebinding attacks from web pages you visit.
 - API keys never reach the browser; the UI only sees masked values, and keys are kept out of logs.
 - Telegram answers exactly **one** paired account; pairing codes are single-use and rotate after wrong guesses.
-- Agents execute only inside their sandboxes, never on your machine — and never hold your passwords or cards.
+- Agents execute only inside their own containers — never on your desktop or in your files — and never hold your passwords or cards. Their browsers have password saving and card autofill switched off.
+- Each live desktop is published on 127.0.0.1 only and asks for its own random password.
 - No telemetry. No analytics. No calls home.
 
 See [SECURITY.md](SECURITY.md) for the full model and how to report a vulnerability.
@@ -244,10 +286,10 @@ See [SECURITY.md](SECURITY.md) for the full model and how to report a vulnerabil
 ## FAQ
 
 **Does an agent control my computer?**
-No. Everything an agent does — commands, files, mouse, keyboard, browser — happens inside its own cloud sandbox. Your machine only runs the lightweight Oryn server, so you can keep using it normally.
+No. Everything an agent does — commands, files, mouse, keyboard, browser — happens inside its own Docker container: a separate Linux system with its own desktop and files. It can't see your screen, files or apps, so you keep using your computer normally. It does share your CPU and memory while it works; the limits are in Settings.
 
 **Can it book a flight or order something?**
-It can do the legwork on real websites — search, compare, fill in the details — and it will ask before anything irreversible. Logins and payments are yours: the agent hands you its screen for that step (in the app, or from your phone through Telegram), so Oryn never stores credentials or cards. Driving arbitrary sites requires a Daytona plan with full internet access (see the note above).
+It can do the legwork on real websites — search, compare, fill in the details — and it will ask before anything irreversible. Logins and payments are yours: the agent hands you its screen for that step (in the app, or from your phone through Telegram), so Oryn never stores credentials or cards.
 
 **How do I delete a thread?**
 Hover it under **Recent threads** in the sidebar and click the trash icon, or open the thread menu (⋯) in its header → **Delete thread**. The agent, its memory and its workstation stay.
@@ -255,14 +297,14 @@ Hover it under **Recent threads** in the sidebar and click the trash icon, or op
 **Where is my data?**
 In `data/oryn.db` on your disk. Back it up by copying the file; erase everything by deleting it.
 
-**Does it work without Daytona or Firecrawl?**
-Yes. Agents then chat, remember and (with Firecrawl) research, but can't run code or use a desktop. The app tells you what's missing.
+**Does it work without Docker or Firecrawl?**
+Without Docker, agents chat, remember and (with Firecrawl) research, but can't run code or use a desktop. Without Firecrawl, they search and read the web with their own browser. The app tells you what's missing.
 
 **Can I use only local models?**
 Yes — point `OLLAMA_BASE_URL` or `LMSTUDIO_BASE_URL` at your runtime and pick a model with tool calling.
 
 **What does it cost?**
-Oryn is free and MIT-licensed. Your model provider, Daytona and Firecrawl bill you directly; the **Usage** page shows tokens per model and agent.
+Oryn is free and MIT-licensed. Agents' machines run on your own computer, so they cost nothing. Your model provider (and Firecrawl, if you use it) bill you directly; the **Usage** page shows tokens per model and agent.
 
 ## Roadmap
 
@@ -271,7 +313,6 @@ Ideas we're exploring — not shipped yet. Have opinions? [Open an issue](https:
 - [ ] Scheduled and recurring tasks — standing goals that run while you sleep
 - [ ] More remote channels: WhatsApp, Discord, Slack
 - [ ] MCP connectors for email, calendar and docs
-- [ ] A fully local sandbox backend (Docker) for offline workstations
 - [ ] Voice in and out
 - [ ] Shareable agent templates
 

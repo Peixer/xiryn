@@ -35,7 +35,7 @@ body:
       label: Area
       options:
         - Agents / chat
-        - Workstations (Daytona)
+        - Workstations (Docker)
         - Web tools (Firecrawl)
         - Squads / delegation
         - Model providers

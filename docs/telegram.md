@@ -85,6 +85,14 @@ Just write to the bot like you'd write to an agent in the app.
   *via telegram*), and memory is shared: something you tell an agent on your
   phone, it remembers on your desktop.
 
+### When a task finishes
+
+Start something at your computer and walk away: when a task that took a
+minute or more finishes, the bot sends you the agent's answer, with a link to
+the thread. Reply and the same thread carries on. Set `ORYN_TELEGRAM_NOTIFY`
+to `all` to hear about every reply, or `off` to stop these notices (hand-offs
+always come through).
+
 ### Hand-offs
 
 When an agent reaches a step that's yours — a login, a payment page, a one-time
@@ -110,9 +118,12 @@ When you're done, reply here — just "done", or anything Atlas should know — 
   know — "paid, booking ref is ABC123"). The agent takes a fresh look at the
   screen and carries on from there.
 
-The phone link is a signed, short-lived Daytona preview URL for that one
-sandbox. Treat it like a password while it's valid: anyone who has it can see
-and use the agent's desktop until it expires.
+The phone link reaches the agent's desktop on your computer through a
+temporary [Cloudflare quick tunnel](https://try.cloudflare.com) that closes
+itself after 30 minutes. It carries the desktop's password, so treat it like a
+password while it's valid: anyone who has it can see and use that agent's
+desktop until it expires. Turn phone links off in Settings → Workstations (or
+`ORYN_PHONE_TAKEOVER=off`) and the notice only points you to your computer.
 
 If Oryn is reachable at a different address than `http://127.0.0.1:6796`
 (another port, or your own authenticating proxy), set `ORYN_URL` so the 💻 link

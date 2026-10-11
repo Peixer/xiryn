@@ -4,8 +4,8 @@ Guidance for AI coding agents (and humans) working in this repository.
 
 ## Product invariants — never break these
 
-1. **Local-first.** No accounts, no telemetry, no hosted backend. The only network calls go to services the user configured: model providers, Daytona, Firecrawl, Telegram.
-2. **Agents never act on the host.** Every agent tool that executes something does so in the agent's Daytona workstation (`lib/workstation.ts`).
+1. **Local-first.** No accounts, no telemetry, no hosted backend. The only network calls go to services the user configured: model providers, Firecrawl, Telegram (and a Cloudflare quick tunnel for phone take-over links). Agents' machines run in Docker on the user's computer.
+2. **Agents never act on the host.** Every agent tool that executes something does so in the agent's Docker workstation (`lib/workstation.ts`). Never mount host paths into it.
 3. **Secrets stay on the server.** Never return a raw key from a server action or render one in a component; use `describeSetting()` which masks them.
 4. **Loopback only.** Don't weaken `proxy.ts`.
 
