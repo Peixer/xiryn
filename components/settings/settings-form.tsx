@@ -887,7 +887,7 @@ function UpdateCheck({ enabled }: { enabled: boolean }) {
       <span className="flex flex-col gap-0.5">
         <span className="text-[13px] font-medium">Check GitHub for updates</span>
         <span className="text-[12px] leading-relaxed text-muted-foreground">
-          A few times a day Oryn asks GitHub&apos;s public API whether a newer version is
+          When you open it, Oryn asks GitHub&apos;s public API whether a newer version is
           out and how many stars the project has, to show an Update button. It&apos;s the
           only request Oryn makes on its own, and it sends nothing about you.
         </span>

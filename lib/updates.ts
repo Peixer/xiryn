@@ -6,11 +6,14 @@ import { REPOSITORY } from "@/lib/project"
 import { version } from "@/package.json"
 
 // Whether a newer Oryn is out, and how many stars the project has. The one
-// request Oryn makes on its own: GitHub's public API, a few times a day,
-// sending nothing about you. Off with ORYN_UPDATE_CHECK=off or in Settings.
+// request Oryn makes on its own: GitHub's public API, asked when you open
+// Oryn, sending nothing about you. Off with ORYN_UPDATE_CHECK=off or in
+// Settings.
 
 const API = `https://api.github.com/repos/${REPOSITORY}`
-const FRESH_MS = 6 * 60 * 60_000
+// Reloads within this long reuse the last answer, so they can't run into
+// GitHub's limit of 60 requests an hour
+const REUSE_MS = 60_000
 
 export type UpdateInfo = {
   stars: number | null
@@ -79,6 +82,8 @@ async function check(): Promise<UpdateInfo> {
     github<{ stargazers_count: number }>(""),
     github<{ tag_name: string }>("/releases/latest"),
   ])
+  // Rate-limited or down: keep what we knew rather than hide an update
+  if (!repo.body && !release.body) throw new Error(`GitHub answered ${repo.status}`)
   const latestVersion = release.body?.tag_name?.replace(/^v/, "") ?? null
 
   // A git clone compares commits, so anything pushed counts; other installs
@@ -106,34 +111,26 @@ async function check(): Promise<UpdateInfo> {
   }
 }
 
-// What was last learned, without waiting. Looks again in the background
-// when it's older than a few hours.
+// What was last learned, without asking GitHub (for rendering the page)
 export function getUpdateInfo(): UpdateInfo | null {
   if (!updateChecksEnabled()) return null
+  return globalForUpdates.__orynUpdates?.info ?? null
+}
+
+// Asks GitHub now. The page calls this once when it loads.
+export async function latestUpdateInfo(): Promise<UpdateInfo | null> {
+  if (!updateChecksEnabled()) return null
   const cached = globalForUpdates.__orynUpdates
-  if (
-    (!cached || Date.now() - cached.at > FRESH_MS) &&
-    !globalForUpdates.__orynUpdatesRunning
-  ) {
-    globalForUpdates.__orynUpdatesRunning = check()
-      .then((info) => {
-        globalForUpdates.__orynUpdates = { at: Date.now(), info }
-      })
-      .catch(() => {
-        // Offline or rate-limited: try again later, keep what we had
-        globalForUpdates.__orynUpdates = {
-          at: Date.now() - FRESH_MS + 15 * 60_000,
-          info: cached?.info ?? {
-            stars: null,
-            behind: null,
-            latestVersion: null,
-            available: false,
-          },
-        }
-      })
-      .finally(() => {
-        globalForUpdates.__orynUpdatesRunning = null
-      })
-  }
-  return cached?.info ?? null
+  if (cached && Date.now() - cached.at < REUSE_MS) return cached.info
+  globalForUpdates.__orynUpdatesRunning ??= check()
+    .then((info) => {
+      globalForUpdates.__orynUpdates = { at: Date.now(), info }
+    })
+    // Offline or rate-limited: keep what we knew
+    .catch(() => {})
+    .finally(() => {
+      globalForUpdates.__orynUpdatesRunning = null
+    })
+  await globalForUpdates.__orynUpdatesRunning
+  return globalForUpdates.__orynUpdates?.info ?? null
 }

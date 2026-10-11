@@ -345,7 +345,7 @@ Oryn has no user accounts, so it's built never to be reachable by anyone but you
 - Agents execute only inside their own containers — never on your desktop or in your files. Their browsers have password saving and card autofill switched off.
 - Saved logins, cards and personal details are encrypted (AES-256-GCM) with a key your operating system's keychain holds. Agents get masked hints only; Oryn types values into pages itself, logins only on their own site, payment details only after you approve that payment.
 - Each live desktop is published on 127.0.0.1 only and asks for its own random password.
-- No telemetry. No analytics. The only request Oryn makes on its own is an update check against GitHub's public API — a few times a day, sending nothing about you. Switch it off in **Settings → System** or with `ORYN_UPDATE_CHECK=off`.
+- No telemetry. No analytics. The only request Oryn makes on its own is an update check against GitHub's public API when you open Oryn, sending nothing about you. Switch it off in **Settings → System** or with `ORYN_UPDATE_CHECK=off`.
 
 See [SECURITY.md](SECURITY.md) for the full model and how to report a vulnerability.
 

@@ -1,5 +1,6 @@
 "use client"
 
+import * as React from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import {
@@ -16,6 +17,7 @@ import {
 import { useTheme } from "next-themes"
 
 import { deleteThread } from "@/actions/threads"
+import { checkForUpdates } from "@/actions/updates"
 import { LogoMark, Wordmark } from "@/components/brand"
 import { Confirm } from "@/components/confirm"
 import { Glyph, SquadGlyph } from "@/components/glyph"
@@ -24,7 +26,20 @@ import { Kbd } from "@/components/ui/kbd"
 import { toast } from "@/components/ui/toast"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { REPOSITORY_URL, STARS_SHOWN_FROM, UPDATE_GUIDE_URL } from "@/lib/project"
+import type { UpdateInfo } from "@/lib/updates"
 import { cn } from "@/lib/utils"
+
+// What the server last knew, then what GitHub says now: asked once each
+// time the page loads, so a new push shows up on the next reload
+function useUpdates(initial: UpdateInfo | null) {
+  const [fetched, setFetched] = React.useState<UpdateInfo | null | undefined>()
+  React.useEffect(() => {
+    checkForUpdates()
+      .then(setFetched)
+      .catch(() => {})
+  }, [])
+  return fetched === undefined ? initial : fetched
+}
 
 // 1234 → 1.2k
 function compact(n: number) {
@@ -123,6 +138,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname()
   const router = useRouter()
   const { resolvedTheme, setTheme } = useTheme()
+  const updates = useUpdates(status.updates)
 
   const recent = nav.threads.slice(0, 8)
   const ownerOf = (thread: (typeof nav.threads)[number]) =>
@@ -138,7 +154,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
           <Wordmark />
         </Link>
         <div className="ml-auto flex items-center gap-1.5">
-          {status.updates?.stars != null && status.updates.stars >= STARS_SHOWN_FROM && (
+          {updates?.stars != null && updates.stars >= STARS_SHOWN_FROM && (
             <a
               href={REPOSITORY_URL}
               target="_blank"
@@ -147,18 +163,18 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
               className="flex items-center gap-1 rounded-sm border px-1.5 py-px font-mono text-[10px] text-muted-foreground transition-colors hover:border-betelgeuse/40 hover:text-betelgeuse"
             >
               <StarIcon className="size-2.5 fill-current" />
-              {compact(status.updates.stars)}
+              {compact(updates.stars)}
             </a>
           )}
-          {status.updates?.available ? (
+          {updates?.available ? (
             <a
               href={UPDATE_GUIDE_URL}
               target="_blank"
               rel="noreferrer"
               title={
-                status.updates.behind
-                  ? `${status.updates.behind} new commit${status.updates.behind === 1 ? "" : "s"} on GitHub — see how to update`
-                  : `Oryn ${status.updates.latestVersion} is out — see how to update`
+                updates.behind
+                  ? `${updates.behind} new commit${updates.behind === 1 ? "" : "s"} on GitHub — see how to update`
+                  : `Oryn ${updates.latestVersion} is out — see how to update`
               }
               className="flex items-center gap-1 rounded-sm border border-betelgeuse/40 bg-betelgeuse-soft px-1.5 py-px font-mono text-[10px] text-betelgeuse transition-colors hover:bg-betelgeuse/20"
             >
