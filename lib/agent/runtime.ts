@@ -664,7 +664,11 @@ export async function startTurn({
                   agentId: current.id,
                   squadId: thread.squadId,
                   threadId,
-                  reply: textOf(reply),
+                  // Line breaks kept, so tables and lists format on Telegram
+                  reply: reply.parts
+                    .flatMap((part) => (part.type === "text" ? [part.text] : []))
+                    .join("\n\n")
+                    .trim(),
                   error: failure,
                   durationMs,
                 })
