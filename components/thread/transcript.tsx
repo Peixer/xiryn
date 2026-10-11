@@ -5,6 +5,7 @@ import type { ChatStatus } from "ai"
 import {
   ArrowDownIcon,
   BrainIcon,
+  ShieldCheckIcon,
   Undo2Icon,
   ChevronRightIcon,
   CornerDownRightIcon,
@@ -81,7 +82,15 @@ function Reasoning({ text, streaming }: { text: string; streaming: boolean }) {
   )
 }
 
-function Parts({ parts, streaming }: { parts: Part[]; streaming: boolean }) {
+function Parts({
+  parts,
+  streaming,
+  awaiting = false,
+}: {
+  parts: Part[]
+  streaming: boolean
+  awaiting?: boolean
+}) {
   // Consecutive tool calls are grouped into one block
   const blocks: (
     { kind: "tools"; parts: ToolPart[] } | { kind: "part"; part: Part; index: number }
@@ -104,7 +113,12 @@ function Parts({ parts, streaming }: { parts: Part[]; streaming: boolean }) {
           return (
             <div key={`tools-${i}`} className="-mx-2 flex flex-col gap-0.5">
               {block.parts.map((part) => (
-                <ToolCall key={part.toolCallId} part={part} live={streaming} />
+                <ToolCall
+                  key={part.toolCallId}
+                  part={part}
+                  live={streaming}
+                  awaiting={awaiting}
+                />
               ))}
             </div>
           )
@@ -165,6 +179,32 @@ function UserMessage({
     )
   }
 
+  // Answers to a payment approval or a request for a detail
+  const vault = message.metadata?.vault
+  if (vault) {
+    const said = {
+      approved: "you approved",
+      declined: "you declined",
+      "taken-over": "you're paying yourself",
+      provided: "you added to the vault",
+    }[vault.action]
+    return (
+      <div className="flex w-full items-center gap-3">
+        <span className="h-px flex-1 bg-ok/25" />
+        <span
+          className={cn(
+            "flex items-center gap-1.5 font-mono text-[11px]",
+            vault.action === "declined" ? "text-muted-foreground" : "text-ok"
+          )}
+        >
+          <ShieldCheckIcon className="size-3.5" />
+          {said} · {vault.summary}
+        </span>
+        <span className="h-px flex-1 bg-ok/25" />
+      </div>
+    )
+  }
+
   return (
     <div className="flex justify-end">
       <div className="flex max-w-[85%] flex-col items-end gap-1">
@@ -195,10 +235,13 @@ function AgentMessage({
   message,
   members,
   streaming,
+  awaiting = false,
 }: {
   message: OrynMessage
   members: AgentLite[]
   streaming: boolean
+  // The latest message, finished: its requests can still be answered
+  awaiting?: boolean
 }) {
   const parts = segments(message, members)
   const meta = message.metadata
@@ -231,6 +274,7 @@ function AgentMessage({
               <Parts
                 parts={segment.parts}
                 streaming={streaming && i === parts.length - 1}
+                awaiting={awaiting && i === parts.length - 1}
               />
             )}
           </div>
@@ -307,6 +351,7 @@ export function Transcript({
               message={message}
               members={members}
               streaming={busy && message === last}
+              awaiting={!busy && message === last}
             />
           ) : null
         )}

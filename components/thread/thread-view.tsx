@@ -27,6 +27,7 @@ import { Glyph, SquadGlyph } from "@/components/glyph"
 import { ModelSpecLabel } from "@/components/model-picker"
 import { Composer } from "@/components/thread/composer"
 import { TakeoverContext } from "@/components/thread/takeover"
+import type { VaultMarker } from "@/lib/vault-requests"
 import { Transcript, type AgentLite } from "@/components/thread/transcript"
 import { Button } from "@/components/ui/button"
 import {
@@ -557,8 +558,24 @@ export function ThreadView(props: ThreadViewProps) {
     setTimeout(() => router.refresh(), 400)
   }
 
+  // Answers to a payment approval or a request for a detail
+  const answer = (text: string, vault?: VaultMarker) => {
+    clearError()
+    sendMessage(
+      {
+        text,
+        metadata: {
+          ...(kind === "squad" && { agentId: addressee.id }),
+          ...(vault && { vault }),
+        },
+      },
+      { body: { agentId: addressee?.id } }
+    )
+    setTimeout(() => router.refresh(), 400)
+  }
+
   const takeoverControl = React.useMemo(
-    () => ({ available: canTakeOver, active: takeover, start: takeOver }),
+    () => ({ available: canTakeOver, active: takeover, start: takeOver, send: answer }),
     // takeOver closes over fresh state on every render
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [canTakeOver, takeover, busy, workbenchOpen]

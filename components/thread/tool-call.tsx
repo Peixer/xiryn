@@ -7,12 +7,15 @@ import {
   CheckIcon,
   ChevronRightIcon,
   CircleSlashIcon,
+  CreditCardIcon,
   EraserIcon,
   FileTextIcon,
   FilePenIcon,
   FolderTreeIcon,
   GlobeIcon,
   KeyboardIcon,
+  KeyRoundIcon,
+  LockIcon,
   MonitorUpIcon,
   MousePointer2Icon,
   MousePointerClickIcon,
@@ -31,6 +34,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
 import { useTakeover } from "@/components/thread/takeover"
+import { PaymentApprovalCard, SecretRequestCard } from "@/components/vault/request-cards"
 import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
 import type { OrynMessage } from "@/lib/agent/tools"
@@ -95,6 +99,18 @@ const META: Record<string, Meta> = {
   memory_write: { icon: BrainIcon, label: "remember", summary: (i) => str(i.note) },
   memory_forget: { icon: EraserIcon, label: "forget", summary: (i) => str(i.id) },
   request_takeover: { icon: HandIcon, label: "hand over", summary: (i) => str(i.reason) },
+  vault_list: { icon: LockIcon, label: "vault", summary: () => "list saved items" },
+  vault_fill: {
+    icon: KeyRoundIcon,
+    label: "fill",
+    summary: (i) => `${str(i.field).replace(/_/g, " ")} from the vault`,
+  },
+  request_payment_approval: {
+    icon: CreditCardIcon,
+    label: "pay?",
+    summary: (i) => `${str(i.amount)} to ${str(i.merchant)}`,
+  },
+  request_secret: { icon: KeyRoundIcon, label: "ask", summary: (i) => str(i.reason) },
 }
 
 export function toolName(part: ToolPart) {
@@ -317,7 +333,16 @@ function TakeoverRequest({ part }: { part: ToolPart }) {
   )
 }
 
-export function ToolCall({ part, live = true }: { part: ToolPart; live?: boolean }) {
+export function ToolCall({
+  part,
+  live = true,
+  awaiting = false,
+}: {
+  part: ToolPart
+  live?: boolean
+  // The latest thing in the thread: a request in it can still be answered
+  awaiting?: boolean
+}) {
   const name = toolName(part)
   const meta = META[name] ?? { icon: SquareTerminalIcon, label: name }
   const Icon = meta.icon
@@ -331,6 +356,25 @@ export function ToolCall({ part, live = true }: { part: ToolPart; live?: boolean
 
   if (toolName(part) === "request_takeover" && part.state === "output-available") {
     return <TakeoverRequest part={part} />
+  }
+  if (name === "request_payment_approval" && part.state === "output-available") {
+    const output = part.output as { approvalId: string }
+    return <PaymentApprovalCard approvalId={output.approvalId} awaiting={awaiting} />
+  }
+  if (name === "request_secret" && part.state === "output-available") {
+    const output = part.output as {
+      kind: "login" | "card" | "upi" | "identity" | "code"
+      reason: string
+      site: string | null
+    }
+    return (
+      <SecretRequestCard
+        kind={output.kind}
+        reason={output.reason}
+        site={output.site}
+        awaiting={awaiting}
+      />
+    )
   }
 
   // A shared screen is meant to be seen, so it is shown open

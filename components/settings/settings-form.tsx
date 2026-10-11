@@ -19,6 +19,7 @@ import { fetchProviderModels, saveSettings, testIntegration } from "@/actions/se
 import { buildWorkstationImage, dockerStatus, startDocker } from "@/actions/workstation"
 import { ModelPicker } from "@/components/model-picker"
 import { Button } from "@/components/ui/button"
+import { VaultPanel } from "@/components/settings/vault-panel"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
   Collapsible,
@@ -879,6 +880,7 @@ export function SettingsForm({
     ["model", "Model"],
     ["providers", "Providers"],
     ["integrations", "Integrations"],
+    ["vault", "Vault"],
     ["remote", "Remote access"],
     ["system", "System"],
   ]
@@ -960,8 +962,17 @@ export function SettingsForm({
         </Section>
 
         <Section
+          id="vault"
+          kicker="04 · vault"
+          title="Vault"
+          description="What agents may use on your behalf — encrypted here, never shown to them."
+        >
+          <VaultPanel />
+        </Section>
+
+        <Section
           id="remote"
-          kicker="04 · remote access"
+          kicker="05 · remote access"
           title="Telegram"
           description="Talk to your agents from anywhere. Oryn polls Telegram from this machine — no public URL, no port forwarding, no tunnel."
         >
@@ -970,7 +981,7 @@ export function SettingsForm({
 
         <Section
           id="system"
-          kicker="05 · system"
+          kicker="06 · system"
           title="System"
           description="Where your data lives and what Oryn is running on."
         >
