@@ -61,7 +61,7 @@ export async function webSearch(query: string, limit = 5) {
   }))
 }
 
-export async function webFetch(url: string, maxChars = 24_000) {
+export async function webFetch(url: string, maxChars = 12_000) {
   const data = await firecrawl<{
     markdown?: string
     metadata?: { title?: string; sourceURL?: string; statusCode?: number }
