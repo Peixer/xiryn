@@ -14,8 +14,10 @@ import { activeThreadIds, loadMessages } from "@/lib/agent/runtime"
 import { describeSetting, getSetting } from "@/lib/config"
 import { providers } from "@/lib/providers/catalog"
 import { configuredProviders, resolveModelSpec } from "@/lib/providers/registry"
+import { engineSnapshot } from "@/lib/docker"
 import { isWebConfigured } from "@/lib/web"
 import { isWorkstationConfigured } from "@/lib/workstation"
+import { version } from "@/package.json"
 
 /* ───────────────────────────── sidebar ──────────────────────────── */
 
@@ -181,7 +183,7 @@ export function getSystemStatus() {
   const configured = configuredProviders().map((p) => p.id)
   const defaultModel = resolveModelSpec(null)
   return {
-    version: process.env.npm_package_version ?? "0.1.0",
+    version,
     // Filled in per request by the layout
     host: null as string | null,
     node: process.version,
@@ -191,6 +193,8 @@ export function getSystemStatus() {
     defaultModel,
     defaultModelSource: describeSetting("model.default").source,
     workstation: isWorkstationConfigured(),
+    // missing · stopped · ready (null until Docker has been looked at once)
+    docker: engineSnapshot()?.state ?? null,
     web: isWebConfigured(),
     ready: !!defaultModel && configured.length > 0,
     running: activeThreadIds(),
@@ -216,12 +220,12 @@ export function getSettingsView() {
     defaultModel: describeSetting("model.default"),
     resolvedDefaultModel: resolveModelSpec(null),
     maxSteps: describeSetting("agent.maxSteps"),
-    daytona: {
-      apiKey: describeSetting("daytona.apiKey"),
-      apiUrl: describeSetting("daytona.apiUrl"),
-      target: describeSetting("daytona.target"),
-      autoStop: describeSetting("daytona.autoStop"),
-      autoDelete: describeSetting("daytona.autoDelete"),
+    workstation: {
+      cpus: describeSetting("workstation.cpus"),
+      memory: describeSetting("workstation.memory"),
+      autoStop: describeSetting("workstation.autoStop"),
+      autoDelete: describeSetting("workstation.autoDelete"),
+      phoneLinks: describeSetting("workstation.phoneLinks"),
     },
     firecrawl: {
       apiKey: describeSetting("firecrawl.apiKey"),

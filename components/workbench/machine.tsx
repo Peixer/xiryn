@@ -36,11 +36,14 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 }
 
 const tone: Record<string, string> = {
-  started: "bg-ok",
+  running: "bg-ok",
   starting: "animate-pulse-dot bg-rigel text-rigel",
-  stopping: "animate-pulse-dot bg-warn text-warn",
-  creating: "animate-pulse-dot bg-rigel text-rigel",
-  error: "bg-destructive",
+  "no-docker": "bg-warn",
+}
+
+function size(bytes: number) {
+  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GiB`
+  return `${Math.max(1, Math.round(bytes / 1024 ** 2))} MiB`
 }
 
 export function Machine({
@@ -100,13 +103,14 @@ export function Machine({
     }
   }
 
-  if (status?.state === "unconfigured") {
+  if (status?.state === "no-docker" && status.reason === "missing") {
     return (
       <div className="flex flex-col gap-3 p-4">
         <span className="label-mono">{"// workstation offline"}</span>
         <p className="text-[13px] leading-relaxed text-muted-foreground">
-          Each agent can own a persistent Linux machine with a shell, files and a desktop,
-          powered by Daytona. Add your Daytona API key to turn it on.
+          Each agent can own a Linux machine with a shell, files and a desktop with a
+          browser. It runs in Docker on this computer, separate from your own files.
+          Install Docker to turn it on — Settings shows how.
         </p>
         <Button
           size="sm"
@@ -121,7 +125,7 @@ export function Machine({
     )
   }
 
-  const provisioned = status && "id" in status
+  const provisioned = status && "container" in status
 
   return (
     <div className="flex flex-col gap-4 p-3">
@@ -136,9 +140,9 @@ export function Machine({
           {status === null
             ? "checking…"
             : status.state === "unprovisioned"
-              ? "not provisioned"
-              : status.state === "missing"
-                ? "missing — will be recreated"
+              ? "not created yet"
+              : status.state === "no-docker"
+                ? "docker stopped"
                 : status.state}
         </span>
         <Button
@@ -161,11 +165,20 @@ export function Machine({
       <div className="divide-y rounded-lg border px-3">
         {provisioned ? (
           <>
-            <Row label="sandbox">{status.id}</Row>
-            <Row label="cpu">{status.cpu} vCPU</Row>
-            <Row label="memory">{status.memory} GiB</Row>
-            <Row label="disk">{status.disk} GiB</Row>
-            <Row label="region">{status.target}</Row>
+            <Row label="container">{status.container}</Row>
+            <Row label="limits">
+              {status.cpus || "all"} cpu ·{" "}
+              {status.memoryGb ? `${status.memoryGb} GiB` : "no"} memory
+            </Row>
+            <Row label="screen">{status.screen}</Row>
+            <Row label="home">
+              {status.diskBytes === null ? "—" : `${size(status.diskBytes)} used`}
+            </Row>
+            {status.outdated && (
+              <Row label="image">
+                <span className="text-warn">update on next start</span>
+              </Row>
+            )}
             <Row label="internet">
               {internet === null ? (
                 <button
@@ -192,7 +205,7 @@ export function Machine({
                   )}
                   title={
                     internet === "restricted"
-                      ? "Your Daytona plan limits sandboxes to essential services (GitHub, package registries, AI APIs). Browsing arbitrary sites needs full internet access (Tier 3+)."
+                      ? "Only some sites are reachable. A firewall, VPN or proxy on this computer may be filtering Docker's traffic."
                       : undefined
                   }
                 >
@@ -207,14 +220,15 @@ export function Machine({
           </>
         ) : (
           <p className="py-3 text-[12.5px] leading-relaxed text-muted-foreground">
-            The machine is created the first time the agent needs it — or now, if you
-            start it.
+            {status?.state === "no-docker"
+              ? status.detail
+              : "The machine is created the first time the agent needs it — or now, if you start it."}
           </p>
         )}
       </div>
 
       <div className="flex flex-wrap gap-2">
-        {(!provisioned || status.state !== "started") && (
+        {(!provisioned || status.state !== "running") && (
           <Button
             size="sm"
             variant="secondary"
@@ -229,7 +243,7 @@ export function Machine({
             Start
           </Button>
         )}
-        {provisioned && status.state === "started" && (
+        {provisioned && status.state === "running" && (
           <Button
             size="sm"
             variant="outline"
@@ -258,23 +272,22 @@ export function Machine({
               </Button>
             }
             title="Reset the workstation?"
-            description="The sandbox and every file on it are deleted. A fresh machine is created the next time the agent needs one. Memory is not affected."
+            description="The container and every file in its home folder are deleted. A fresh machine is created the next time the agent needs one. Memory is not affected."
             action="Reset workstation"
             onConfirm={() => run("reset", () => wipeWorkstation(agentId))}
           />
         )}
       </div>
-      {internet === "restricted" && (
+      {internet && internet !== "full" && (
         <p className="rounded-md border border-warn/30 bg-warn/5 p-2.5 text-[12px] leading-relaxed text-muted-foreground">
-          This sandbox can reach GitHub, package registries and AI APIs, but not the open
-          web — your Daytona plan restricts egress. Agents can still read any page through
-          Firecrawl. Browsing arbitrary sites on the desktop needs a Daytona org with full
-          internet access.
+          {internet === "offline"
+            ? "This machine can't reach the internet. Check that this computer is online and that Docker's network isn't blocked by a VPN or firewall."
+            : "Some sites are unreachable from this machine. A VPN, proxy or firewall on this computer may be filtering Docker's traffic."}
         </p>
       )}
       <p className="text-[11.5px] leading-relaxed text-faint">
-        Runs in your own Daytona account, which bills running time. Idle machines stop
-        automatically; files are kept unless auto-delete is on.
+        Runs in Docker on this computer, browsing from your own connection. It stops
+        itself when idle and keeps its files unless auto-delete is on.
       </p>
     </div>
   )

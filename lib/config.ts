@@ -19,12 +19,16 @@ type SettingDef = {
 const integrationSettings = {
   "model.default": { env: "ORYN_DEFAULT_MODEL" },
   "agent.maxSteps": { env: "ORYN_MAX_STEPS", fallback: "40" },
-  "daytona.apiKey": { env: "DAYTONA_API_KEY", secret: true },
-  "daytona.apiUrl": { env: "DAYTONA_API_URL", fallback: "https://app.daytona.io/api" },
-  "daytona.target": { env: "DAYTONA_TARGET" },
-  "daytona.autoStop": { env: "DAYTONA_AUTO_STOP_MINUTES", fallback: "15" },
+  // Limits for each agent's workstation container
+  "workstation.cpus": { env: "ORYN_WORKSTATION_CPUS", fallback: "2" },
+  "workstation.memory": { env: "ORYN_WORKSTATION_MEMORY_GB", fallback: "4" },
+  // Idle minutes before a workstation stops itself; 0 keeps it running
+  "workstation.autoStop": { env: "ORYN_WORKSTATION_AUTO_STOP_MINUTES", fallback: "15" },
   // Unset keeps workstations until you reset or delete the agent
-  "daytona.autoDelete": { env: "DAYTONA_AUTO_DELETE_MINUTES" },
+  "workstation.autoDelete": { env: "ORYN_WORKSTATION_AUTO_DELETE_MINUTES" },
+  // "off" leaves the phone link out of Telegram hand-off notices
+  "workstation.phoneLinks": { env: "ORYN_PHONE_TAKEOVER", fallback: "on" },
+  "workstation.installId": { env: null, internal: true },
   "firecrawl.apiKey": { env: "FIRECRAWL_API_KEY", secret: true },
   "firecrawl.apiUrl": { env: "FIRECRAWL_API_URL", fallback: "https://api.firecrawl.dev" },
   "telegram.botToken": { env: "TELEGRAM_BOT_TOKEN", secret: true },

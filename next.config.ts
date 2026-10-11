@@ -8,7 +8,7 @@ const nextConfig: NextConfig = {
   // Oryn ships its own contributor guide; don't let `next dev` write one
   agentRules: false,
   // Native or Node-only packages that must not be bundled
-  serverExternalPackages: ["better-sqlite3", "@daytona/sdk"],
+  serverExternalPackages: ["better-sqlite3"],
 }
 
 export default nextConfig

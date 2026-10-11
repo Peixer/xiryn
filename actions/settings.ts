@@ -6,7 +6,6 @@ import { isWritableSetting, setSetting } from "@/lib/config"
 import { getProviderMeta, parseModelSpec, type ProviderId } from "@/lib/providers/catalog"
 import { discoverModels } from "@/lib/providers/discover"
 import { pingFirecrawl } from "@/lib/web"
-import { pingDaytona } from "@/lib/workstation"
 
 function reason(error: unknown) {
   return error instanceof Error ? error.message : String(error)
@@ -23,11 +22,20 @@ export async function saveSettings(values: Record<string, string | null>) {
       )
     }
     if (
-      (key === "daytona.autoStop" || key === "daytona.autoDelete") &&
+      (key === "workstation.autoStop" || key === "workstation.autoDelete") &&
       value &&
       !/^\d{1,5}$/.test(value.trim())
     ) {
       throw new Error("Minutes must be a whole number.")
+    }
+    if (key === "workstation.cpus" && value && !/^(\d{1,2})(\.\d)?$/.test(value.trim())) {
+      throw new Error("CPUs must be a number, e.g. 2 or 1.5.")
+    }
+    if (key === "workstation.memory" && value && !/^\d{1,3}$/.test(value.trim())) {
+      throw new Error("Memory must be a whole number of GB.")
+    }
+    if (key === "workstation.phoneLinks" && value && !/^(on|off)$/.test(value.trim())) {
+      throw new Error("Phone take-over links are either on or off.")
     }
     if (key === "agent.maxSteps" && value && !/^\d{1,3}$/.test(value.trim())) {
       throw new Error("Max steps must be a whole number.")
@@ -46,15 +54,9 @@ export async function fetchProviderModels(provider: ProviderId) {
   }
 }
 
-export async function testIntegration(name: "daytona" | "firecrawl") {
+export async function testIntegration(name: "firecrawl") {
+  if (name !== "firecrawl") return { ok: false as const, error: "Unknown integration" }
   try {
-    if (name === "daytona") {
-      const { sandboxes } = await pingDaytona()
-      return {
-        ok: true as const,
-        detail: `Connected · ${sandboxes} Oryn workstation${sandboxes === 1 ? "" : "s"}`,
-      }
-    }
     const { remainingCredits, planCredits } = await pingFirecrawl()
     const credits =
       remainingCredits === null

@@ -5,16 +5,21 @@ import { useRouter } from "next/navigation"
 import {
   CheckIcon,
   ChevronRightIcon,
+  ContainerIcon,
   ExternalLinkIcon,
+  HammerIcon,
   KeyRoundIcon,
+  PlayIcon,
   PlugIcon,
   RotateCcwIcon,
   XIcon,
 } from "lucide-react"
 
 import { fetchProviderModels, saveSettings, testIntegration } from "@/actions/settings"
+import { buildWorkstationImage, dockerStatus, startDocker } from "@/actions/workstation"
 import { ModelPicker } from "@/components/model-picker"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Collapsible,
   CollapsibleContent,
@@ -348,7 +353,7 @@ function IntegrationCard({
   fields,
 }: {
   name: string
-  kind: "daytona" | "firecrawl"
+  kind: "firecrawl"
   description: string
   href: string
   fields: {
@@ -492,6 +497,307 @@ function IntegrationCard({
   )
 }
 
+/* ────────────────────────── workstations ───────────────────────── */
+
+type DockerView = Awaited<ReturnType<typeof dockerStatus>>
+
+const INSTALL: Record<string, { command: string; href: string }> = {
+  win32: {
+    command: "winget install -e --id Docker.DockerDesktop",
+    href: "https://docs.docker.com/desktop/setup/install/windows-install/",
+  },
+  darwin: {
+    command: "brew install --cask docker",
+    href: "https://docs.docker.com/desktop/setup/install/mac-install/",
+  },
+  linux: {
+    command: "curl -fsSL https://get.docker.com | sudo sh",
+    href: "https://docs.docker.com/engine/install/",
+  },
+}
+
+function gib(bytes: number) {
+  return `${(bytes / 1024 ** 3).toFixed(bytes >= 10 * 1024 ** 3 ? 0 : 1)} GiB`
+}
+
+function elapsed(since: number) {
+  const seconds = Math.max(0, Math.round((Date.now() - since) / 1000))
+  return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${seconds % 60}s`
+}
+
+function WorkstationCard({ data }: { data: SettingsData }) {
+  const router = useRouter()
+  const { save, pending } = useSave()
+  const [docker, setDocker] = React.useState<DockerView | null>(null)
+  const [busy, setBusy] = React.useState<"start" | "build" | null>(null)
+  const [error, setError] = React.useState<string | null>(null)
+  const settings = data.workstation
+  const local = (setting: SettingView) =>
+    setting.source === "local" ? (setting.value ?? "") : ""
+  const [values, setValues] = React.useState(() => ({
+    cpus: local(settings.cpus),
+    memory: local(settings.memory),
+    autoStop: local(settings.autoStop),
+    autoDelete: local(settings.autoDelete),
+  }))
+  const [phoneLinks, setPhoneLinks] = React.useState(settings.phoneLinks.value !== "off")
+
+  const refresh = React.useCallback(async () => {
+    try {
+      setDocker(await dockerStatus())
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause))
+    }
+  }, [])
+
+  React.useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    refresh()
+  }, [refresh])
+
+  // Follow a build while it runs
+  const building = docker?.image?.state === "building"
+  React.useEffect(() => {
+    if (!building) return
+    const timer = setInterval(refresh, 2000)
+    return () => clearInterval(timer)
+  }, [building, refresh])
+
+  const engine = docker?.engine
+  const image = docker?.image
+  const ready = engine?.state === "ready" && image?.state === "ready"
+  const install = INSTALL[docker?.platform ?? "linux"] ?? INSTALL.linux
+  const log = image && "log" in image ? image.log.slice(-8) : []
+
+  const field = (
+    key: keyof typeof values,
+    label: string,
+    setting: SettingView,
+    placeholder?: string
+  ) => (
+    <label className="flex flex-col gap-1.5">
+      <span className="flex items-center justify-between">
+        <span className="label-mono">{label}</span>
+        <span className="font-mono text-[10px] text-faint">{setting.env}</span>
+      </span>
+      <TextInput
+        value={values[key]}
+        onChange={(value) => setValues((current) => ({ ...current, [key]: value }))}
+        placeholder={setting.value ?? placeholder}
+      />
+    </label>
+  )
+
+  return (
+    <div className="flex flex-col gap-4 rounded-xl border bg-surface/50 p-4">
+      <div className="flex items-start gap-3">
+        <span
+          className={cn(
+            "mt-1.5 size-1.5 shrink-0 rounded-full",
+            ready
+              ? "bg-ok"
+              : building || busy
+                ? "animate-pulse-dot bg-rigel text-rigel"
+                : engine
+                  ? "bg-warn"
+                  : "bg-faint/50"
+          )}
+        />
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <span className="text-[14px] font-semibold">Workstations</span>
+          <p className="text-[12.5px] leading-relaxed text-muted-foreground">
+            One Docker container per agent, on this computer: a Linux desktop with a
+            browser, a shell and a home folder that persists. It browses from your own
+            connection and never touches your files.
+          </p>
+        </div>
+        <a
+          href="https://docs.docker.com/get-started/get-docker/"
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex shrink-0 items-center gap-1 font-mono text-[11px] text-muted-foreground hover:text-foreground"
+        >
+          docker <ExternalLinkIcon className="size-3" />
+        </a>
+      </div>
+
+      <div className="flex flex-col divide-y rounded-lg border">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2.5">
+          <ContainerIcon className="size-3.5 text-muted-foreground" />
+          <span className="font-mono text-[12px]">
+            {!engine
+              ? "checking docker…"
+              : engine.state === "ready"
+                ? `docker ${engine.version} · ${engine.cpus} cpu · ${gib(engine.memoryBytes)}`
+                : engine.state === "stopped"
+                  ? "docker isn't running"
+                  : "docker isn't installed"}
+          </span>
+          {engine?.state === "stopped" && engine.canStart && (
+            <Button
+              size="xs"
+              variant="secondary"
+              className="ml-auto"
+              disabled={!!busy}
+              onClick={async () => {
+                setBusy("start")
+                const result = await startDocker()
+                setBusy(null)
+                if (!result.ok) setError(result.error)
+                await refresh()
+                router.refresh()
+              }}
+            >
+              {busy === "start" ? (
+                <Spinner data-icon="inline-start" />
+              ) : (
+                <PlayIcon data-icon="inline-start" />
+              )}
+              Start Docker
+            </Button>
+          )}
+        </div>
+
+        {engine?.state === "missing" && (
+          <div className="flex flex-col gap-2 px-3 py-3 text-[12.5px] leading-relaxed text-muted-foreground">
+            <p>
+              Install Docker, then restart Oryn. In a terminal in the Oryn folder,{" "}
+              <code className="rounded-sm bg-muted px-1 font-mono text-[11.5px]">
+                npm run setup
+              </code>{" "}
+              does it for you — or run:
+            </p>
+            <code className="rounded-md border bg-background/60 px-2.5 py-1.5 font-mono text-[11.5px] text-foreground">
+              {install.command}
+            </code>
+            <a
+              href={install.href}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex w-fit items-center gap-1 font-mono text-[11px] hover:text-foreground"
+            >
+              installation guide <ExternalLinkIcon className="size-3" />
+            </a>
+          </div>
+        )}
+
+        {engine?.state === "stopped" && !engine.canStart && (
+          <p className="px-3 py-2.5 font-mono text-[11.5px] text-muted-foreground">
+            sudo systemctl start docker
+          </p>
+        )}
+
+        {engine?.state === "ready" && image && (
+          <div className="flex flex-col gap-2 px-3 py-2.5">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+              <HammerIcon className="size-3.5 text-muted-foreground" />
+              <span className="min-w-0 truncate font-mono text-[12px]">
+                {image.state === "ready"
+                  ? `image ready · ${image.tag.split(":")[1]} · ${gib(image.sizeBytes)}`
+                  : image.state === "building"
+                    ? `building image · ${elapsed(image.startedAt)}`
+                    : image.state === "failed"
+                      ? "image build failed"
+                      : "image not built yet"}
+              </span>
+              {(image.state === "absent" || image.state === "failed") && (
+                <Button
+                  size="xs"
+                  variant="secondary"
+                  className="ml-auto"
+                  disabled={!!busy}
+                  onClick={async () => {
+                    setBusy("build")
+                    setDocker(await buildWorkstationImage())
+                    setBusy(null)
+                  }}
+                >
+                  <HammerIcon data-icon="inline-start" />
+                  {image.state === "failed" ? "Try again" : "Build now"}
+                </Button>
+              )}
+              {image.state === "building" && <Spinner className="ml-auto size-3.5" />}
+            </div>
+            {image.state === "absent" && (
+              <p className="text-[12px] text-muted-foreground">
+                Built once on this computer (a few minutes), or automatically the first
+                time an agent needs its machine.
+              </p>
+            )}
+            {image.state === "building" && image.step && (
+              <p className="truncate font-mono text-[11px] text-rigel">
+                step {image.step}
+              </p>
+            )}
+            {image.state === "failed" && (
+              <p className="font-mono text-[11px] break-all text-destructive">
+                {image.error}
+              </p>
+            )}
+            {log.length > 0 && (
+              <pre className="max-h-40 overflow-auto rounded-md bg-background/60 p-2 font-mono text-[10.5px] leading-relaxed whitespace-pre-wrap text-muted-foreground">
+                {log.join("\n")}
+              </pre>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        {field("cpus", "CPUs per agent", settings.cpus, "2")}
+        {field("memory", "Memory per agent (GB)", settings.memory, "4")}
+        {field("autoStop", "Auto-stop when idle (minutes)", settings.autoStop, "15")}
+        {field(
+          "autoDelete",
+          "Auto-delete after stop (minutes)",
+          settings.autoDelete,
+          "never — keep files"
+        )}
+      </div>
+      <label className="flex items-start gap-2.5">
+        <Checkbox
+          checked={phoneLinks}
+          onCheckedChange={(checked) => setPhoneLinks(checked)}
+          className="mt-0.5"
+        />
+        <span className="flex flex-col gap-0.5">
+          <span className="text-[13px] font-medium">Phone take-over links</span>
+          <span className="text-[12px] leading-relaxed text-muted-foreground">
+            Telegram hand-offs include a link to the agent&apos;s live desktop that works
+            from your phone, through a temporary Cloudflare quick tunnel that closes after
+            30 minutes. The link carries the desktop&apos;s password.
+          </span>
+        </span>
+      </label>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          size="sm"
+          disabled={pending}
+          onClick={() =>
+            save(
+              {
+                "workstation.cpus": values.cpus.trim() || null,
+                "workstation.memory": values.memory.trim() || null,
+                "workstation.autoStop": values.autoStop.trim() || null,
+                "workstation.autoDelete": values.autoDelete.trim() || null,
+                "workstation.phoneLinks": phoneLinks ? null : "off",
+              },
+              "Workstation settings saved"
+            )
+          }
+        >
+          {pending && <Spinner data-icon="inline-start" />}
+          Save
+        </Button>
+        <span className="text-[11.5px] text-faint">
+          CPU and memory apply to machines created after saving.
+        </span>
+      </div>
+      <TestLine result={error ? { ok: false, error } : null} />
+    </div>
+  )
+}
+
 /* ──────────────────────────── model ────────────────────────────── */
 
 function ModelSection({ data }: { data: SettingsData }) {
@@ -629,40 +935,9 @@ export function SettingsForm({
           id="integrations"
           kicker="03 · integrations"
           title="Workstations & web"
-          description="Both are optional. Without Daytona agents can't run code or use a desktop; without Firecrawl they can't search or read the web."
+          description="Agents' machines run in Docker on this computer. Firecrawl is optional: without it agents search and read the web only by browsing."
         >
-          <IntegrationCard
-            name="Daytona"
-            kind="daytona"
-            href="https://app.daytona.io/dashboard/keys"
-            description="One Linux sandbox per agent — shell, filesystem and a graphical desktop — in your own Daytona account, never on your machine. Keep it, or make it disposable with auto-delete."
-            fields={[
-              {
-                key: "daytona.apiKey",
-                label: "API key",
-                setting: data.daytona.apiKey,
-                secret: true,
-              },
-              { key: "daytona.apiUrl", label: "API URL", setting: data.daytona.apiUrl },
-              {
-                key: "daytona.target",
-                label: "Region",
-                setting: data.daytona.target,
-                placeholder: "us / eu (account default)",
-              },
-              {
-                key: "daytona.autoStop",
-                label: "Auto-stop (minutes)",
-                setting: data.daytona.autoStop,
-              },
-              {
-                key: "daytona.autoDelete",
-                label: "Auto-delete after stop (minutes)",
-                setting: data.daytona.autoDelete,
-                placeholder: "never — keep files",
-              },
-            ]}
-          />
+          <WorkstationCard data={data} />
           <IntegrationCard
             name="Firecrawl"
             kind="firecrawl"

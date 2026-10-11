@@ -83,9 +83,9 @@ export default function Home() {
               : "Your machine. Your keys. Your agents."}
           </h1>
           <p className="max-w-2xl text-[15px] leading-relaxed text-muted-foreground">
-            Your agents work on their own Linux machines in the cloud — never on your
-            screen — while you keep using this computer. Conversations, memory and keys
-            stay on this disk; nothing leaves except the calls you configure.
+            Your agents work on their own sandboxed Linux desktops — never on your screen
+            — while you keep using this computer. Their machines, conversations, memory
+            and keys all stay here; nothing leaves except the calls you configure.
           </p>
         </header>
 
@@ -125,9 +125,11 @@ export default function Home() {
               optional
               name="workstation"
               detail={
-                status.workstation
-                  ? "daytona · one sandbox per agent"
-                  : "daytona not configured — agents can't run code or use a desktop"
+                status.docker === "ready"
+                  ? "docker · one container per agent, on this computer"
+                  : status.workstation
+                    ? "docker stopped · starts when an agent needs it"
+                    : "docker not found — agents can't run code or use a desktop"
               }
               href="/settings#integrations"
             />

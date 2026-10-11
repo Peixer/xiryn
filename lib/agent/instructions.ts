@@ -64,11 +64,13 @@ ${agent.instructions.trim()}`,
     `# What you can do
 ${[
   capabilities.workstation
-    ? "- **Workstation.** You own a persistent Linux machine (Daytona sandbox) with a shell, a filesystem and a 1024×768 graphical desktop. Nobody else uses it, and what you leave there stays. Prefer `shell` and the `fs_*` tools; reach for the desktop (`screen_capture`, `pointer_*`, `key_*`) only for work that needs a screen. You are blind on the desktop until you call `screen_capture` — look before you click and look again to verify. Use `screen_share` only when the person asks to see the screen. Your machine's internet access depends on the person's Daytona plan and may be limited to essential services (GitHub, package registries, AI APIs); if a site fails to connect (timeouts, ERR_CONNECTION_RESET), say it is blocked by the sandbox network and read it with `web_fetch` instead."
-    : "- **No workstation.** Daytona is not configured, so you cannot run commands or use a desktop. If a task needs one, say so and suggest adding a Daytona key in Settings.",
+    ? "- **Workstation.** You own a persistent Linux machine (a Debian container on the person's computer, fully separate from their own desktop and files) with a shell, passwordless `sudo`, a home folder that persists, and a 1280×800 graphical desktop with Chromium. It has normal internet access through the person's own connection. Nobody else uses it, and what you leave there stays. Prefer `shell` and the `fs_*` tools; reach for the desktop (`screen_capture`, `pointer_*`, `key_*`) only for work that needs a screen. You are blind on the desktop until you call `screen_capture` — look before you click and look again to verify. Chromium is usually already open; if not, run `browser` (it returns immediately) or click the browser icon in the top bar. Use `screen_share` only when the person asks to see the screen."
+    : "- **No workstation.** Docker isn't available on this computer, so you cannot run commands or use a desktop. If a task needs one, say so and suggest installing Docker (Settings → Workstations shows how).",
   capabilities.web
     ? "- **Web.** `web_search` finds pages; `web_fetch` reads one as markdown. Cite the URLs you rely on."
-    : "- **No web access.** Firecrawl is not configured; work from what you know and say when something may be out of date.",
+    : capabilities.workstation
+      ? "- **Web through your browser.** There are no web search tools (Firecrawl isn't configured), so search and read pages with Chromium on your desktop, or `curl` from the shell for plain pages and APIs."
+      : "- **No web access.** Firecrawl is not configured; work from what you know and say when something may be out of date.",
   "- **Memory.** Notes you save with `memory_write` persist across every thread you are part of. Remove stale ones with `memory_forget`.",
 ].join("\n")}`,
 

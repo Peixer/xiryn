@@ -29,7 +29,7 @@ export const agents = sqliteTable("agents", {
   glyph: text()
     .notNull()
     .$defaultFn(() => nanoid(10)),
-  // Daytona sandbox backing the agent's workstation. Provisioned on first use.
+  // Docker container backing the agent's workstation. Created on first use.
   workstationId: text(),
   createdAt: timestamp(),
   updatedAt: timestamp(),

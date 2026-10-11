@@ -11,7 +11,7 @@ import {
   Undo2Icon,
 } from "lucide-react"
 
-import { desktopStreamUrl } from "@/actions/workstation"
+import { desktopAccess } from "@/actions/workstation"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -68,14 +68,16 @@ export function Screen({
     setState("connecting")
     setError(null)
     try {
-      const [url, { default: Client }] = await Promise.all([
-        desktopStreamUrl(agentId),
+      const [{ url, password }, { default: Client }] = await Promise.all([
+        desktopAccess(agentId),
         import("@novnc/novnc"),
       ])
       if (attempt !== attemptRef.current) return
       const target = screen()
       target.replaceChildren()
-      const rfb = new Client(target, url)
+      const rfb = new Client(target, url, {
+        credentials: { username: "", password, target: "" },
+      })
       rfb.scaleViewport = true
       rfb.background = "transparent"
       rfb.viewOnly = true
@@ -139,7 +141,7 @@ export function Screen({
                   : "bg-faint/60"
           )}
         />
-        <span>display :0</span>
+        <span>display :1</span>
         <span className="text-faint">·</span>
         <span>{takeover ? "you have control" : live ? "watching" : state}</span>
         <div className="ml-auto flex items-center gap-1">
@@ -168,7 +170,7 @@ export function Screen({
 
       <div
         className={cn(
-          "relative aspect-[4/3] w-full overflow-hidden rounded-lg border bg-[oklch(0.12_0.01_265)]",
+          "relative aspect-[16/10] w-full overflow-hidden rounded-lg border bg-[oklch(0.12_0.01_265)]",
           takeover && "border-betelgeuse/40"
         )}
       >
@@ -187,15 +189,15 @@ export function Screen({
                 <div className="flex flex-col items-center gap-3">
                   <Spinner className="size-5 text-rigel" />
                   <span className="font-mono text-[11px] text-white/60">
-                    waking workstation · starting desktop
+                    starting workstation · desktop
                   </span>
                 </div>
               ) : !enabled ? (
                 <div className="flex max-w-60 flex-col items-center gap-2">
                   <MonitorIcon className="size-6 text-white/40" />
                   <p className="text-[12.5px] text-white/60">
-                    Workstations are off. Add a Daytona key in Settings to give this agent
-                    a desktop.
+                    Workstations run in Docker on this computer. Install Docker (Settings
+                    → Workstations) to give this agent a desktop.
                   </p>
                 </div>
               ) : (

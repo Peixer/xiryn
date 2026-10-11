@@ -59,11 +59,12 @@ export function StatusBar() {
       </Cell>
       <Cell
         href="/settings#integrations"
-        title="Daytona workstations"
+        title="Docker workstations"
         className="max-sm:hidden"
       >
         <Dot on={status.workstation} />
-        workstations {status.workstation ? "on" : "off"}
+        workstations{" "}
+        {status.docker === "ready" ? "on" : status.workstation ? "idle" : "off"}
       </Cell>
       <Cell
         href="/settings#integrations"

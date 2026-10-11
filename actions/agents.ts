@@ -13,7 +13,8 @@ import {
   type AgentInput,
 } from "@/db/schema"
 import { stopRun } from "@/lib/agent/runtime"
-import { deleteWorkstationById, isWorkstationConfigured } from "@/lib/workstation"
+import { engineSnapshot } from "@/lib/docker"
+import { deleteWorkstation } from "@/lib/workstation"
 
 function normalize(values: AgentInput) {
   const data = agentInputSchema.parse(values)
@@ -65,10 +66,9 @@ export async function deleteAgent(agentId: string) {
     .all()
   for (const thread of owned) stopRun(thread.id)
 
-  // The machine first: if Daytona fails, the agent stays and can be retried
-  if (agent.workstationId && isWorkstationConfigured()) {
-    await deleteWorkstationById(agent.workstationId)
-  }
+  // The machine and its files go too. With Docker stopped, the cleanup that
+  // runs in the background removes them once it's back.
+  if (engineSnapshot()?.state === "ready") await deleteWorkstation(agentId)
   db.delete(agents).where(eq(agents.id, agentId)).run()
   // A squad left with nobody in it has nothing to show
   db.delete(squads)

@@ -1,4 +1,3 @@
-import type { Sandbox } from "@daytona/sdk"
 import { tool, type InferUITools, type UIDataTypes, type UIMessage } from "ai"
 import { and, eq } from "drizzle-orm"
 import { z } from "zod"
@@ -6,7 +5,19 @@ import { z } from "zod"
 import { db } from "@/db"
 import { memories, type Agent } from "@/db/schema"
 import { webFetch, webSearch } from "@/lib/web"
-import { ensureDesktop, ensureWorkstation } from "@/lib/workstation"
+import {
+  captureScreen,
+  click,
+  drag,
+  listDirectory,
+  movePointer,
+  pressKey,
+  readFile,
+  runCommand,
+  scroll,
+  typeText,
+  writeFile,
+} from "@/lib/workstation"
 
 // The tool belt an agent carries. Every tool acts on behalf of whichever
 // agent holds the turn right now, which changes when a squad delegates.
@@ -24,8 +35,6 @@ function clip(text: string) {
   return `${text.slice(0, MAX_OUTPUT)}\n… ${text.length - MAX_OUTPUT} more characters truncated`
 }
 
-const shellQuote = (value: string) => `'${value.replace(/'/g, `'\\''`)}'`
-
 const coordinates = {
   x: z.number().int().min(0).describe("Pixels from the left edge of the screen"),
   y: z.number().int().min(0).describe("Pixels from the top edge of the screen"),
@@ -33,22 +42,14 @@ const coordinates = {
 
 /* ──────────────────────────── screen ──────────────────────────── */
 
-async function capture(sandbox: Sandbox) {
-  const [shot, display] = await Promise.all([
-    sandbox.computerUse.screenshot.takeCompressed({
-      format: "jpeg",
-      quality: 70,
-      showCursor: true,
-    }),
-    sandbox.computerUse.display.getInfo(),
-  ])
-  if (!shot.screenshot) throw new Error("The screenshot came back empty.")
-  const screen = display.displays?.[0]
+async function capture(agentId: string) {
+  const shot = await captureScreen(agentId)
+  // Old captures are blanked out of saved history (see pruneScreens)
   return {
-    image: shot.screenshot as string | null,
-    mediaType: "image/jpeg",
-    width: screen?.width ?? null,
-    height: screen?.height ?? null,
+    image: shot.image as string | null,
+    mediaType: shot.mediaType,
+    width: shot.width as number | null,
+    height: shot.height as number | null,
   }
 }
 
@@ -84,13 +85,12 @@ function screenToModel({ output }: { output: ScreenCapture }) {
 /* ────────────────────────── workstation ───────────────────────── */
 
 export function createWorkstationTools(env: ToolEnv) {
-  const machine = () => ensureWorkstation(env.current().id)
-  const desktop = () => ensureDesktop(env.current().id)
+  const agentId = () => env.current().id
 
   return {
     shell: tool({
       description:
-        "Run a shell command on your workstation (Linux, bash). Returns combined output and the exit code. Each call is a fresh shell that starts in your home directory unless `cwd` is given.",
+        "Run a shell command on your workstation (Linux, bash, with passwordless sudo). Returns combined output and the exit code. Each call is a fresh shell that starts in your home directory unless `cwd` is given. Programs started in the background keep running.",
       inputSchema: z.object({
         command: z.string().min(1).describe("The command to run"),
         cwd: z.string().optional().describe("Working directory"),
@@ -103,17 +103,14 @@ export function createWorkstationTools(env: ToolEnv) {
           .describe("Seconds before the command is abandoned. Default 120."),
       }),
       execute: async ({ command, cwd, timeout = 120 }) => {
-        const sandbox = await machine()
         const started = Date.now()
-        const result = await sandbox.process.executeCommand(
-          command,
-          cwd?.replace(/^~(\/|$)/, "") || undefined,
-          undefined,
-          timeout
-        )
+        const result = await runCommand(agentId(), command, {
+          cwd,
+          timeoutSeconds: timeout,
+        })
         return {
           exitCode: result.exitCode,
-          output: clip(result.result ?? ""),
+          output: clip(result.output),
           durationMs: Date.now() - started,
         }
       },
@@ -125,9 +122,8 @@ export function createWorkstationTools(env: ToolEnv) {
         path: z.string().describe("Path on the workstation; relative paths start at ~"),
       }),
       execute: async ({ path }) => {
-        const sandbox = await machine()
-        const file = await sandbox.fs.downloadFile(path)
-        return { path, content: clip(file.toString("utf8")), bytes: file.byteLength }
+        const file = await readFile(agentId(), path)
+        return { path, content: clip(file.content.toString("utf8")), bytes: file.bytes }
       },
     }),
 
@@ -139,11 +135,8 @@ export function createWorkstationTools(env: ToolEnv) {
         content: z.string().describe("The complete new contents"),
       }),
       execute: async ({ path, content }) => {
-        const sandbox = await machine()
-        const dir = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : ""
-        if (dir) await sandbox.process.executeCommand(`mkdir -p ${shellQuote(dir)}`)
         const bytes = Buffer.from(content, "utf8")
-        await sandbox.fs.uploadFile(bytes, path)
+        await writeFile(agentId(), path, bytes)
         return { path, bytes: bytes.byteLength }
       },
     }),
@@ -157,16 +150,8 @@ export function createWorkstationTools(env: ToolEnv) {
           .describe("Path on the workstation; relative paths start at ~"),
       }),
       execute: async ({ path }) => {
-        const sandbox = await machine()
-        const entries = await sandbox.fs.listFiles(path)
-        return {
-          path,
-          entries: entries.slice(0, 500).map((entry) => ({
-            name: entry.name,
-            dir: entry.isDir,
-            size: entry.size,
-          })),
-        }
+        const entries = await listDirectory(agentId(), path)
+        return { path, entries: entries.slice(0, 500) }
       },
     }),
 
@@ -174,7 +159,7 @@ export function createWorkstationTools(env: ToolEnv) {
       description:
         "Look at your workstation's desktop. Only you see this screenshot. Take one before clicking or typing, and again afterwards to verify the result.",
       inputSchema: z.object({}),
-      execute: async () => capture(await desktop()),
+      execute: async () => capture(agentId()),
       toModelOutput: screenToModel,
     }),
 
@@ -182,7 +167,7 @@ export function createWorkstationTools(env: ToolEnv) {
       description:
         "Show your desktop to the person: the screenshot appears in the conversation. Use only when they ask to see the screen.",
       inputSchema: z.object({}),
-      execute: async () => capture(await desktop()),
+      execute: async () => capture(agentId()),
       toModelOutput: screenToModel,
     }),
 
@@ -194,7 +179,7 @@ export function createWorkstationTools(env: ToolEnv) {
         double: z.boolean().default(false),
       }),
       execute: async ({ x, y, button, double }) => {
-        await (await desktop()).computerUse.mouse.click(x, y, button, double)
+        await click(agentId(), x, y, button, double)
         return { x, y, button, double }
       },
     }),
@@ -203,7 +188,7 @@ export function createWorkstationTools(env: ToolEnv) {
       description: "Move the pointer without clicking, e.g. to reveal a hover menu.",
       inputSchema: z.object(coordinates),
       execute: async ({ x, y }) => {
-        await (await desktop()).computerUse.mouse.move(x, y)
+        await movePointer(agentId(), x, y)
         return { x, y }
       },
     }),
@@ -217,7 +202,7 @@ export function createWorkstationTools(env: ToolEnv) {
         toY: coordinates.y,
       }),
       execute: async ({ fromX, fromY, toX, toY }) => {
-        await (await desktop()).computerUse.mouse.drag(fromX, fromY, toX, toY)
+        await drag(agentId(), fromX, fromY, toX, toY)
         return { fromX, fromY, toX, toY }
       },
     }),
@@ -230,24 +215,22 @@ export function createWorkstationTools(env: ToolEnv) {
         amount: z.number().int().min(1).max(30).default(3).describe("Wheel notches"),
       }),
       execute: async ({ x, y, direction, amount }) => {
-        await (await desktop()).computerUse.mouse.scroll(x, y, direction, amount)
+        await scroll(agentId(), x, y, direction, amount)
         return { x, y, direction, amount }
       },
     }),
 
     key_type: tool({
-      description:
-        "Type text into the focused element on the desktop. Newlines are sent as Enter.",
+      description: "Type text into the focused element on the desktop. Newlines are sent as Enter.",
       inputSchema: z.object({ text: z.string() }),
       execute: async ({ text }) => {
-        await (await desktop()).computerUse.keyboard.type(text)
+        await typeText(agentId(), text)
         return { characters: text.length }
       },
     }),
 
     key_press: tool({
-      description:
-        "Press one key, optionally with modifiers held — e.g. key 'enter', or key 'l' with ['ctrl'].",
+      description: "Press one key, optionally with modifiers held — e.g. key 'enter', or key 'l' with ['ctrl'].",
       inputSchema: z.object({
         key: z
           .string()
@@ -259,7 +242,7 @@ export function createWorkstationTools(env: ToolEnv) {
       execute: async ({ key, modifiers }) => {
         // Models sometimes send a modifier as both the key and a modifier
         const held = modifiers.filter((modifier) => modifier !== key.toLowerCase())
-        await (await desktop()).computerUse.keyboard.press(key, held)
+        await pressKey(agentId(), key, held)
         return { key, modifiers: held }
       },
     }),

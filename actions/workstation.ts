@@ -1,13 +1,17 @@
 "use server"
 
+import { revalidatePath } from "next/cache"
+
+import { ensureEngine, probeEngine } from "@/lib/docker"
 import {
   checkWorkstationNetwork,
   ensureWorkstation,
-  getDesktopStreamUrl,
+  getDesktopAccess,
   getWorkstationStatus,
   resetWorkstation,
   stopWorkstation,
 } from "@/lib/workstation"
+import { buildImage, getImageState } from "@/lib/workstation-image"
 
 function reason(error: unknown) {
   return error instanceof Error ? error.message : String(error)
@@ -44,6 +48,33 @@ export async function workstationNetwork(agentId: string) {
   }
 }
 
-export async function desktopStreamUrl(agentId: string) {
-  return getDesktopStreamUrl(agentId)
+// Where the desktop viewer connects, and the desktop's password
+export async function desktopAccess(agentId: string) {
+  return getDesktopAccess(agentId)
+}
+
+/* Docker and the workstation image, for Settings */
+
+export async function dockerStatus() {
+  const engine = await probeEngine()
+  const image = engine.state === "ready" ? await getImageState() : null
+  return { engine, image, platform: process.platform }
+}
+
+export async function startDocker() {
+  try {
+    await ensureEngine()
+    revalidatePath("/", "layout")
+    return { ok: true as const }
+  } catch (error) {
+    return { ok: false as const, error: reason(error) }
+  }
+}
+
+// Starts a build and returns right away; progress comes from dockerStatus()
+export async function buildWorkstationImage() {
+  buildImage().catch((error) =>
+    console.error("[oryn] workstation image build failed:", error)
+  )
+  return dockerStatus()
 }
