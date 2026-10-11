@@ -29,6 +29,9 @@ const integrationSettings = {
   // "off" leaves the phone link out of Telegram hand-off notices
   "workstation.phoneLinks": { env: "ORYN_PHONE_TAKEOVER", fallback: "on" },
   "workstation.installId": { env: null, internal: true },
+  // "off" stops the update check and star count (the only request Oryn makes
+  // on its own, to GitHub's public API)
+  "updates.check": { env: "ORYN_UPDATE_CHECK", fallback: "on" },
   "firecrawl.apiKey": { env: "FIRECRAWL_API_KEY", secret: true },
   "firecrawl.apiUrl": { env: "FIRECRAWL_API_URL", fallback: "https://api.firecrawl.dev" },
   "telegram.botToken": { env: "TELEGRAM_BOT_TOKEN", secret: true },

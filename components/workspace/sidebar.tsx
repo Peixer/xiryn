@@ -4,10 +4,12 @@ import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import {
   ActivityIcon,
+  ArrowUpCircleIcon,
   MoonIcon,
   PlusIcon,
   SearchIcon,
   SettingsIcon,
+  StarIcon,
   SunIcon,
   Trash2Icon,
 } from "lucide-react"
@@ -21,7 +23,13 @@ import { useWorkspace } from "@/components/workspace/context"
 import { Kbd } from "@/components/ui/kbd"
 import { toast } from "@/components/ui/toast"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { REPOSITORY_URL, STARS_SHOWN_FROM, UPDATE_GUIDE_URL } from "@/lib/project"
 import { cn } from "@/lib/utils"
+
+// 1234 → 1.2k
+function compact(n: number) {
+  return n >= 1000 ? `${(n / 1000).toFixed(n >= 10_000 ? 0 : 1)}k` : String(n)
+}
 
 function Section({
   label,
@@ -129,9 +137,40 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
           <LogoMark className="size-[22px]" />
           <Wordmark />
         </Link>
-        <span className="ml-auto rounded-sm border px-1.5 py-px font-mono text-[10px] text-muted-foreground">
-          v{status.version}
-        </span>
+        <div className="ml-auto flex items-center gap-1.5">
+          {status.updates?.stars != null && status.updates.stars >= STARS_SHOWN_FROM && (
+            <a
+              href={REPOSITORY_URL}
+              target="_blank"
+              rel="noreferrer"
+              title="Star Oryn on GitHub"
+              className="flex items-center gap-1 rounded-sm border px-1.5 py-px font-mono text-[10px] text-muted-foreground transition-colors hover:border-betelgeuse/40 hover:text-betelgeuse"
+            >
+              <StarIcon className="size-2.5 fill-current" />
+              {compact(status.updates.stars)}
+            </a>
+          )}
+          {status.updates?.available ? (
+            <a
+              href={UPDATE_GUIDE_URL}
+              target="_blank"
+              rel="noreferrer"
+              title={
+                status.updates.behind
+                  ? `${status.updates.behind} new commit${status.updates.behind === 1 ? "" : "s"} on GitHub — see how to update`
+                  : `Oryn ${status.updates.latestVersion} is out — see how to update`
+              }
+              className="flex items-center gap-1 rounded-sm border border-betelgeuse/40 bg-betelgeuse-soft px-1.5 py-px font-mono text-[10px] text-betelgeuse transition-colors hover:bg-betelgeuse/20"
+            >
+              <ArrowUpCircleIcon className="size-2.5" />
+              update
+            </a>
+          ) : (
+            <span className="rounded-sm border px-1.5 py-px font-mono text-[10px] text-muted-foreground">
+              v{status.version}
+            </span>
+          )}
+        </div>
       </div>
 
       <div className="px-3 pt-3">

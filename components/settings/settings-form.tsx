@@ -867,6 +867,35 @@ function ModelSection({ data }: { data: SettingsData }) {
   )
 }
 
+/* ─────────────────────────── updates ───────────────────────────── */
+
+function UpdateCheck({ enabled }: { enabled: boolean }) {
+  const { save, pending } = useSave()
+  return (
+    <label className="flex items-start gap-2.5 rounded-xl border bg-surface/50 p-4">
+      <Checkbox
+        checked={enabled}
+        disabled={pending}
+        onCheckedChange={(checked) =>
+          save(
+            { "updates.check": checked ? null : "off" },
+            checked ? "Update check on" : "Update check off"
+          )
+        }
+        className="mt-0.5"
+      />
+      <span className="flex flex-col gap-0.5">
+        <span className="text-[13px] font-medium">Check GitHub for updates</span>
+        <span className="text-[12px] leading-relaxed text-muted-foreground">
+          A few times a day Oryn asks GitHub&apos;s public API whether a newer version is
+          out and how many stars the project has, to show an Update button. It&apos;s the
+          only request Oryn makes on its own, and it sends nothing about you.
+        </span>
+      </span>
+    </label>
+  )
+}
+
 /* ──────────────────────────── page ─────────────────────────────── */
 
 export function SettingsForm({
@@ -1004,6 +1033,7 @@ export function SettingsForm({
               </div>
             ))}
           </div>
+          <UpdateCheck enabled={data.updateChecks} />
         </Section>
       </div>
     </div>

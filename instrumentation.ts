@@ -11,6 +11,10 @@ export async function register() {
   sweepVault()
   setInterval(sweepVault, 60 * 60_000).unref()
 
+  // Look for a newer Oryn in the background (off with ORYN_UPDATE_CHECK=off)
+  const { getUpdateInfo } = await import("./lib/updates")
+  getUpdateInfo()
+
   // Resume the Telegram bridge if a bot token is configured
   const { syncTelegram } = await import("./lib/telegram/bridge")
   syncTelegram()

@@ -40,6 +40,9 @@ export async function saveSettings(values: Record<string, string | null>) {
     if (key === "telegram.notify" && value && !/^(long|all|off)$/.test(value.trim())) {
       throw new Error("Telegram notices are long, all or off.")
     }
+    if (key === "updates.check" && value && !/^(on|off)$/.test(value.trim())) {
+      throw new Error("The update check is either on or off.")
+    }
     if (key === "agent.maxSteps" && value && !/^\d{1,3}$/.test(value.trim())) {
       throw new Error("Max steps must be a whole number.")
     }

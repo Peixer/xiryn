@@ -16,6 +16,7 @@ import { providers } from "@/lib/providers/catalog"
 import { configuredProviders, resolveModelSpec } from "@/lib/providers/registry"
 import { engineSnapshot } from "@/lib/docker"
 import { isWebConfigured } from "@/lib/web"
+import { getUpdateInfo, updateChecksEnabled } from "@/lib/updates"
 import { isWorkstationConfigured } from "@/lib/workstation"
 import { version } from "@/package.json"
 
@@ -184,6 +185,8 @@ export function getSystemStatus() {
   const defaultModel = resolveModelSpec(null)
   return {
     version,
+    // Newer Oryn on GitHub, and its star count (null until first checked)
+    updates: getUpdateInfo(),
     // Filled in per request by the layout
     host: null as string | null,
     node: process.version,
@@ -241,6 +244,7 @@ export function getSettingsView() {
       memories: db.$count(memories),
     },
     maxStepsValue: getSetting("agent.maxSteps"),
+    updateChecks: updateChecksEnabled(),
   }
 }
 
