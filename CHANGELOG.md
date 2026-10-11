@@ -2,6 +2,17 @@
 
 All notable changes to Oryn are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- **Voice typing:** a mic button in the composer. Speech is recognised by the browser — on the device where the browser supports it — and lands in the box to review before sending.
+- **A phone take-over page:** Telegram hand-off links open a page made for phones, with a keyboard button that types on the agent's desktop, a key bar (Enter, Backspace, Tab, Esc, arrows, Ctrl), Paste text, a countdown and Done. On an upright phone the desktop sits above the keys, clear of the keyboard.
+
+### Changed
+
+- The desktop's password in a phone link travels after the `#`, so it never reaches the tunnel's logs, and links are sent only once their address answers.
+
 ## [0.3.0] — 2026-10-11
 
 Agents can now sign in and pay for you — with your approval every time, and without ever seeing your details.
@@ -82,6 +93,7 @@ The first public release.
 - **Security:** loopback-only server, Host/Origin guard, masked secrets.
 - Constellation glyphs for agents and squads, dark and light themes, command palette (⌘K), responsive layout.
 
+[Unreleased]: https://github.com/SouravBeraAkaSpeed/oryn/compare/v0.3.0...HEAD
 [0.3.0]: https://github.com/SouravBeraAkaSpeed/oryn/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/SouravBeraAkaSpeed/oryn/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/SouravBeraAkaSpeed/oryn/releases/tag/v0.1.0

@@ -112,6 +112,9 @@ Close the tab mid-task — the agent keeps going. Reopen and you're re-attached 
 **It tells you when it's done**<br>
 A chime and a desktop notification when an agent finishes, fails or needs you — and a Telegram message when you're away from the computer.
 
+**Talk instead of typing**<br>
+Hit the mic and speak your request. It uses your browser's speech recognition — on the device itself where the browser supports it, so your voice never leaves your computer.
+
 </td>
 </tr>
 </table>
