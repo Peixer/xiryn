@@ -24,6 +24,8 @@ export function markdownToTelegramHtml(markdown: string) {
     keep(`<code>${escapeHtml(code)}</code>`)
   )
 
+  text = tablesToLines(text)
+
   // Links before escaping, so their URLs stay intact
   text = text.replace(
     /\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g,
@@ -45,6 +47,41 @@ export function markdownToTelegramHtml(markdown: string) {
     .replace(/^-{3,}$/gm, "———")
 
   return text.replace(/\u0000(\d+)\u0000/g, (_, index: string) => stash[Number(index)])
+}
+
+const cells = (row: string) =>
+  row
+    .trim()
+    .replace(/^\||\|$/g, "")
+    .split("|")
+    .map((cell) => cell.trim())
+
+// Telegram has no tables, and pipes are unreadable on a phone: the header
+// becomes an italic line and each row a bullet led by its first cell
+function tablesToLines(markdown: string) {
+  const lines = markdown.split("\n")
+  const out: string[] = []
+  for (let i = 0; i < lines.length; i++) {
+    const header = lines[i]
+    const rule = lines[i + 1]
+    if (
+      /^\s*\|.*\|\s*$/.test(header) &&
+      rule &&
+      /^\s*\|?\s*:?-{3,}[-:|\s]*$/.test(rule)
+    ) {
+      out.push(`*${cells(header).filter(Boolean).join(" · ")}*`)
+      i += 2
+      while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) {
+        const [first, ...rest] = cells(lines[i])
+        out.push(`- **${first}**${rest.length ? ` · ${rest.join(" · ")}` : ""}`)
+        i++
+      }
+      i--
+      continue
+    }
+    out.push(header)
+  }
+  return out.join("\n")
 }
 
 // Telegram caps a message at 4096 characters. Split the Markdown on blank
