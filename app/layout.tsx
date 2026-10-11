@@ -53,7 +53,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       suppressHydrationWarning
       className={cn(inter.variable, mono.variable)}
     >
-      <body>
+      {/* Browser extensions add attributes to <body> before React loads */}
+      <body suppressHydrationWarning>
         <ThemeProvider>
           <TooltipProvider delay={300}>{children}</TooltipProvider>
           <Toaster />

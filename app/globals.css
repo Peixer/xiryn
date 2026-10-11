@@ -284,3 +284,10 @@
 .prose-oryn :where(strong) {
   @apply font-semibold;
 }
+
+/* Oryn runs under `next dev`, whose error badge and overlay aren't meant for
+   the people using it. Errors still print in the terminal and the browser
+   console; delete this rule while working on Oryn if you want them back. */
+nextjs-portal {
+  display: none !important;
+}
