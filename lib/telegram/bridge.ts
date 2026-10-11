@@ -849,7 +849,10 @@ export async function notifyTakeover({
   // Replies on Telegram continue this exact thread
   setTarget(squadId ? { squadId, threadId } : { agentId: agent.id, threadId })
 
-  const link = await getTakeoverLink(agent.id).catch((error) => {
+  const link = await getTakeoverLink(agent.id, {
+    agent: agent.name,
+    bot: state.bot.username,
+  }).catch((error) => {
     console.error("[oryn] telegram: no phone link for the hand-off:", error)
     return null
   })

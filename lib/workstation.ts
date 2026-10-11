@@ -607,7 +607,10 @@ export function phoneLinksEnabled() {
 // A link that opens the agent's live desktop in any browser, a phone
 // included, through a temporary Cloudflare quick tunnel. The tunnel closes
 // itself after `minutes`; the link carries the desktop's password.
-export async function getTakeoverLink(agentId: string, minutes = 30) {
+export async function getTakeoverLink(
+  agentId: string,
+  { minutes = 30, agent, bot }: { minutes?: number; agent?: string; bot?: string } = {}
+) {
   if (!phoneLinksEnabled()) return null
   const { password } = await getDesktopAccess(agentId)
   const result = await execOrThrow(agentId, ["oryn-tunnel", String(minutes)], {
@@ -616,13 +619,16 @@ export async function getTakeoverLink(agentId: string, minutes = 30) {
   const base = result.stdout.toString().trim().split("\n").at(-1) ?? ""
   if (!base.startsWith("https://"))
     throw new Error("The tunnel didn't report an address.")
-  const url = new URL("/vnc.html", base)
-  url.searchParams.set("autoconnect", "true")
-  url.searchParams.set("resize", "scale")
-  url.searchParams.set("reconnect", "true")
-  url.searchParams.set("path", "websockify")
-  url.searchParams.set("password", password)
-  return { url: url.toString(), minutes }
+  // Oryn's phone page (workstation/…/novnc/oryn.html). Everything it needs
+  // rides after the #, which browsers never send to a server, so the
+  // password stays out of the tunnel's logs.
+  const fragment = new URLSearchParams({
+    password,
+    until: String(Date.now() + minutes * 60_000),
+    ...(agent && { agent }),
+    ...(bot && { bot }),
+  })
+  return { url: `${new URL("/oryn.html", base)}#${fragment}`, minutes }
 }
 
 /* ──────────────────────────── status ──────────────────────────── */

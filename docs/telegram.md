@@ -130,8 +130,12 @@ The payment page is open and waiting for your card.
 When you're done, reply here — just "done", or anything Atlas should know — and it carries on.
 ```
 
-- **📱** opens the agent's desktop in your phone's browser. Tap and type
-  directly on it — finish the payment, enter the code, solve the CAPTCHA.
+- **📱** opens the agent's desktop in your phone's browser, on a page made for
+  phones: tap to click, hold to right-click, two fingers to scroll, and
+  **⌨ Keyboard** to type with your phone's keyboard (Enter, Tab, Esc, arrows
+  and Ctrl are on the bar under the screen). Finish the payment, enter the
+  code, solve the CAPTCHA, then tap **Done**. Turn the phone sideways for a
+  bigger screen.
 - **💻** opens the thread in Oryn on your computer, ready for you to take over.
 - When you're done, **reply to the bot** (`done`, or anything the agent should
   know — "paid, booking ref is ABC123"). The agent takes a fresh look at the
