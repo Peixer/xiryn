@@ -32,6 +32,7 @@ import {
   type ToolEnv,
 } from "@/lib/agent/tools"
 import { getMaxSteps } from "@/lib/config"
+import { emit } from "@/lib/events"
 import { createModel, resolveModelSpec } from "@/lib/providers/registry"
 import { isWebConfigured } from "@/lib/web"
 import { isWorkstationConfigured } from "@/lib/workstation"
@@ -401,9 +402,14 @@ export async function startTurn({
   let current = first
   const held = [first.id]
   let brief: string | undefined
+  // Where this thread lives in the app, for notifications
+  const href = thread.squadId
+    ? `/s/${thread.squadId}/${threadId}`
+    : `/a/${first.id}/${threadId}`
   const env: ToolEnv = {
     current: () => current,
     onTakeoverRequested: async (agent, reason) => {
+      emit({ type: "takeover", threadId, href, name: agent.name, reason })
       // Loaded lazily: the bridge itself depends on this module
       const { notifyTakeover } = await import("@/lib/telegram/bridge")
       await notifyTakeover({ agent, threadId, squadId: thread.squadId, reason }).catch(
@@ -568,6 +574,41 @@ export async function startTurn({
             error: failure,
           })
           .run()
+
+        // Tell the person, wherever they are. Stopping a turn yourself needs
+        // no news, and a hand-off has already sent its own.
+        const handedOver = reply.parts.some(
+          (part) => part.type === "tool-request_takeover"
+        )
+        if (!isAborted && !handedOver) {
+          emit({
+            type: "turn-finished",
+            threadId,
+            href,
+            name: current.name,
+            preview: preview.slice(0, 280),
+            ok: !failure,
+            ...(failure && { error: failure }),
+            durationMs,
+          })
+          if (channel !== "telegram") {
+            import("@/lib/telegram/bridge")
+              .then(({ notifyFinished }) =>
+                notifyFinished({
+                  name: current.name,
+                  agentId: current.id,
+                  squadId: thread.squadId,
+                  threadId,
+                  reply: textOf(reply),
+                  error: failure,
+                  durationMs,
+                })
+              )
+              .catch((error) =>
+                console.error("[oryn] telegram: finished notice failed:", error)
+              )
+          }
+        }
       },
     })
 

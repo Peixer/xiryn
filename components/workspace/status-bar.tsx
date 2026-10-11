@@ -1,8 +1,10 @@
 "use client"
 
 import Link from "next/link"
+import { BellIcon, BellOffIcon } from "lucide-react"
 
 import { useWorkspace } from "@/components/workspace/context"
+import { useNotifications } from "@/components/workspace/notifier"
 import { cn } from "@/lib/utils"
 
 function Dot({ on, warn }: { on: boolean; warn?: boolean }) {
@@ -40,6 +42,39 @@ function Cell({
     <span title={title} className={classes}>
       {children}
     </span>
+  )
+}
+
+function NotificationsToggle() {
+  const { enabled, permission, toggle } = useNotifications()
+  const blocked = enabled && permission === "denied"
+  const unasked = enabled && permission === "default"
+  return (
+    <button
+      type="button"
+      onClick={toggle}
+      title={
+        !enabled
+          ? "Alerts off — click for a sound and a desktop notification when an agent finishes or needs you"
+          : unasked
+            ? "Sound is on. Click to allow desktop notifications too."
+            : blocked
+              ? "Sound on. Desktop notifications are blocked for this site in your browser settings."
+              : "Alerts on — sound and desktop notifications. Click to mute."
+      }
+      className="flex h-full items-center gap-1.5 px-2.5 whitespace-nowrap transition-colors hover:bg-accent/60 hover:text-foreground"
+    >
+      {enabled ? (
+        <BellIcon
+          className={cn("size-3", blocked || unasked ? "text-warn" : "text-ok")}
+        />
+      ) : (
+        <BellOffIcon className="size-3" />
+      )}
+      <span className="max-sm:hidden">
+        {!enabled ? "alerts off" : unasked ? "allow alerts" : "alerts on"}
+      </span>
+    </button>
   )
 }
 
@@ -81,6 +116,7 @@ export function StatusBar() {
           {status.running.length} running
         </Cell>
       )}
+      <NotificationsToggle />
       <Cell title={status.dbPath} className="max-md:hidden">
         sqlite
       </Cell>
