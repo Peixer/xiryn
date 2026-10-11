@@ -236,7 +236,7 @@ cd xiryn
 npm run dev                    # or: npm run build && npm start
 ```
 
-Open **<http://127.0.0.1:6796>** and deploy your first agent. *(6796 spells O-R-Y-N on a phone keypad.)* Prefer containers all the way down? `docker compose up -d` runs Xiryn itself in Docker too.
+Open **<http://127.0.0.1:6796>** and deploy your first agent. Prefer containers all the way down? `docker compose up -d` runs Xiryn itself in Docker too.
 
 Click **alerts** in the status bar once to allow desktop notifications: you'll hear a chime and get a notification whenever an agent finishes, fails or needs you — even with Xiryn in the background.
 
