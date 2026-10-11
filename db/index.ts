@@ -18,8 +18,8 @@ function open() {
   fs.mkdirSync(DATA_DIR, { recursive: true })
 
   const sqlite = new Database(DB_PATH)
-  // First, so that opening a fresh database from several processes at once
-  // (the build's workers, say) waits for the lock instead of failing
+  // First, so a second process opening the database waits for the lock
+  // instead of failing
   sqlite.pragma("busy_timeout = 5000")
   sqlite.pragma("journal_mode = WAL")
   sqlite.pragma("synchronous = NORMAL")
@@ -44,8 +44,23 @@ const globalForDb = globalThis as unknown as {
   __oryn?: ReturnType<typeof open>
 }
 
-const connection = (globalForDb.__oryn ??= open())
+// Opens the database (and applies migrations) the first time it's used, not
+// when this module is imported: `next build` imports every route in parallel
+// workers and must not touch the database at all
+export function connect() {
+  return (globalForDb.__oryn ??= open())
+}
 
-export const db = connection.db
-export const sqlite = connection.sqlite
-export type DB = typeof db
+function lazy<T extends object>(get: () => T): T {
+  return new Proxy({} as T, {
+    get(_, property) {
+      const target = get()
+      const value = Reflect.get(target, property, target)
+      return typeof value === "function" ? value.bind(target) : value
+    },
+  })
+}
+
+export type DB = ReturnType<typeof open>["db"]
+export const db: DB = lazy(() => connect().db)
+export const sqlite = lazy(() => connect().sqlite)

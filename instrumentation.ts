@@ -3,7 +3,8 @@ export async function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") return
 
   // Open the database (and apply pending migrations) before the first request
-  await import("./db")
+  const { connect } = await import("./db")
+  connect()
 
   // Resume the Telegram bridge if a bot token is configured
   const { syncTelegram } = await import("./lib/telegram/bridge")
