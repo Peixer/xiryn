@@ -93,6 +93,25 @@ the thread. Reply and the same thread carries on. Set `ORYN_TELEGRAM_NOTIFY`
 to `all` to hear about every reply, or `off` to stop these notices (hand-offs
 always come through).
 
+### Payments and codes
+
+When an agent reaches a checkout, the bot asks before anything is paid:
+
+```
+💳 Atlas wants to pay
+
+₹19,062 to MakeMyTrip
+Nonstop BLR → LKO, 7 Nov, 1 adult
+on makemytrip.com
+
+[ ✓ Pay with Visa ···· 4242 ]
+[ 🖐 I'll pay myself ] [ ✕ Decline ]
+```
+
+Tap a saved card or UPI ID to let the agent pay with it, **I'll pay myself** to get a live link to its desktop, or **Decline**. Decide in the app instead and the message updates itself. Cards and UPI IDs are saved in **Settings → Vault** on your computer — never send them in this chat.
+
+If a site sends you a one-time code, the bot asks for it: reply with just the code. It goes straight into your vault, is used once and deleted, and the message is removed from the chat. The agent never sees it.
+
 ### Hand-offs
 
 When an agent reaches a step that's yours — a login, a payment page, a one-time
