@@ -1,0 +1,277 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "streamdown/styles.css";
+
+@source "../node_modules/streamdown/dist/*.js";
+@source "../node_modules/@streamdown/code/dist/*.js";
+
+@custom-variant dark (&:is(.dark *));
+
+/* ───────────────────────────────────────────────────────────────────
+ * Oryn design tokens
+ *
+ * Two accents, named after Orion: Rigel (cool, the brand and focus color)
+ * and Betelgeuse (warm, for hand-offs and attention). Everything else is
+ * a near-neutral ramp with a faint blue cast, separated by hairlines.
+ * ─────────────────────────────────────────────────────────────────── */
+
+:root {
+  --radius: 0.4rem;
+
+  --background: oklch(0.985 0.002 250);
+  --foreground: oklch(0.2 0.01 260);
+  --surface: oklch(1 0 0);
+  --elevated: oklch(0.97 0.003 250);
+  --card: var(--surface);
+  --card-foreground: var(--foreground);
+  --popover: oklch(1 0 0);
+  --popover-foreground: var(--foreground);
+
+  --primary: oklch(0.22 0.012 260);
+  --primary-foreground: oklch(0.98 0 0);
+  --secondary: oklch(0.955 0.004 250);
+  --secondary-foreground: var(--foreground);
+  --muted: oklch(0.955 0.004 250);
+  --muted-foreground: oklch(0.52 0.012 260);
+  --faint: oklch(0.68 0.01 260);
+  --accent: oklch(0.94 0.008 245);
+  --accent-foreground: var(--foreground);
+
+  --border: oklch(0.2 0.02 260 / 10%);
+  --hairline: oklch(0.2 0.02 260 / 7%);
+  --input: oklch(0.2 0.02 260 / 14%);
+  --ring: oklch(0.6 0.15 240);
+
+  --rigel: oklch(0.56 0.16 242);
+  --rigel-soft: oklch(0.56 0.16 242 / 12%);
+  --betelgeuse: oklch(0.62 0.17 48);
+  --betelgeuse-soft: oklch(0.62 0.17 48 / 12%);
+  --ok: oklch(0.6 0.15 155);
+  --warn: oklch(0.7 0.15 75);
+  --destructive: oklch(0.58 0.21 25);
+
+  --grid-dot: oklch(0.2 0.02 260 / 9%);
+}
+
+.dark {
+  --background: oklch(0.155 0.006 265);
+  --foreground: oklch(0.945 0.005 250);
+  --surface: oklch(0.175 0.007 265);
+  --elevated: oklch(0.205 0.008 265);
+  --card: var(--surface);
+  --card-foreground: var(--foreground);
+  --popover: oklch(0.2 0.008 265);
+  --popover-foreground: var(--foreground);
+
+  --primary: oklch(0.95 0.005 250);
+  --primary-foreground: oklch(0.17 0.008 265);
+  --secondary: oklch(0.23 0.008 265);
+  --secondary-foreground: var(--foreground);
+  --muted: oklch(0.225 0.008 265);
+  --muted-foreground: oklch(0.66 0.012 260);
+  --faint: oklch(0.5 0.012 260);
+  --accent: oklch(0.25 0.012 260);
+  --accent-foreground: var(--foreground);
+
+  --border: oklch(1 0 0 / 8%);
+  --hairline: oklch(1 0 0 / 5.5%);
+  --input: oklch(1 0 0 / 11%);
+  --ring: oklch(0.75 0.13 235);
+
+  --rigel: oklch(0.79 0.12 232);
+  --rigel-soft: oklch(0.79 0.12 232 / 13%);
+  --betelgeuse: oklch(0.79 0.14 58);
+  --betelgeuse-soft: oklch(0.79 0.14 58 / 13%);
+  --ok: oklch(0.78 0.15 155);
+  --warn: oklch(0.82 0.14 80);
+  --destructive: oklch(0.68 0.19 24);
+
+  --grid-dot: oklch(1 0 0 / 6.5%);
+}
+
+@theme inline {
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, "SFMono-Regular", monospace;
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-elevated: var(--elevated);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-faint: var(--faint);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-hairline: var(--hairline);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-rigel: var(--rigel);
+  --color-rigel-soft: var(--rigel-soft);
+  --color-betelgeuse: var(--betelgeuse);
+  --color-betelgeuse-soft: var(--betelgeuse-soft);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+
+  --animate-pulse-dot: pulse-dot 1.6s ease-in-out infinite;
+  --animate-caret: caret 1s steps(2, start) infinite;
+  --animate-scan: scan 2.4s linear infinite;
+
+  @keyframes pulse-dot {
+    0%,
+    100% {
+      opacity: 1;
+      box-shadow: 0 0 0 0 color-mix(in oklch, currentColor 45%, transparent);
+    }
+    50% {
+      opacity: 0.55;
+      box-shadow: 0 0 0 4px transparent;
+    }
+  }
+  @keyframes caret {
+    to {
+      visibility: hidden;
+    }
+  }
+  @keyframes scan {
+    from {
+      background-position: -200% 0;
+    }
+    to {
+      background-position: 200% 0;
+    }
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    color-scheme: light;
+  }
+  html.dark {
+    color-scheme: dark;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings:
+      "cv11" 1,
+      "ss01" 1,
+      "ss03" 1;
+    font-size: 14px;
+  }
+  ::selection {
+    background: color-mix(in oklch, var(--rigel) 35%, transparent);
+  }
+  code,
+  kbd,
+  pre,
+  samp {
+    font-family: var(--font-mono);
+    font-feature-settings: "zero" 1;
+  }
+  :focus-visible {
+    outline-offset: 2px;
+  }
+  /* Quiet, thin scrollbars */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in oklch, var(--foreground) 14%, transparent) transparent;
+  }
+}
+
+@layer components {
+  /* Small uppercase mono labels: section headers, keys, captions */
+  .label-mono {
+    @apply font-mono text-[10.5px] font-medium tracking-[0.09em] text-muted-foreground uppercase;
+  }
+
+  /* Dotted engineering-paper backdrop */
+  .bg-grid {
+    background-image: radial-gradient(var(--grid-dot) 1px, transparent 1px);
+    background-size: 18px 18px;
+  }
+
+  .bg-grid-fade {
+    mask-image: radial-gradient(ellipse at 50% 30%, black 20%, transparent 75%);
+  }
+
+  /* A shimmering line used while something is in flight */
+  .shimmer-text {
+    background: linear-gradient(
+        90deg,
+        var(--muted-foreground) 0%,
+        var(--foreground) 50%,
+        var(--muted-foreground) 100%
+      )
+      0 0 / 200% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: var(--animate-scan);
+  }
+
+  .hairline-b {
+    box-shadow: inset 0 -1px 0 var(--hairline);
+  }
+}
+
+/* Markdown inside agent replies */
+.prose-oryn {
+  @apply text-[14px] leading-[1.7] text-foreground;
+}
+.prose-oryn :where(p, ul, ol, pre, blockquote, table, h1, h2, h3, h4) + :where(*) {
+  margin-top: 0.75em;
+}
+.prose-oryn :where(h1, h2, h3, h4) {
+  @apply font-semibold tracking-tight;
+}
+.prose-oryn :where(h1) {
+  @apply text-lg;
+}
+.prose-oryn :where(h2) {
+  @apply text-base;
+}
+.prose-oryn :where(h3, h4) {
+  @apply text-[14px];
+}
+.prose-oryn :where(ul) {
+  @apply list-disc pl-5;
+}
+.prose-oryn :where(ol) {
+  @apply list-decimal pl-5;
+}
+.prose-oryn :where(li) + :where(li) {
+  margin-top: 0.25em;
+}
+.prose-oryn :where(a) {
+  @apply text-rigel underline decoration-rigel/40 underline-offset-[3px] hover:decoration-rigel;
+}
+.prose-oryn :where(:not(pre) > code) {
+  @apply rounded-[4px] bg-muted px-[0.35em] py-[0.1em] font-mono text-[0.86em];
+}
+.prose-oryn :where(blockquote) {
+  @apply border-l-2 border-border pl-3 text-muted-foreground;
+}
+.prose-oryn :where(hr) {
+  @apply my-4 border-hairline;
+}
+.prose-oryn :where(strong) {
+  @apply font-semibold;
+}
