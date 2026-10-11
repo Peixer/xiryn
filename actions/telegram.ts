@@ -38,10 +38,19 @@ export async function saveTelegramToken(token: string | null) {
   setSetting("telegram.botToken", value)
   if (!value) unpairTelegram()
   syncTelegram()
-  // Give the first getMe a moment so the panel can show the bot's name
-  await new Promise((resolve) => setTimeout(resolve, 1500))
+  // Wait for Telegram's first answer (or refusal) so the panel can show the
+  // bot's name. On a slow connection that can take several seconds.
+  let panel = await getTelegramPanel()
+  for (
+    let waited = 0;
+    value && !panel.bot && !panel.error && waited < 15_000;
+    waited += 500
+  ) {
+    await new Promise((resolve) => setTimeout(resolve, 500))
+    panel = await getTelegramPanel()
+  }
   revalidatePath("/", "layout")
-  return getTelegramPanel()
+  return panel
 }
 
 export async function newPairingCode() {
