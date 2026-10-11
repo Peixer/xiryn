@@ -790,7 +790,10 @@ export async function notifyTakeover({
   // Replies on Telegram continue this exact thread
   setTarget(squadId ? { squadId, threadId } : { agentId: agent.id, threadId })
 
-  const link = await getTakeoverLink(agent.id).catch(() => null)
+  const link = await getTakeoverLink(agent.id).catch((error) => {
+    console.error("[oryn] telegram: no phone link for the hand-off:", error)
+    return null
+  })
   const inApp = squadId
     ? `${APP_URL}/s/${squadId}/${threadId}`
     : `${APP_URL}/a/${agent.id}/${threadId}?takeover=1`
@@ -813,4 +816,60 @@ export async function notifyTakeover({
     parse_mode: "HTML",
     link_preview_options: { is_disabled: true },
   })
+}
+
+function spoken(ms: number) {
+  const seconds = Math.round(ms / 1000)
+  if (seconds < 60) return `${seconds}s`
+  const minutes = Math.floor(seconds / 60)
+  return minutes < 60
+    ? `${minutes}m ${seconds % 60}s`
+    : `${Math.floor(minutes / 60)}h ${minutes % 60}m`
+}
+
+// Sent when a task started in the app finishes, so you hear about it on your
+// phone while you're away from the computer. Short exchanges are skipped
+// unless telegram.notify is "all". Replying continues the thread.
+export async function notifyFinished({
+  name,
+  agentId,
+  squadId,
+  threadId,
+  reply,
+  error,
+  durationMs,
+}: {
+  name: string
+  agentId: string
+  squadId: string | null
+  threadId: string
+  reply: string
+  error: string | null
+  durationMs: number
+}) {
+  const mode = getSetting("telegram.notify")
+  if (mode === "off" || (mode !== "all" && durationMs < 60_000)) return
+  const token = getSetting("telegram.botToken")
+  const owner = ownerId()
+  if (!token || !owner || !state.bot) return
+
+  setTarget(squadId ? { squadId, threadId } : { agentId, threadId })
+  const inApp = squadId
+    ? `${APP_URL}/s/${squadId}/${threadId}`
+    : `${APP_URL}/a/${agentId}/${threadId}`
+  const body = reply.length > 3000 ? `${reply.slice(0, 3000).trimEnd()}…` : reply
+
+  await say(
+    token,
+    owner,
+    [
+      error
+        ? `⚠️ **${name}** stopped after ${spoken(durationMs)}: ${error}`
+        : `✅ **${name}** finished · ${spoken(durationMs)}`,
+      body,
+      `[Open in Oryn](${inApp}) · reply here to continue`,
+    ]
+      .filter(Boolean)
+      .join("\n\n")
+  )
 }

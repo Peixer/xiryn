@@ -36,6 +36,8 @@ const integrationSettings = {
   "telegram.apiUrl": { env: "TELEGRAM_API_URL", fallback: "https://api.telegram.org" },
   // Numeric Telegram user id allowed to talk to the bot; set by pairing
   "telegram.ownerId": { env: "TELEGRAM_OWNER_ID" },
+  // Finished tasks started in the app: "long" (a minute or more), "all" or "off"
+  "telegram.notify": { env: "ORYN_TELEGRAM_NOTIFY", fallback: "long" },
   "telegram.ownerName": { env: null, internal: true },
   "telegram.pairCode": { env: null, internal: true },
   // JSON: which agent/squad and thread Telegram messages go to
