@@ -1,0 +1,3 @@
+# The container is the sandbox: Chromium's own needs kernel features that
+# Docker withholds. --test-type hides the warning bar about it.
+export CHROMIUM_FLAGS="$CHROMIUM_FLAGS --no-sandbox --test-type --disable-dev-shm-usage --no-first-run --no-default-browser-check --password-store=basic --start-maximized"

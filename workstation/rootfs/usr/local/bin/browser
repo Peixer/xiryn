@@ -1,0 +1,4 @@
+#!/bin/bash
+# browser [url]: opens Chromium on the desktop without tying up the shell.
+# With a window already open, a new tab opens in it.
+setsid -f chromium "$@" >/dev/null 2>&1 </dev/null

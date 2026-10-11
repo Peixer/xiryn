@@ -1,0 +1,59 @@
+#!/bin/bash
+# Boots the agent's desktop and keeps the container alive while it's in use.
+#
+# Xvfb draws the screen, xfwm4 and xfce4-panel make it a desktop, x11vnc
+# serves it (password protected) and websockify/noVNC put it on port 6080.
+# The container stops itself after ORYN_IDLE_MINUTES without activity, so an
+# idle agent costs nothing even when Oryn isn't running to stop it.
+
+set -u
+
+state=/tmp/oryn
+mkdir -p "$state"
+touch "$state/active"
+echo "${ORYN_IDLE_MINUTES:-15}" > "$state/idle-minutes"
+
+Xvfb "$DISPLAY" -screen 0 "${ORYN_SCREEN:-1280x800}x24" -dpi 96 -nolisten tcp \
+  >"$state/xvfb.log" 2>&1 &
+xvfb=$!
+for _ in $(seq 100); do
+  xdpyinfo >/dev/null 2>&1 && break
+  sleep 0.1
+done
+
+x11vnc -storepasswd "${ORYN_VNC_PASSWORD:?ORYN_VNC_PASSWORD is required}" \
+  "$state/vncpass" >/dev/null 2>&1
+unset ORYN_VNC_PASSWORD
+
+eval "$(dbus-launch --sh-syntax)"
+xfsettingsd --daemon >/dev/null 2>&1
+xfwm4 --compositor=off >"$state/xfwm4.log" 2>&1 &
+xfce4-panel >"$state/panel.log" 2>&1 &
+feh --no-fehbg --bg-fill /usr/share/oryn/wallpaper.png 2>/dev/null \
+  || xsetroot -solid "#0b0e14"
+
+x11vnc -display "$DISPLAY" -rfbauth "$state/vncpass" -rfbport 5900 -localhost \
+  -forever -shared -noxdamage -quiet >"$state/x11vnc.log" 2>&1 &
+vnc=$!
+websockify --web /usr/share/novnc 6080 localhost:5900 >"$state/websockify.log" 2>&1 &
+ws=$!
+
+# A browser is the first thing almost every task needs
+browser
+
+while sleep 20; do
+  for pid in "$xvfb" "$vnc" "$ws"; do
+    kill -0 "$pid" 2>/dev/null || exit 1
+  done
+
+  # Someone watching the screen or a command still running counts as activity
+  if [ -n "$(ss -Htn state established '( sport = :6080 )' 2>/dev/null)" ] \
+    || pgrep -f '^/bin/bash /usr/local/bin/oryn-run' >/dev/null; then
+    touch "$state/active"
+  fi
+
+  limit=$(cat "$state/idle-minutes" 2>/dev/null || echo 15)
+  [ "$limit" -gt 0 ] 2>/dev/null || continue
+  idle=$(( $(date +%s) - $(stat -c %Y "$state/active") ))
+  [ "$idle" -ge $(( limit * 60 )) ] && exit 0
+done
