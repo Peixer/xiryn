@@ -42,7 +42,12 @@
         height: 100%;
         background: var(--bg);
         color: var(--text);
-        font: 14px/1.4 -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+        font:
+          14px/1.4 -apple-system,
+          system-ui,
+          "Segoe UI",
+          Roboto,
+          sans-serif;
         overflow: hidden;
         overscroll-behavior: none;
       }
@@ -300,7 +305,9 @@
     <main>
       <div id="screen"></div>
       <div class="overlay" id="overlay">connecting to the desktop…</div>
-      <div class="hint" id="hint" hidden>tap = click · hold = right-click · two fingers = scroll</div>
+      <div class="hint" id="hint" hidden>
+        tap = click · hold = right-click · two fingers = scroll
+      </div>
     </main>
 
     <nav>
@@ -319,10 +326,19 @@
 
     <section class="below">
       <span class="k">// how it works</span>
-      <span><b>Tap</b> to click, <b>hold</b> to right-click, drag with <b>two fingers</b> to scroll.</span>
-      <span><b>⌨ Keyboard</b> types on the desktop; <b>Paste text</b> types a longer piece in one go.</span>
+      <span
+        ><b>Tap</b> to click, <b>hold</b> to right-click, drag with <b>two fingers</b> to
+        scroll.</span
+      >
+      <span
+        ><b>⌨ Keyboard</b> types on the desktop; <b>Paste text</b> types a longer piece in
+        one go.</span
+      >
       <span>Turn your phone sideways for a bigger screen.</span>
-      <span>Finished? Tap <b>Done</b> and reply “done” in Telegram — the agent takes it from there.</span>
+      <span
+        >Finished? Tap <b>Done</b> and reply “done” in Telegram — the agent takes it from
+        there.</span
+      >
     </section>
 
     <textarea
@@ -424,11 +440,19 @@
           setTimeout(connect, 2000)
         })
         rfb.addEventListener("credentialsrequired", () => {
-          $("overlay").textContent = "This link is missing its password. Open it again from Telegram."
+          $("overlay").textContent =
+            "This link is missing its password. Open it again from Telegram."
         })
       }
       connect()
-      setInterval(() => rfb && status($("pulse").classList.contains("live") ? "you have control" : "connecting"), 30000)
+      setInterval(
+        () =>
+          rfb &&
+          status(
+            $("pulse").classList.contains("live") ? "you have control" : "connecting"
+          ),
+        30000
+      )
 
       /* The phone keyboard: a hidden text box whose changes become keystrokes.
          Diffing against the previous value works with predictive keyboards,
@@ -446,7 +470,8 @@
       function flush() {
         const value = kbd.value
         let same = 0
-        while (same < last.length && same < value.length && last[same] === value[same]) same++
+        while (same < last.length && same < value.length && last[same] === value[same])
+          same++
         for (let i = same; i < last.length; i++) key(KEY.BackSpace)
         for (const char of value.slice(same)) typeChar(char)
         last = value
@@ -477,9 +502,11 @@
           if (button.id !== "keyboard" && button.id !== "paste") event.preventDefault()
         })
       )
-      document.querySelectorAll("[data-key]").forEach((button) =>
-        button.addEventListener("click", () => key(Number(button.dataset.key)))
-      )
+      document
+        .querySelectorAll("[data-key]")
+        .forEach((button) =>
+          button.addEventListener("click", () => key(Number(button.dataset.key)))
+        )
       $("ctrl").addEventListener("click", () => {
         ctrl = !ctrl
         $("ctrl").classList.toggle("on", ctrl)
