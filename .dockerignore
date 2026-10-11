@@ -1,0 +1,13 @@
+node_modules
+.next
+data
+.env
+.env.*
+!.env.example
+.git
+.github
+.claude
+.vscode
+docs/assets
+*.tsbuildinfo
+npm-debug.log*
