@@ -2,6 +2,15 @@
 
 All notable changes to Oryn are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- The update button shows on the next page load after a push. Oryn now asks GitHub once each time the page loads, instead of when the server starts and then every few hours.
+- Settings → System showed `[object Promise]` instead of the number of agents, squads, threads, messages and memories.
+- Next's error badge no longer appears in the corner, and attributes that browser extensions add to the page no longer cause hydration warnings.
+- An agent clearing `/tmp` on its desktop no longer shuts that desktop down or locks you out of watching it.
+
 ## [0.4.0] — 2026-10-11
 
 ### Added
