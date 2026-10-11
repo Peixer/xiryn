@@ -30,6 +30,9 @@ done
 x11vnc -storepasswd "${ORYN_VNC_PASSWORD:?ORYN_VNC_PASSWORD is required}" \
   "$state/vncpass" >/dev/null 2>&1
 unset ORYN_VNC_PASSWORD
+# Kept to put the file back if something clears /tmp: x11vnc reads it for
+# every connection
+vncpass=$(base64 -w0 "$state/vncpass")
 
 eval "$(dbus-launch --sh-syntax)"
 xfsettingsd --daemon >/dev/null 2>&1
@@ -60,6 +63,13 @@ while sleep 20; do
   if [ -n "$(ss -Htn state established '( sport = :6080 )' 2>/dev/null)" ] \
     || pgrep -f '^/bin/bash /usr/local/bin/oryn-run' >/dev/null; then
     touch "$state/active"
+  fi
+
+  # An agent clearing /tmp shouldn't take its own machine down with it
+  if [ ! -e "$state/active" ] || [ ! -s "$state/vncpass" ]; then
+    mkdir -p "$state"
+    touch "$state/active"
+    (umask 077 && echo "$vncpass" | base64 -d >"$state/vncpass")
   fi
 
   limit=$(cat "$state/idle-minutes" 2>/dev/null || echo 15)

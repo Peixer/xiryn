@@ -216,7 +216,7 @@ async function prepare(agentId: string): Promise<Session> {
       name,
       "sh",
       "-c",
-      'echo "$1" > /tmp/oryn/idle-minutes && touch /tmp/oryn/active',
+      'mkdir -p /tmp/oryn && echo "$1" > /tmp/oryn/idle-minutes && touch /tmp/oryn/active',
       "sh",
       String(idle),
     ],

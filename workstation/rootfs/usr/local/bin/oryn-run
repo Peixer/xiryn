@@ -8,6 +8,7 @@ set -u
 
 seconds="$1"
 command="$2"
+mkdir -p /tmp/oryn
 out=$(mktemp /tmp/oryn/run.XXXXXX)
 touch /tmp/oryn/active
 
