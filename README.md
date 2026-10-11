@@ -27,9 +27,7 @@
   <a href="CONTRIBUTING.md">Contribute</a>
 </p>
 
-<p align="center">
-  <img src="docs/assets/workstation.png" alt="Atlas lists the nonstop Bengaluru to Lucknow flights it found on Google Flights, with its live desktop beside the chat" width="100%">
-</p>
+https://github.com/user-attachments/assets/87cc1585-3c16-49de-9d13-0e90735ab437
 
 ---
 
@@ -119,6 +117,9 @@ Hit the mic and speak your request. It uses your browser's speech recognition â€
 </tr>
 </table>
 
+<p align="center">
+  <img src="docs/assets/workstation.png" alt="Atlas lists the nonstop Bengaluru to Lucknow flights it found on Google Flights, with its live desktop beside the chat" width="100%">
+</p>
 <p align="center">
   <img src="docs/assets/engineer.png" alt="An engineer agent writes and runs a Python script; the Machine tab shows its Docker workstation" width="49%">
   <img src="docs/assets/squad.png" alt="In a squad, the engineer delegates a writing task to the writer agent" width="49%">
