@@ -22,6 +22,7 @@ import {
 } from "lucide-react"
 
 import { createThread, deleteThread, renameThread } from "@/actions/threads"
+import { Confirm } from "@/components/confirm"
 import { Glyph, SquadGlyph } from "@/components/glyph"
 import { ModelSpecLabel } from "@/components/model-picker"
 import { Composer } from "@/components/thread/composer"
@@ -41,6 +42,9 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "@/components/ui/resizable"
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Spinner } from "@/components/ui/spinner"
 import { toast } from "@/components/ui/toast"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { Machine } from "@/components/workbench/machine"
@@ -130,6 +134,65 @@ function Workbench({
 
 /* ──────────────────────────── header ───────────────────────────── */
 
+function RenameThreadDialog({
+  open,
+  onOpenChange,
+  initial,
+  onSave,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  initial: string
+  onSave: (title: string) => Promise<void>
+}) {
+  const [value, setValue] = React.useState(initial)
+  const [saving, setSaving] = React.useState(false)
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (next) setValue(initial)
+        onOpenChange(next)
+      }}
+    >
+      <DialogContent className="sm:max-w-sm">
+        <form
+          onSubmit={async (event) => {
+            event.preventDefault()
+            if (!value.trim()) return
+            setSaving(true)
+            try {
+              await onSave(value.trim())
+              onOpenChange(false)
+            } finally {
+              setSaving(false)
+            }
+          }}
+          className="flex flex-col gap-4"
+        >
+          <DialogTitle>Rename thread</DialogTitle>
+          <Input
+            autoFocus
+            value={value}
+            maxLength={80}
+            onChange={(event) => setValue(event.target.value)}
+            placeholder="Thread title"
+          />
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={saving || !value.trim()}>
+              {saving && <Spinner data-icon="inline-start" />}
+              Save
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function ThreadHeader({
   props,
   workbenchOpen,
@@ -143,6 +206,8 @@ function ThreadHeader({
   const { nav, status, openAgentDialog, openSquadDialog } = useWorkspace()
   const { threadId, kind, owner, threads, title } = props
   const base = kind === "agent" ? `/a/${owner.id}` : `/s/${owner.id}`
+  const [renaming, setRenaming] = React.useState(false)
+  const [deleting, setDeleting] = React.useState(false)
 
   const configure = () => {
     if (kind === "agent") {
@@ -260,27 +325,11 @@ function ThreadHeader({
             <MoreHorizontalIcon />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-48">
-            <DropdownMenuItem
-              onClick={async () => {
-                const next = window.prompt("Rename thread", title ?? "")
-                if (next?.trim()) {
-                  await renameThread(threadId, next)
-                  router.refresh()
-                }
-              }}
-            >
+            <DropdownMenuItem onClick={() => setRenaming(true)}>
               <PencilIcon />
               Rename
             </DropdownMenuItem>
-            <DropdownMenuItem
-              variant="destructive"
-              onClick={async () => {
-                if (!window.confirm("Delete this thread and its messages?")) return
-                await deleteThread(threadId)
-                toast.add({ type: "success", title: "Thread deleted" })
-                router.push(base)
-              }}
-            >
+            <DropdownMenuItem variant="destructive" onClick={() => setDeleting(true)}>
               <Trash2Icon />
               Delete thread
             </DropdownMenuItem>
@@ -305,6 +354,27 @@ function ThreadHeader({
           </Tooltip>
         )}
       </div>
+      <Confirm
+        open={deleting}
+        onOpenChange={setDeleting}
+        title="Delete this thread?"
+        description={`"${title ?? "New thread"}" and its messages are deleted. ${owner.name} keeps its memory${kind === "agent" ? " and workstation" : ""}.`}
+        action="Delete thread"
+        onConfirm={async () => {
+          await deleteThread(threadId)
+          toast.add({ type: "success", title: "Thread deleted" })
+          router.push(base)
+        }}
+      />
+      <RenameThreadDialog
+        open={renaming}
+        onOpenChange={setRenaming}
+        initial={title ?? ""}
+        onSave={async (next) => {
+          await renameThread(threadId, next)
+          router.refresh()
+        }}
+      />
     </header>
   )
 }

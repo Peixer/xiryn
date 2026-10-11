@@ -15,26 +15,33 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Spinner } from "@/components/ui/spinner"
 
-// A trigger that asks before running something that can't be undone
+// Asks before running something that can't be undone. Give it a `trigger`,
+// or control it with `open`/`onOpenChange` (e.g. from a menu item).
 export function Confirm({
   trigger,
+  open: controlledOpen,
+  onOpenChange,
   title,
   description,
   action,
   onConfirm,
 }: {
-  trigger: React.ReactElement
+  trigger?: React.ReactElement
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
   title: string
   description: React.ReactNode
   action: string
   onConfirm: () => Promise<void> | void
 }) {
-  const [open, setOpen] = React.useState(false)
+  const [uncontrolledOpen, setUncontrolledOpen] = React.useState(false)
   const [busy, setBusy] = React.useState(false)
+  const open = controlledOpen ?? uncontrolledOpen
+  const setOpen = onOpenChange ?? setUncontrolledOpen
 
   return (
     <AlertDialog open={open} onOpenChange={(next) => !busy && setOpen(next)}>
-      <AlertDialogTrigger render={trigger} />
+      {trigger && <AlertDialogTrigger render={trigger} />}
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>{title}</AlertDialogTitle>
