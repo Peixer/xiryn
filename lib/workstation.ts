@@ -464,6 +464,58 @@ export function typeText(agentId: string, text: string) {
   return xdotool(agentId, ["type", "--delay", "8", "--clearmodifiers", "--", text])
 }
 
+// Types a vault value. It goes in on stdin, so it never shows up in a
+// process list, a log or a tool result.
+export function typeSecret(agentId: string, value: string) {
+  return execOrThrow(
+    agentId,
+    ["xdotool", "type", "--delay", "12", "--clearmodifiers", "--file", "-"],
+    {
+      input: value,
+      timeoutMs: 60_000,
+    }
+  )
+}
+
+// Shows the focused field as dots, so a value from the vault doesn't appear
+// in screenshots or to anyone watching. Best effort: the fill already
+// happened either way.
+export async function maskFocusedField(agentId: string) {
+  await execIn(agentId, ["oryn-mask"], { timeoutMs: 15_000 }).catch(() => null)
+}
+
+// The page in front of the person: the browser tab whose title is in the
+// focused window, read from Chromium's debugging port inside the container
+export async function currentPage(agentId: string) {
+  const [targets, focused] = await Promise.all([
+    execIn(agentId, ["curl", "-s", "-m", "4", "http://127.0.0.1:9222/json/list"], {
+      timeoutMs: 15_000,
+    }),
+    execIn(agentId, ["xdotool", "getactivewindow", "getwindowname"], {
+      timeoutMs: 15_000,
+    }),
+  ])
+  let pages: { type: string; url: string; title: string }[] = []
+  try {
+    pages = (JSON.parse(targets.stdout.toString()) as typeof pages).filter(
+      (target) => target.type === "page" && /^https?:/.test(target.url)
+    )
+  } catch {
+    return null
+  }
+  const title = focused.stdout
+    .toString()
+    .trim()
+    .replace(/ - Chromium$/, "")
+  const page = pages.find((candidate) => candidate.title === title) ?? pages[0]
+  if (!page) return null
+  return {
+    url: page.url,
+    host: new URL(page.url).hostname.replace(/^www\./, ""),
+    title: page.title,
+  }
+}
+
 // Friendly key names to X keysyms
 const KEYS: Record<string, string> = {
   enter: "Return",

@@ -44,7 +44,11 @@ vnc=$!
 websockify --web /usr/share/novnc 6080 localhost:5900 >"$state/websockify.log" 2>&1 &
 ws=$!
 
-# A browser is the first thing almost every task needs
+# A browser is the first thing almost every task needs. A stopped machine
+# ended Chromium abruptly; mark that session as closed cleanly so it doesn't
+# open with a "restore pages?" bubble.
+sed -i 's/"exit_type":"Crashed"/"exit_type":"Normal"/' \
+  "$HOME/.config/oryn-browser/Default/Preferences" 2>/dev/null
 browser
 
 while sleep 20; do
