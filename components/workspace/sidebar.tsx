@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import {
   ActivityIcon,
   MoonIcon,
@@ -9,13 +9,17 @@ import {
   SearchIcon,
   SettingsIcon,
   SunIcon,
+  Trash2Icon,
 } from "lucide-react"
 import { useTheme } from "next-themes"
 
+import { deleteThread } from "@/actions/threads"
 import { LogoMark, Wordmark } from "@/components/brand"
+import { Confirm } from "@/components/confirm"
 import { Glyph, SquadGlyph } from "@/components/glyph"
 import { useWorkspace } from "@/components/workspace/context"
 import { Kbd } from "@/components/ui/kbd"
+import { toast } from "@/components/ui/toast"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 
@@ -109,6 +113,7 @@ function Item({
 export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const { nav, status, openAgentDialog, openSquadDialog, openPalette } = useWorkspace()
   const pathname = usePathname()
+  const router = useRouter()
   const { resolvedTheme, setTheme } = useTheme()
 
   const recent = nav.threads.slice(0, 8)
@@ -217,32 +222,52 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
                 ? `/a/${thread.agentId}`
                 : `/s/${thread.squadId}`
               return (
-                <Link
-                  key={thread.id}
-                  href={`${base}/${thread.id}`}
-                  onClick={onNavigate}
-                  className={cn(
-                    "flex items-center gap-2 rounded-md px-2 py-1 text-[12.5px] transition-colors",
-                    pathname.endsWith(thread.id)
-                      ? "bg-accent text-foreground"
-                      : "text-muted-foreground hover:bg-accent/60 hover:text-foreground"
-                  )}
-                >
-                  <span
+                <div key={thread.id} className="group/thread relative">
+                  <Link
+                    href={`${base}/${thread.id}`}
+                    onClick={onNavigate}
                     className={cn(
-                      "size-1 shrink-0 rounded-full",
-                      thread.busy
-                        ? "animate-pulse-dot bg-rigel text-rigel"
-                        : "bg-faint/60"
+                      "flex items-center gap-2 rounded-md px-2 py-1 pr-7 text-[12.5px] transition-colors",
+                      pathname.endsWith(thread.id)
+                        ? "bg-accent text-foreground"
+                        : "text-muted-foreground hover:bg-accent/60 hover:text-foreground"
                     )}
+                  >
+                    <span
+                      className={cn(
+                        "size-1 shrink-0 rounded-full",
+                        thread.busy
+                          ? "animate-pulse-dot bg-rigel text-rigel"
+                          : "bg-faint/60"
+                      )}
+                    />
+                    <span className="min-w-0 flex-1 truncate">
+                      {thread.title ?? "New thread"}
+                    </span>
+                    <span className="shrink-0 font-mono text-[10px] text-faint transition-opacity group-hover/thread:opacity-0">
+                      {owner && "name" in owner ? owner.name.slice(0, 10) : ""}
+                    </span>
+                  </Link>
+                  <Confirm
+                    trigger={
+                      <button
+                        type="button"
+                        aria-label={`Delete thread ${thread.title ?? "New thread"}`}
+                        className="absolute top-1/2 right-1 grid size-5 -translate-y-1/2 place-items-center rounded-sm text-faint opacity-0 transition-opacity group-hover/thread:opacity-100 hover:bg-accent hover:text-destructive focus-visible:opacity-100"
+                      >
+                        <Trash2Icon className="size-3.5" />
+                      </button>
+                    }
+                    title="Delete this thread?"
+                    description={`"${thread.title ?? "New thread"}" and its messages are deleted. The agent, its memory and its workstation stay.`}
+                    action="Delete thread"
+                    onConfirm={async () => {
+                      await deleteThread(thread.id)
+                      toast.add({ type: "success", title: "Thread deleted" })
+                      if (pathname.endsWith(thread.id)) router.push(base)
+                    }}
                   />
-                  <span className="min-w-0 flex-1 truncate">
-                    {thread.title ?? "New thread"}
-                  </span>
-                  <span className="shrink-0 font-mono text-[10px] text-faint">
-                    {owner && "name" in owner ? owner.name.slice(0, 10) : ""}
-                  </span>
-                </Link>
+                </div>
               )
             })}
           </Section>
