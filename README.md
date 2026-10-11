@@ -1,17 +1,17 @@
 <p align="center">
-  <img src="docs/assets/banner.png" alt="Xiryn — the open-source Muse, Grok Bot and Dots, on your machine" width="100%">
+  <img src="docs/assets/banner.png" alt="Xiryn — the open-source personal agent, on your machine" width="100%">
 </p>
 
 <h1 align="center">Xiryn</h1>
 
 <p align="center">
-  <strong>The open-source Muse, Grok Bot &amp; Dots — on your machine, with your keys.</strong><br>
-  AI agents that do real work on their <em>own</em> sandboxed Linux desktops — never on yours.<br>
-  Your data stays on your disk. Bring any model. Text your agents from anywhere.
+  <strong>The open-source personal agent. It does everything Muse, Grok Bot and Dots do — on your own computer.</strong><br>
+  Each agent gets its own Linux desktop in Docker, so it works in the background and never interrupts what you're doing on your laptop.<br>
+  Your data stays on your disk. Bring any model. Control it from anywhere through Telegram.
 </p>
 
 <p align="center">
-  <a href="https://github.com/SouravBeraAkaSpeed/xiryn/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/SouravBeraAkaSpeed/xiryn/ci.yml?branch=main&style=flat-square&label=CI&labelColor=0b0e14&cacheSeconds=600"></a>
+  <a href="https://github.com/SouravBeraAkaSpeed/xiryn/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/SouravBeraAkaSpeed/xiryn/actions/workflows/ci.yml/badge.svg?branch=main"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-7cc4ff?style=flat-square&labelColor=0b0e14"></a>
   <a href="https://github.com/SouravBeraAkaSpeed/xiryn/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/SouravBeraAkaSpeed/xiryn?style=flat-square&color=7cc4ff&labelColor=0b0e14"></a>
   <img alt="Node 20.9+" src="https://img.shields.io/badge/node-%E2%89%A520.9-7cc4ff?style=flat-square&labelColor=0b0e14">
@@ -35,7 +35,7 @@
 
 This year every major lab shipped a personal agent that works on a cloud machine for you — **Muse** from Meta, **Grok Bot** from xAI, **Dots** from OpenAI. They're impressive. They're also closed, gated behind subscriptions, and they run on someone else's servers with your conversations, your logins and — when they shop for you — your payment details.
 
-**Xiryn is the same idea as one open-source app you run yourself.** Clone it, add your API keys, and you have a team of agents that each own a sandboxed Linux workstation, remember what matters, browse and research the web, write and run code, and hand work to one another. Nothing is stored anywhere but your computer, and you can message them from your phone.
+**Xiryn is the same idea as an open-source personal agent you run yourself.** Clone it, add your API keys, and you have a team of agents that each own a Linux desktop in Docker — working in the background while you keep using your laptop — remember what matters, browse and research the web, write and run code, and hand work to one another. Nothing is stored anywhere but your computer, and you can message them from your phone.
 
 **One command sets everything up** — Git, Node.js, Docker, the agents' desktop — and starts Xiryn:
 
@@ -183,7 +183,7 @@ The setup asks once, then does the rest:
 Using Claude Code, Codex, Cursor or another coding agent? Paste this prompt into it. It installs everything, asks you for your keys and starts Xiryn:
 
 ```text
-Install and start Xiryn for me — an open-source app that runs AI agents on my own computer: https://github.com/SouravBeraAkaSpeed/xiryn
+Install and start Xiryn for me — the open-source personal agent that runs on my own computer: https://github.com/SouravBeraAkaSpeed/xiryn
 
 1. From my home folder, run Xiryn's setup without prompts. It clones Xiryn into ./xiryn (or reuses it), installs Git, Node.js and Docker if they're missing, installs the packages and builds the agents' desktop image, which takes several minutes the first time — let it finish:
    - macOS / Linux:  curl -fsSL https://raw.githubusercontent.com/SouravBeraAkaSpeed/xiryn/main/setup.sh | XIRYN_YES=1 XIRYN_NO_START=1 bash
