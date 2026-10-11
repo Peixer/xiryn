@@ -227,6 +227,20 @@ export async function getDesktopStreamUrl(agentId: string) {
   return url.toString()
 }
 
+// A link that opens the agent's live desktop in any browser — a phone
+// included — with mouse and keyboard. The token is part of the hostname
+// and expires, so the link stops working on its own.
+export async function getTakeoverLink(agentId: string, minutes = 30) {
+  const sandbox = await ensureDesktop(agentId)
+  const preview = await sandbox.getSignedPreviewUrl(VNC_PORT, minutes * 60)
+  const url = new URL("/vnc.html", preview.url)
+  url.searchParams.set("autoconnect", "true")
+  url.searchParams.set("resize", "scale")
+  url.searchParams.set("reconnect", "true")
+  url.searchParams.set("path", "websockify")
+  return { url: url.toString(), minutes }
+}
+
 // Cheap check used by Settings: reads one page of sandboxes to prove the key
 // works, and counts the ones that belong to Oryn
 export async function pingDaytona() {
