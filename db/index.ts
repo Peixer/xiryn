@@ -18,10 +18,12 @@ function open() {
   fs.mkdirSync(DATA_DIR, { recursive: true })
 
   const sqlite = new Database(DB_PATH)
+  // First, so that opening a fresh database from several processes at once
+  // (the build's workers, say) waits for the lock instead of failing
+  sqlite.pragma("busy_timeout = 5000")
   sqlite.pragma("journal_mode = WAL")
   sqlite.pragma("synchronous = NORMAL")
   sqlite.pragma("foreign_keys = ON")
-  sqlite.pragma("busy_timeout = 5000")
 
   const db = drizzle({ client: sqlite, schema, casing: "snake_case" })
 
