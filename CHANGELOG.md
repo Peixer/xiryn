@@ -10,6 +10,8 @@ All notable changes to Oryn are documented here. The format follows [Keep a Chan
 - Settings → System showed `[object Promise]` instead of the number of agents, squads, threads, messages and memories.
 - Next's error badge no longer appears in the corner, and attributes that browser extensions add to the page no longer cause hydration warnings.
 - An agent clearing `/tmp` on its desktop no longer shuts that desktop down or locks you out of watching it.
+- A thread open in the app now follows turns started from Telegram (or by answering a payment or detail request) as they happen, instead of staying blank until you reload.
+- Tables in Telegram messages arrive as readable lines (a header, then one bullet per row) instead of raw `|` pipes.
 
 ## [0.4.0] — 2026-10-11
 
