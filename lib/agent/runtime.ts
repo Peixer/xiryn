@@ -502,6 +502,14 @@ export async function startTurn({
     startedAt: Date.now(),
   }
   runs.set(threadId, run)
+  emit({
+    type: "turn-started",
+    threadId,
+    href,
+    name: first.name,
+    glyph: first.glyph,
+    via: channel,
+  })
 
   // Accumulated across steps so stopped and failed turns are still metered
   const usage = { input: 0, output: 0, reasoning: 0, cached: 0, steps: 0, toolCalls: 0 }

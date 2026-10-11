@@ -14,6 +14,11 @@ type Common = {
 
 export type OrynEvent =
   | (Common & {
+      // A turn began (from the app, Telegram or an answered request): a page
+      // showing the thread follows it live
+      type: "turn-started"
+    })
+  | (Common & {
       type: "turn-finished"
       preview: string
       ok: boolean

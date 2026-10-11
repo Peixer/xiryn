@@ -6,7 +6,7 @@ import { z } from "zod"
 
 import { db } from "@/db"
 import { agents, squads, threads } from "@/db/schema"
-import { stopRun } from "@/lib/agent/runtime"
+import { loadMessages, stopRun } from "@/lib/agent/runtime"
 
 export async function createThread(owner: { agentId?: string; squadId?: string }) {
   if (owner.agentId) {
@@ -34,6 +34,12 @@ export async function createThread(owner: { agentId?: string; squadId?: string }
     .all()
   revalidatePath("/", "layout")
   return thread.id
+}
+
+// What's saved in a thread, for a page catching up with a turn that started
+// elsewhere (Telegram, an answered request)
+export async function threadMessages(threadId: string) {
+  return loadMessages(z.string().min(1).parse(threadId))
 }
 
 export async function renameThread(threadId: string, title: string) {

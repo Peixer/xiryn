@@ -26,12 +26,15 @@ type Notifications = {
   enabled: boolean
   permission: NotificationPermission | "unsupported"
   toggle: () => void
+  // Hear every event as it arrives (an open thread follows its turns)
+  listen: (listener: (event: OrynEvent) => void) => () => void
 }
 
 const NotificationsContext = React.createContext<Notifications>({
   enabled: false,
   permission: "unsupported",
   toggle: () => {},
+  listen: () => () => {},
 })
 
 export const useNotifications = () => React.useContext(NotificationsContext)
@@ -96,7 +99,7 @@ function took(ms: number) {
 
 type Kind = "done" | "attention" | "error"
 
-function describe(event: OrynEvent) {
+function describe(event: Exclude<OrynEvent, { type: "turn-started" }>) {
   if (event.type !== "turn-finished") {
     const status =
       event.type === "payment"
@@ -248,6 +251,13 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
 
   // What's on screen right now, read when an event arrives
   const here = React.useRef({ pathname, enabled })
+  const listeners = React.useRef(new Set<(event: OrynEvent) => void>())
+  const listen = React.useCallback((listener: (event: OrynEvent) => void) => {
+    listeners.current.add(listener)
+    return () => {
+      listeners.current.delete(listener)
+    }
+  }, [])
   React.useEffect(() => {
     here.current = { pathname, enabled }
   }, [pathname, enabled])
@@ -276,7 +286,9 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
         return
       }
       router.refresh()
-      if (!here.current.enabled) return
+      for (const listener of listeners.current) listener(event)
+      // A turn starting is news only for the page showing it
+      if (event.type === "turn-started" || !here.current.enabled) return
 
       const { kind, status, title, body } = describe(event)
       const looking = document.visibilityState === "visible" && document.hasFocus()
@@ -334,8 +346,8 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   }, [enabled])
 
   const value = React.useMemo(
-    () => ({ enabled, permission, toggle }),
-    [enabled, permission, toggle]
+    () => ({ enabled, permission, toggle, listen }),
+    [enabled, permission, toggle, listen]
   )
   return (
     <NotificationsContext value={value}>

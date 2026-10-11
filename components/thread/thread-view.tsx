@@ -21,7 +21,12 @@ import {
   TriangleAlertIcon,
 } from "lucide-react"
 
-import { createThread, deleteThread, renameThread } from "@/actions/threads"
+import {
+  createThread,
+  deleteThread,
+  renameThread,
+  threadMessages,
+} from "@/actions/threads"
 import { Confirm } from "@/components/confirm"
 import { Glyph, SquadGlyph } from "@/components/glyph"
 import { ModelSpecLabel } from "@/components/model-picker"
@@ -53,6 +58,7 @@ import { Machine } from "@/components/workbench/machine"
 import { MemoryPanel } from "@/components/workbench/memory"
 import { Screen } from "@/components/workbench/screen"
 import { useWorkspace } from "@/components/workspace/context"
+import { useNotifications } from "@/components/workspace/notifier"
 import type { OrynMessage } from "@/lib/agent/tools"
 import { cn } from "@/lib/utils"
 
@@ -488,6 +494,8 @@ export function ThreadView(props: ThreadViewProps) {
   const {
     messages,
     sendMessage,
+    setMessages,
+    resumeStream,
     status: chatStatus,
     stop,
     error,
@@ -507,6 +515,28 @@ export function ThreadView(props: ThreadViewProps) {
   })
 
   const busy = chatStatus === "submitted" || chatStatus === "streaming"
+
+  // A turn that starts elsewhere (Telegram, an answer to a request) shows up
+  // here live: catch up with what's saved, then follow the stream
+  const { listen } = useNotifications()
+  const busyRef = React.useRef(busy)
+  React.useEffect(() => {
+    busyRef.current = busy
+  }, [busy])
+  React.useEffect(
+    () =>
+      listen((event) => {
+        if (event.type !== "turn-started" || event.threadId !== threadId) return
+        if (busyRef.current) return
+        void threadMessages(threadId)
+          .then((saved) => {
+            setMessages(saved as OrynMessage[])
+            return resumeStream()
+          })
+          .catch(() => {})
+      }),
+    [listen, threadId, setMessages, resumeStream]
+  )
   const addressee = members.find((member) => member.id === addresseeId) ?? members[0]
   const modelSpec = addressee?.model ?? status.defaultModel
 
