@@ -48,8 +48,9 @@ RUN useradd --create-home --uid 1000 --shell /bin/bash oryn \
 
 COPY rootfs/ /
 
-# Scripts must stay runnable even if a checkout converted line endings
-RUN find /usr/local/bin /etc/chromium.d -type f -exec sed -i 's/\r$//' {} + \
+# Scripts must stay runnable even if a checkout converted line endings.
+# Only Oryn's own: node and cloudflared live in the same folder.
+RUN sed -i 's/\r$//' /usr/local/bin/oryn-* /usr/local/bin/browser /etc/chromium.d/oryn \
  && chmod +x /usr/local/bin/oryn-* /usr/local/bin/browser \
  && chown -R oryn:oryn /home/oryn
 

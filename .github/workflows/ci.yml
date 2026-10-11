@@ -69,7 +69,7 @@ jobs:
         run: |
           docker run -d --name ws -e ORYN_VNC_PASSWORD=ci-check oryn-workstation:ci
           docker exec ws oryn-ready
-          docker exec ws oryn-run 30 'node --version && python --version && git --version'
+          docker exec ws oryn-run 30 'node --version && npm --version && python --version && git --version && cloudflared --version'
           docker exec ws xdotool mousemove 10 10 click 1
           docker exec ws oryn-shot | base64 -d | head -c 3 | od -An -tx1 | grep -q 'ff d8 ff'
           docker exec ws sh -c 'curl -sf -o /dev/null http://localhost:6080/vnc.html'
