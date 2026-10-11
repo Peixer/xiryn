@@ -85,8 +85,8 @@ Name, role, standing orders, and a model of their own. Start from templates or w
 **A workstation per agent**<br>
 A persistent Daytona sandbox with shell, filesystem and a 1024×768 desktop — created on first use, auto-stopped when idle.
 
-**Live desktop**<br>
-Watch the agent click and type in real time. View-only by default; flip to *control* to log in or pay yourself.
+**Live desktop, take over any time**<br>
+Watch the agent click and type in real time. Hit **Take over** and it pauses; hand it back with a note and it picks up from what you did.
 
 </td>
 <td width="50%" valign="top">
@@ -124,6 +124,12 @@ Anything that can be done with a terminal, a browser and a desktop — while you
 - **Run as a team** — ask a squad, and the right specialist takes it.
 
 Agents ask when they need a decision, confirm before anything irreversible, and remember what you tell them.
+
+### You can always take the wheel
+
+- **Take over** — one click pauses the agent and gives you its desktop. Type, click, fix what it got wrong. **Hand back** with an optional note ("I picked the 6:40 flight") and the agent looks at the screen and continues from there.
+- **Hand-offs** — at a login, a payment page, a one-time code or a CAPTCHA, the agent stops by itself and tells you exactly where it is and what's left. The take-over view opens on your screen, and if Telegram is paired you get a message with a **live link to the desktop that works from your phone**. Pay on the agent's screen, reply "done", and it wraps up.
+- **Browses like a person** — agents open a site's home page and use its own search forms and filters instead of guessing deep links, so you can follow along and step in at any point.
 
 > **Note on browsing.** Agents can always read any page through Firecrawl. Driving arbitrary websites in the sandbox's own browser needs a Daytona organization with full internet access — lower Daytona tiers limit sandboxes to essential services (GitHub, package registries, AI APIs). The **Machine** tab has a one-click test.
 
@@ -170,6 +176,8 @@ Done — only your account can use the bot.
 /agents   pick an agent or squad      /new     start a fresh thread
 /stop     interrupt the agent         /status  what's running
 ```
+
+When an agent needs you — a payment, a login, a code — the bot pings you with a live link to the agent's desktop. Finish the step from your phone, reply "done", and the agent carries on.
 
 Full walkthrough: **[docs/telegram.md](docs/telegram.md)**.
 
@@ -219,6 +227,7 @@ Every setting can come from `.env` **or** from **Settings** in the app. Values s
 | `FIRECRAWL_API_KEY` | Web search and reading |
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_OWNER_ID` | Remote access |
 | `ORYN_DATA_DIR`, `ORYN_ALLOWED_HOSTS` | Data location; extra hostnames behind your own proxy |
+| `ORYN_URL` | Where you open Oryn, for links in Telegram hand-offs |
 
 ## Security & privacy
 
@@ -238,7 +247,10 @@ See [SECURITY.md](SECURITY.md) for the full model and how to report a vulnerabil
 No. Everything an agent does — commands, files, mouse, keyboard, browser — happens inside its own cloud sandbox. Your machine only runs the lightweight Oryn server, so you can keep using it normally.
 
 **Can it book a flight or order something?**
-It can do the legwork on real websites — search, compare, fill in the details — and it will ask before anything irreversible. Logins and payments are yours: the agent pauses and you take control of its screen for that step, so Oryn never stores credentials or cards. Driving arbitrary sites requires a Daytona plan with full internet access (see the note above).
+It can do the legwork on real websites — search, compare, fill in the details — and it will ask before anything irreversible. Logins and payments are yours: the agent hands you its screen for that step (in the app, or from your phone through Telegram), so Oryn never stores credentials or cards. Driving arbitrary sites requires a Daytona plan with full internet access (see the note above).
+
+**How do I delete a thread?**
+Hover it under **Recent threads** in the sidebar and click the trash icon, or open the thread menu (⋯) in its header → **Delete thread**. The agent, its memory and its workstation stay.
 
 **Where is my data?**
 In `data/oryn.db` on your disk. Back it up by copying the file; erase everything by deleting it.

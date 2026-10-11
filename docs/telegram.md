@@ -85,6 +85,39 @@ Just write to the bot like you'd write to an agent in the app.
   *via telegram*), and memory is shared: something you tell an agent on your
   phone, it remembers on your desktop.
 
+### Hand-offs
+
+When an agent reaches a step that's yours — a login, a payment page, a one-time
+code, a CAPTCHA — it stops and the bot messages you, even if you started the
+task from your computer:
+
+```
+🖐 Atlas needs you
+
+The fare is selected and the passenger details are filled in.
+The payment page is open and waiting for your card.
+
+📱 Take over from this device — opens the live desktop (link expires in 30 min).
+💻 At your computer: open in Oryn and press Take over.
+
+When you're done, reply here — just "done", or anything Atlas should know — and it carries on.
+```
+
+- **📱** opens the agent's desktop in your phone's browser. Tap and type
+  directly on it — finish the payment, enter the code, solve the CAPTCHA.
+- **💻** opens the thread in Oryn on your computer, ready for you to take over.
+- When you're done, **reply to the bot** (`done`, or anything the agent should
+  know — "paid, booking ref is ABC123"). The agent takes a fresh look at the
+  screen and carries on from there.
+
+The phone link is a signed, short-lived Daytona preview URL for that one
+sandbox. Treat it like a password while it's valid: anyone who has it can see
+and use the agent's desktop until it expires.
+
+If Oryn is reachable at a different address than `http://127.0.0.1:6796`
+(another port, or your own authenticating proxy), set `ORYN_URL` so the 💻 link
+points to the right place.
+
 ---
 
 ## Troubleshooting
@@ -117,5 +150,8 @@ Set `TELEGRAM_OWNER_ID` in `.env` to your numeric Telegram user id (ask
   replaced automatically after a few wrong guesses.
 - Messages travel through Telegram's servers like any Telegram chat. Don't send
   through the bot anything you wouldn't send in a regular Telegram message.
+- Hand-off links grant access to that agent's desktop until they expire
+  (30 minutes). Do your payment or login on the desktop itself — never type a
+  password or card number into the Telegram chat.
 - To turn remote access off, press **disconnect** in Settings (or remove the
   token from `.env`). To kill the bot entirely, `/deletebot` in BotFather.

@@ -46,8 +46,16 @@ Defined in `lib/agent/tools.ts`. Every tool resolves "the agent holding the turn
 | Memory | `memory_write`, `memory_forget` | Local SQLite |
 | Web | `web_search`, `web_fetch` | Firecrawl v2 |
 | Squad | `delegate` | Runtime (swaps agent, instructions and model) |
+| Hand-off | `request_takeover` | Runtime (ends the turn) + Telegram notice |
 
-Screenshots are returned to the model as images; only the most recent two stay in the context window to keep long desktop sessions affordable.
+Screenshots are returned to the model as images. Before every step, `prepareStep` compacts the turn's context: only the two most recent screenshots and the six most recent tool outputs are kept in full, older ones are cut to short stubs. A long desktop session therefore costs roughly the same per step at step 40 as at step 4.
+
+## Take-over and hand-offs
+
+Either side can hand the desktop over.
+
+- **You take over.** The workbench's *Take over* button stops a running turn (the same `DELETE` as *Stop*) and opens the desktop full-size with input enabled. *Hand back* sends an ordinary user message carrying `metadata.handback` with your optional note; the transcript renders it as a divider, and the instructions tell the agent to take a fresh `screen_capture` before doing anything else, since the screen may have changed.
+- **The agent hands off.** At a login, payment, one-time code or CAPTCHA the agent calls `request_takeover({ reason })`. `stopWhen` includes `hasToolCall("request_takeover")`, so the turn ends right there. The UI sees the fresh tool call and opens the take-over view; if Telegram is paired, `notifyTakeover` sends the owner the reason, a 30-minute signed noVNC link to that sandbox (usable from a phone) and a deep link to `/a/:agent/:thread?takeover=1`, and points the chat at that thread so the reply continues it.
 
 ## Squads and delegation
 
