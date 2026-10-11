@@ -27,6 +27,10 @@ COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/.next ./.next
 COPY --from=build /app/public ./public
 COPY --from=build /app/db/migrations ./db/migrations
+# Agents' workstations are built from this folder, through the host's Docker
+COPY --from=build /app/workstation ./workstation
+COPY --from=docker:29-cli /usr/local/bin/docker /usr/local/bin/docker
+COPY --from=docker:29-cli /usr/local/libexec/docker/cli-plugins/docker-buildx /usr/local/libexec/docker/cli-plugins/docker-buildx
 
 RUN mkdir -p /app/data && chown -R node:node /app/data
 USER node
@@ -35,4 +39,5 @@ EXPOSE 6796
 
 # Inside the container Oryn listens on all interfaces; publish the port to
 # 127.0.0.1 on the host (see docker-compose.yml) to keep it private.
+# Workstations are sibling containers: mount the host's Docker socket.
 CMD ["node_modules/.bin/next", "start", "--hostname", "0.0.0.0", "--port", "6796"]
