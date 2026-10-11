@@ -1,0 +1,30 @@
+name: Feature request
+description: Suggest an idea for Oryn
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: Describe the situation, not just the solution.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: checkboxes
+    id: principles
+    attributes:
+      label: Fits Oryn's principles
+      options:
+        - label: Keeps Oryn local-first (no accounts, telemetry or hosted backend)
+          required: true
+        - label: Doesn't let agents act on the user's own machine
+          required: true
