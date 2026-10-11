@@ -5,6 +5,7 @@ import type RFB from "@novnc/novnc"
 import {
   ExpandIcon,
   HandIcon,
+  Maximize2Icon,
   MonitorIcon,
   PlugZapIcon,
   RefreshCwIcon,
@@ -52,6 +53,10 @@ export function Screen({
   const [panelSlot, setPanelSlot] = React.useState<HTMLDivElement | null>(null)
   const [overlaySlot, setOverlaySlot] = React.useState<HTMLDivElement | null>(null)
   const [note, setNote] = React.useState("")
+  // Watching in the large view, without taking control
+  const [expanded, setExpanded] = React.useState(false)
+  const big = takeover || expanded
+  const overlayFrame = React.useRef<HTMLDivElement | null>(null)
 
   const screen = React.useCallback(() => {
     if (!screenRef.current) {
@@ -99,9 +104,23 @@ export function Screen({
 
   // Put the live screen wherever it is being shown
   React.useLayoutEffect(() => {
-    const slot = takeover && overlaySlot ? overlaySlot : panelSlot
+    const slot = big && overlaySlot ? overlaySlot : panelSlot
     if (slot && screen().parentElement !== slot) slot.appendChild(screen())
-  }, [takeover, overlaySlot, panelSlot, screen])
+  }, [big, overlaySlot, panelSlot, screen])
+
+  // The large view connects too, if the stream isn't up yet
+  React.useEffect(() => {
+    if (expanded && (state === "idle" || state === "disconnected")) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      void connect()
+    }
+  }, [expanded, state, connect])
+
+  // Taking over from the large view keeps it open, now with control
+  React.useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (takeover) setExpanded(false)
+  }, [takeover])
 
   // Taking over connects if needed and hands the mouse and keyboard over
   React.useEffect(() => {
@@ -155,12 +174,13 @@ export function Screen({
               <RefreshCwIcon />
             </Button>
           )}
-          {live && !takeover && (
+          {enabled && !takeover && (
             <Button
               size="icon-xs"
               variant="ghost"
-              aria-label="Fullscreen"
-              onClick={() => panelSlot?.requestFullscreen?.()}
+              aria-label="Expand the desktop"
+              title="Expand"
+              onClick={() => setExpanded(true)}
             >
               <ExpandIcon />
             </Button>
@@ -176,10 +196,10 @@ export function Screen({
       >
         <div className="bg-grid absolute inset-0 opacity-60" />
         <div ref={setPanelSlot} className="absolute inset-0" />
-        {takeover ? (
+        {big ? (
           <div className="absolute inset-0 grid place-items-center bg-black/60 p-6 text-center">
             <p className="font-mono text-[11px] text-white/70">
-              in use in the take-over view
+              {takeover ? "in use in the take-over view" : "showing in the large view"}
             </p>
           </div>
         ) : (
@@ -233,12 +253,15 @@ export function Screen({
       </p>
 
       <Dialog
-        open={takeover}
+        open={big}
         onOpenChange={(open, details) => {
-          // Escape belongs to the remote desktop; only the buttons leave
-          if (!open && details.reason === "close-press") onLeaveTakeover()
+          if (open) return
+          // Watching: Escape or a click outside closes. With control, Escape
+          // belongs to the remote desktop and only the buttons leave.
+          if (!takeover) setExpanded(false)
+          else if (details.reason === "close-press") onLeaveTakeover()
         }}
-        disablePointerDismissal
+        disablePointerDismissal={takeover}
       >
         <DialogContent
           initialFocus={false}
@@ -246,17 +269,56 @@ export function Screen({
           className="flex h-[min(94svh,900px)] max-w-[min(96vw,1280px)] flex-col gap-0 overflow-hidden p-0 sm:max-w-[min(96vw,1280px)]"
         >
           <div className="flex items-center gap-3 border-b px-4 py-2.5">
-            <span className="size-2 animate-pulse-dot rounded-full bg-betelgeuse text-betelgeuse" />
-            <div className="flex min-w-0 flex-col leading-tight">
+            <span
+              className={cn(
+                "size-2 rounded-full",
+                takeover
+                  ? "animate-pulse-dot bg-betelgeuse text-betelgeuse"
+                  : live
+                    ? "bg-ok"
+                    : "animate-pulse-dot bg-rigel text-rigel"
+              )}
+            />
+            <div className="flex min-w-0 flex-1 flex-col leading-tight">
               <DialogTitle className="text-[13.5px] font-semibold">
-                You have control of {agentName}&apos;s desktop
+                {takeover
+                  ? `You have control of ${agentName}'s desktop`
+                  : `${agentName}'s desktop`}
               </DialogTitle>
               <DialogDescription className="font-mono text-[10.5px]">
-                {agentName} is paused · your mouse and keyboard go to the workstation
+                {takeover
+                  ? `${agentName} is paused · your mouse and keyboard go to the workstation`
+                  : `watching live · view only · ${agentName} keeps working`}
               </DialogDescription>
             </div>
+            {!takeover && (
+              <div className="flex items-center gap-1.5">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() =>
+                    overlayFrame.current?.requestFullscreen?.().catch(() => {})
+                  }
+                >
+                  <Maximize2Icon data-icon="inline-start" />
+                  Fullscreen
+                </Button>
+                {enabled && (
+                  <Button size="sm" variant="secondary" onClick={onTakeover}>
+                    <HandIcon data-icon="inline-start" />
+                    Take over
+                  </Button>
+                )}
+                <Button size="sm" variant="ghost" onClick={() => setExpanded(false)}>
+                  Close
+                </Button>
+              </div>
+            )}
           </div>
-          <div className="relative min-h-0 flex-1 bg-[oklch(0.1_0.01_265)]">
+          <div
+            ref={overlayFrame}
+            className="relative min-h-0 flex-1 bg-[oklch(0.1_0.01_265)]"
+          >
             <div ref={setOverlaySlot} className="absolute inset-3" />
             {!live && (
               <div className="absolute inset-0 grid place-items-center">
@@ -264,38 +326,40 @@ export function Screen({
               </div>
             )}
           </div>
-          <form
-            onSubmit={(event) => {
-              event.preventDefault()
-              onHandBack(note.trim())
-              setNote("")
-            }}
-            className="flex flex-col gap-2 border-t bg-surface px-4 py-3 sm:flex-row sm:items-end"
-          >
-            <textarea
-              value={note}
-              onChange={(event) => setNote(event.target.value)}
-              rows={1}
-              placeholder={`Anything ${agentName} should know? e.g. "Logged in — pick the 6:15 flight" (optional)`}
-              className="[field-sizing:content] min-h-9 flex-1 resize-none rounded-lg border border-input bg-transparent px-3 py-2 text-[13px] outline-none placeholder:text-faint focus-visible:border-ring dark:bg-input/30"
-            />
-            <div className="flex gap-2">
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => {
-                  setNote("")
-                  onLeaveTakeover()
-                }}
-              >
-                Stay paused
-              </Button>
-              <Button type="submit">
-                <Undo2Icon data-icon="inline-start" />
-                Hand back to {agentName}
-              </Button>
-            </div>
-          </form>
+          {takeover && (
+            <form
+              onSubmit={(event) => {
+                event.preventDefault()
+                onHandBack(note.trim())
+                setNote("")
+              }}
+              className="flex flex-col gap-2 border-t bg-surface px-4 py-3 sm:flex-row sm:items-end"
+            >
+              <textarea
+                value={note}
+                onChange={(event) => setNote(event.target.value)}
+                rows={1}
+                placeholder={`Anything ${agentName} should know? e.g. "Logged in — pick the 6:15 flight" (optional)`}
+                className="[field-sizing:content] min-h-9 flex-1 resize-none rounded-lg border border-input bg-transparent px-3 py-2 text-[13px] outline-none placeholder:text-faint focus-visible:border-ring dark:bg-input/30"
+              />
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => {
+                    setNote("")
+                    onLeaveTakeover()
+                  }}
+                >
+                  Stay paused
+                </Button>
+                <Button type="submit">
+                  <Undo2Icon data-icon="inline-start" />
+                  Hand back to {agentName}
+                </Button>
+              </div>
+            </form>
+          )}
         </DialogContent>
       </Dialog>
     </div>
