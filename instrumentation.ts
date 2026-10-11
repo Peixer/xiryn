@@ -6,6 +6,11 @@ export async function register() {
   const { connect } = await import("./db")
   connect()
 
+  // One-time vault entries (codes, a card used once) don't outlive a day
+  const { sweepVault } = await import("./lib/vault")
+  sweepVault()
+  setInterval(sweepVault, 60 * 60_000).unref()
+
   // Resume the Telegram bridge if a bot token is configured
   const { syncTelegram } = await import("./lib/telegram/bridge")
   syncTelegram()

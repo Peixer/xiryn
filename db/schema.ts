@@ -138,6 +138,60 @@ export const turns = sqliteTable(
   (t) => [index("turns_created_idx").on(t.createdAt)]
 )
 
+/* ───────────────────────────── vault ────────────────────────────── */
+
+// Logins, cards, UPI IDs and personal details, encrypted with a key held by
+// the operating system's keychain (lib/vault.ts). Agents only ever see the
+// label and the hint; the values are typed into pages by Oryn itself.
+export const vaultItems = sqliteTable(
+  "vault_items",
+  {
+    id: id(),
+    kind: text({ enum: ["card", "upi", "login", "identity", "code"] }).notNull(),
+    label: text().notNull(),
+    // Safe to show anyone, agents included: "Visa ···· 4242 · 08/29"
+    hint: text().notNull(),
+    // A login only fills on this site and its subdomains
+    site: text(),
+    // AES-256-GCM: base64 of iv, tag and ciphertext
+    secret: text().notNull(),
+    // One-time entries (a code, a card used once) are removed after use
+    ephemeral: integer({ mode: "boolean" }).notNull().default(false),
+    lastUsedAt: integer({ mode: "timestamp_ms" }),
+    createdAt: timestamp(),
+    updatedAt: timestamp(),
+  },
+  (t) => [index("vault_items_kind_idx").on(t.kind)]
+)
+
+// A payment an agent asked to make, and what the person decided
+export const vaultApprovals = sqliteTable(
+  "vault_approvals",
+  {
+    id: id(),
+    threadId: text()
+      .notNull()
+      .references(() => threads.id, { onDelete: "cascade" }),
+    // The agent that asked, whose desktop has the checkout open
+    agentId: text().references(() => agents.id, { onDelete: "cascade" }),
+    // The saved card or UPI ID the person chose
+    itemId: text().references(() => vaultItems.id, { onDelete: "cascade" }),
+    merchant: text().notNull(),
+    amount: text().notNull(),
+    purpose: text(),
+    // The site the checkout was on when the agent asked; payment details only
+    // fill there
+    host: text(),
+    status: text({ enum: ["pending", "approved", "declined", "taken-over"] })
+      .notNull()
+      .default("pending"),
+    createdAt: timestamp(),
+    decidedAt: integer({ mode: "timestamp_ms" }),
+    expiresAt: integer({ mode: "timestamp_ms" }),
+  },
+  (t) => [index("vault_approvals_thread_idx").on(t.threadId)]
+)
+
 /* ──────────────────────────── settings ──────────────────────────── */
 
 // Values saved from the Settings screen. They take precedence over .env.
