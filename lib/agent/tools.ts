@@ -57,7 +57,7 @@ export type ScreenCapture = Awaited<ReturnType<typeof capture>>
 
 // The model sees the picture itself, not its base64. Old captures are
 // stripped from the history (image: null) to keep the context small.
-function screenToModel({ output }: { output: ScreenCapture }) {
+function screenContent(output: ScreenCapture, caption: string) {
   if (!output.image) {
     return {
       type: "content" as const,
@@ -71,7 +71,7 @@ function screenToModel({ output }: { output: ScreenCapture }) {
     value: [
       {
         type: "text" as const,
-        text: `Screenshot of the ${output.width}×${output.height} display. Coordinates are pixels from the top-left corner.`,
+        text: `${caption} Screenshot of the ${output.width}×${output.height} display; coordinates are pixels from the top-left corner.`,
       },
       {
         type: "file" as const,
@@ -81,6 +81,41 @@ function screenToModel({ output }: { output: ScreenCapture }) {
     ],
   }
 }
+
+function screenToModel({ output }: { output: ScreenCapture }) {
+  return screenContent(output, "")
+}
+
+// Desktop actions answer with the screen a moment after they're done, so
+// the agent sees what happened without spending a step on screen_capture
+const DESKTOP_ACTIONS = [
+  "pointer_click",
+  "pointer_move",
+  "pointer_drag",
+  "pointer_scroll",
+  "key_type",
+  "key_press",
+] as const
+
+export function isDesktopAction(name: string) {
+  return (DESKTOP_ACTIONS as readonly string[]).includes(name)
+}
+
+async function thenLook<T extends object>(agentId: string, done: T, settleMs: number) {
+  await new Promise((resolve) => setTimeout(resolve, settleMs))
+  try {
+    return { ...done, ...(await capture(agentId)) }
+  } catch {
+    // The action happened; only the look afterwards failed
+    return { ...done, image: null, mediaType: "image/jpeg", width: null, height: null }
+  }
+}
+
+function actionToModel(output: ScreenCapture) {
+  return screenContent(output, "Done. The screen just after:")
+}
+
+const AFTER = "Returns a screenshot taken just after, so you see the result."
 
 /* ────────────────────────── workstation ───────────────────────── */
 
@@ -157,7 +192,7 @@ export function createWorkstationTools(env: ToolEnv) {
 
     screen_capture: tool({
       description:
-        "Look at your workstation's desktop. Only you see this screenshot. Take one before clicking or typing, and again afterwards to verify the result.",
+        "Look at your workstation's desktop. Only you see this screenshot. Desktop actions already return a screenshot of their result, so use this to look before your first action or after waiting for something to load.",
       inputSchema: z.object({}),
       execute: async () => capture(agentId()),
       toModelOutput: screenToModel,
@@ -172,7 +207,7 @@ export function createWorkstationTools(env: ToolEnv) {
     }),
 
     pointer_click: tool({
-      description: "Click at a point on the desktop.",
+      description: `Click at a point on the desktop. ${AFTER}`,
       inputSchema: z.object({
         ...coordinates,
         button: z.enum(["left", "right", "middle"]).default("left"),
@@ -180,21 +215,23 @@ export function createWorkstationTools(env: ToolEnv) {
       }),
       execute: async ({ x, y, button, double }) => {
         await click(agentId(), x, y, button, double)
-        return { x, y, button, double }
+        return thenLook(agentId(), { x, y, button, double }, 900)
       },
+      toModelOutput: ({ output }) => actionToModel(output),
     }),
 
     pointer_move: tool({
-      description: "Move the pointer without clicking, e.g. to reveal a hover menu.",
+      description: `Move the pointer without clicking, e.g. to reveal a hover menu. ${AFTER}`,
       inputSchema: z.object(coordinates),
       execute: async ({ x, y }) => {
         await movePointer(agentId(), x, y)
-        return { x, y }
+        return thenLook(agentId(), { x, y }, 400)
       },
+      toModelOutput: ({ output }) => actionToModel(output),
     }),
 
     pointer_drag: tool({
-      description: "Press the left button at one point, drag to another and release.",
+      description: `Press the left button at one point, drag to another and release. ${AFTER}`,
       inputSchema: z.object({
         fromX: coordinates.x,
         fromY: coordinates.y,
@@ -203,12 +240,13 @@ export function createWorkstationTools(env: ToolEnv) {
       }),
       execute: async ({ fromX, fromY, toX, toY }) => {
         await drag(agentId(), fromX, fromY, toX, toY)
-        return { fromX, fromY, toX, toY }
+        return thenLook(agentId(), { fromX, fromY, toX, toY }, 500)
       },
+      toModelOutput: ({ output }) => actionToModel(output),
     }),
 
     pointer_scroll: tool({
-      description: "Scroll the mouse wheel at a point on the desktop.",
+      description: `Scroll the mouse wheel at a point on the desktop. ${AFTER}`,
       inputSchema: z.object({
         ...coordinates,
         direction: z.enum(["up", "down"]),
@@ -216,21 +254,23 @@ export function createWorkstationTools(env: ToolEnv) {
       }),
       execute: async ({ x, y, direction, amount }) => {
         await scroll(agentId(), x, y, direction, amount)
-        return { x, y, direction, amount }
+        return thenLook(agentId(), { x, y, direction, amount }, 500)
       },
+      toModelOutput: ({ output }) => actionToModel(output),
     }),
 
     key_type: tool({
-      description: "Type text into the focused element on the desktop. Newlines are sent as Enter.",
+      description: `Type text into the focused element on the desktop. Newlines are sent as Enter. ${AFTER}`,
       inputSchema: z.object({ text: z.string() }),
       execute: async ({ text }) => {
         await typeText(agentId(), text)
-        return { characters: text.length }
+        return thenLook(agentId(), { characters: text.length }, 500)
       },
+      toModelOutput: ({ output }) => actionToModel(output),
     }),
 
     key_press: tool({
-      description: "Press one key, optionally with modifiers held — e.g. key 'enter', or key 'l' with ['ctrl'].",
+      description: `Press one key, optionally with modifiers held — e.g. key 'enter', or key 'l' with ['ctrl']. ${AFTER}`,
       inputSchema: z.object({
         key: z
           .string()
@@ -243,8 +283,11 @@ export function createWorkstationTools(env: ToolEnv) {
         // Models sometimes send a modifier as both the key and a modifier
         const held = modifiers.filter((modifier) => modifier !== key.toLowerCase())
         await pressKey(agentId(), key, held)
-        return { key, modifiers: held }
+        // Enter usually submits or navigates; give the page longer
+        const settle = /^(enter|return)$/i.test(key) ? 1500 : 500
+        return thenLook(agentId(), { key, modifiers: held }, settle)
       },
+      toModelOutput: ({ output }) => actionToModel(output),
     }),
 
     request_takeover: tool({

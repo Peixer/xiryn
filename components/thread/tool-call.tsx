@@ -204,6 +204,28 @@ function Details({ part }: { part: ToolPart }) {
       ) : (
         <p className="text-[12px] text-muted-foreground">Screenshot not kept.</p>
       )
+    case "pointer_click":
+    case "pointer_move":
+    case "pointer_drag":
+    case "pointer_scroll":
+    case "key_type":
+    case "key_press":
+      return (
+        <div className="flex flex-col gap-2">
+          {name === "key_type" && <Pre>{str(input.text)}</Pre>}
+          {output?.image ? (
+            <Screenshot
+              image={str(output.image)}
+              mediaType={str(output.mediaType) || "image/jpeg"}
+              alt="The screen just after this action"
+            />
+          ) : (
+            <p className="text-[12px] text-muted-foreground">
+              Screenshot after this step not kept.
+            </p>
+          )}
+        </div>
+      )
     case "web_search":
       return output ? (
         <ol className="flex flex-col gap-2">

@@ -27,6 +27,7 @@ import {
   createMemoryTools,
   createWebTools,
   createWorkstationTools,
+  isDesktopAction,
   type OrynMessage,
   type ToolEnv,
 } from "@/lib/agent/tools"
@@ -189,34 +190,68 @@ function textOf(message: OrynMessage) {
 // Screenshots are heavy. Only the most recent few go back to the model.
 const SCREENS_IN_CONTEXT = 2
 
+type Part = OrynMessage["parts"][number]
+
+// Tool results that carry a screenshot: looks, and every desktop action
+function hasScreen(part: Part): part is Part & { output: { image: string | null } } {
+  if (!part.type.startsWith("tool-") || !("state" in part)) return false
+  if (part.state !== "output-available") return false
+  const output = (part as { output?: unknown }).output
+  return typeof output === "object" && output !== null && "image" in output
+}
+
+// Keeps the image of the newest `keep` screenshots, newest first
+function keepNewestScreens(parts: Part[], keep: number, counter = { kept: 0 }) {
+  return parts
+    .slice()
+    .reverse()
+    .map((part) => {
+      if (!hasScreen(part) || !part.output.image) return part
+      if (counter.kept < keep) {
+        counter.kept++
+        return part
+      }
+      return { ...part, output: { ...part.output, image: null } } as Part
+    })
+    .reverse()
+}
+
 function pruneScreens(history: OrynMessage[]) {
-  let kept = 0
+  const counter = { kept: 0 }
   return history
     .slice()
     .reverse()
-    .map((message) => {
-      if (message.role !== "assistant") return message
-      const parts = message.parts
-        .slice()
-        .reverse()
-        .map((part) => {
-          if (
-            (part.type === "tool-screen_capture" || part.type === "tool-screen_share") &&
-            part.state === "output-available" &&
-            part.output.image
-          ) {
-            if (kept < SCREENS_IN_CONTEXT) {
-              kept++
-              return part
-            }
-            return { ...part, output: { ...part.output, image: null } }
-          }
-          return part
-        })
-        .reverse()
-      return { ...message, parts } as OrynMessage
+    .map((message) =>
+      message.role === "assistant"
+        ? ({
+            ...message,
+            parts: keepNewestScreens(message.parts, SCREENS_IN_CONTEXT, counter),
+          } as OrynMessage)
+        : message
+    )
+    .reverse()
+}
+
+// Desktop actions each return a screenshot. Saving all of them would grow
+// the database by megabytes per task, so a saved reply keeps the images of
+// what the agent chose to show or look at, plus the latest action's.
+function trimActionScreens(reply: OrynMessage): OrynMessage {
+  let latestAction = true
+  const parts = reply.parts
+    .slice()
+    .reverse()
+    .map((part) => {
+      if (!hasScreen(part) || !isDesktopAction(part.type.slice("tool-".length))) {
+        return part
+      }
+      if (latestAction) {
+        latestAction = false
+        return part
+      }
+      return { ...part, output: { ...part.output, image: null } } as Part
     })
     .reverse()
+  return { ...reply, parts }
 }
 
 /* ─────────────────────── context compaction ─────────────────────
@@ -492,7 +527,7 @@ export async function startTurn({
           },
         } as OrynMessage
 
-        if (reply.parts.length > 0) saveMessage(threadId, reply)
+        if (reply.parts.length > 0) saveMessage(threadId, trimActionScreens(reply))
 
         const preview = textOf(reply)
         db.update(threads)
