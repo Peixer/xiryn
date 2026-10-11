@@ -39,16 +39,44 @@ function recognitionClass(): RecognitionClass | null {
   return scope.SpeechRecognition ?? scope.webkitSpeechRecognition ?? null
 }
 
-// Recognition on the device when the browser offers it for this language
+// Whether the browser can recognise this language on the device right now.
+// Asked once per page, ahead of the first click, so starting never waits.
+const deviceSupport = new Map<string, Promise<"ready" | "downloadable" | "no">>()
+
+function checkOnDevice(Class: RecognitionClass, lang: string) {
+  let check = deviceSupport.get(lang)
+  if (!check) {
+    check = (async () => {
+      if (!Class.available || !("processLocally" in Class.prototype)) return "no" as const
+      try {
+        const status = await Class.available({ langs: [lang], processLocally: true })
+        return status === "available"
+          ? ("ready" as const)
+          : status === "downloadable"
+            ? ("downloadable" as const)
+            : ("no" as const)
+      } catch {
+        return "no" as const
+      }
+    })()
+    deviceSupport.set(lang, check)
+  }
+  return check
+}
+
+// Recognition on the device if it's ready this instant. If it could be
+// downloaded, that starts in the background (it needs the click that
+// started voice typing) and is used from the next time on.
 async function onDevice(Class: RecognitionClass, lang: string) {
-  if (!Class.available || !("processLocally" in Class.prototype)) return false
-  try {
-    const options = { langs: [lang], processLocally: true }
-    const status = await Class.available(options)
-    if (status === "available") return true
-    if (status === "downloadable" && Class.install) return await Class.install(options)
-  } catch {}
-  return false
+  const status = await Promise.race([
+    checkOnDevice(Class, lang),
+    new Promise<"no">((resolve) => setTimeout(() => resolve("no"), 120)),
+  ])
+  if (status === "downloadable" && Class.install) {
+    deviceSupport.delete(lang)
+    void Class.install({ langs: [lang], processLocally: true }).catch(() => {})
+  }
+  return status === "ready"
 }
 
 const PROBLEMS: Record<string, string> = {
@@ -79,8 +107,11 @@ export function useDictation({
   }, [onText, onProblem])
 
   React.useEffect(() => {
+    const Class = recognitionClass()
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (!recognitionClass()) setState("unsupported")
+    if (!Class) setState("unsupported")
+    // Ask about on-device recognition now, not when the mic is clicked
+    else void checkOnDevice(Class, navigator.language || "en-US")
     return () => recognition.current?.abort()
   }, [])
 
