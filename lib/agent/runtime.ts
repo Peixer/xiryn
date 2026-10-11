@@ -360,7 +360,16 @@ export async function startTurn({
   let current = first
   const held = [first.id]
   let brief: string | undefined
-  const env: ToolEnv = { current: () => current }
+  const env: ToolEnv = {
+    current: () => current,
+    onTakeoverRequested: async (agent, reason) => {
+      // Loaded lazily: the bridge itself depends on this module
+      const { notifyTakeover } = await import("@/lib/telegram/bridge")
+      await notifyTakeover({ agent, threadId, squadId: thread.squadId, reason }).catch(
+        (error) => console.error("[oryn] telegram: hand-off notice failed:", error)
+      )
+    },
+  }
 
   const squadContext = (agent: Agent) =>
     thread.squad

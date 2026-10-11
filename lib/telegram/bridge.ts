@@ -14,6 +14,7 @@ import {
 } from "@/lib/agent/runtime"
 import type { OrynMessage } from "@/lib/agent/tools"
 import { getSetting, setSetting } from "@/lib/config"
+import { getTakeoverLink } from "@/lib/workstation"
 import { resolveModelSpec } from "@/lib/providers/registry"
 import {
   callTelegram,
@@ -563,6 +564,7 @@ const TOOL_LABELS: Record<string, (input: Record<string, unknown>) => string> = 
   web_fetch: (i) => `read ${String(i.url ?? "").replace(/^https?:\/\//, "")}`,
   memory_write: () => "saving to memory",
   memory_forget: () => "forgetting a note",
+  request_takeover: () => "handing you the screen",
   delegate: () => "delegating",
 }
 
@@ -730,6 +732,11 @@ async function converse(token: string, chatId: number, text: string) {
           `↳ _handed to **${memberNames.get(part.output.agentId) ?? part.output.name}**_`
         )
       }
+      // The hand-off notice itself was already sent by notifyTakeover
+      if (part.type === "tool-request_takeover" && part.state === "output-available") {
+        await flushText()
+        sentSomething = true
+      }
       if (
         part.type === "tool-screen_share" &&
         part.state === "output-available" &&
@@ -755,4 +762,55 @@ async function converse(token: string, chatId: number, text: string) {
       "_(no reply — the turn was stopped or produced only tool calls)_"
     )
   }
+}
+
+/* ──────────────────────────── hand-offs ───────────────────────── */
+
+// Where the app is reachable on this computer, for links in notices
+const APP_URL = (process.env.ORYN_URL || "http://127.0.0.1:6796").replace(/\/+$/, "")
+
+// Sent when an agent pauses and hands its desktop to the person — for any
+// turn, whether it started in the app or on Telegram. Their reply goes to the
+// same thread, so the agent picks up with full context.
+export async function notifyTakeover({
+  agent,
+  threadId,
+  squadId,
+  reason,
+}: {
+  agent: Agent
+  threadId: string
+  squadId: string | null
+  reason: string
+}) {
+  const token = getSetting("telegram.botToken")
+  const owner = ownerId()
+  if (!token || !owner || !state.bot) return
+
+  // Replies on Telegram continue this exact thread
+  setTarget(squadId ? { squadId, threadId } : { agentId: agent.id, threadId })
+
+  const link = await getTakeoverLink(agent.id).catch(() => null)
+  const inApp = squadId
+    ? `${APP_URL}/s/${squadId}/${threadId}`
+    : `${APP_URL}/a/${agent.id}/${threadId}?takeover=1`
+
+  const lines = [
+    `🖐 <b>${escape(agent.name)} needs you</b>`,
+    "",
+    escape(reason),
+    "",
+    link &&
+      `📱 <a href="${escape(link.url)}">Take over from this device</a> — opens the live desktop (link expires in ${link.minutes} min).`,
+    `💻 At your computer: <a href="${escape(inApp)}">open in Oryn</a> and press <b>Take over</b>.`,
+    "",
+    `When you're done, reply here — just "done", or anything ${escape(agent.name)} should know — and it carries on.`,
+  ].filter((line): line is string => typeof line === "string")
+
+  await callTelegram(token, "sendMessage", {
+    chat_id: owner,
+    text: lines.join("\n"),
+    parse_mode: "HTML",
+    link_preview_options: { is_disabled: true },
+  })
 }
