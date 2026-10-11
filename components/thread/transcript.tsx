@@ -5,6 +5,7 @@ import type { ChatStatus } from "ai"
 import {
   ArrowDownIcon,
   BrainIcon,
+  Undo2Icon,
   ChevronRightIcon,
   CornerDownRightIcon,
   SendIcon,
@@ -141,6 +142,29 @@ function UserMessage({
   const text = message.parts
     .flatMap((part) => (part.type === "text" ? [part.text] : []))
     .join("\n")
+
+  // Handing the desktop back reads as an event, not a chat bubble
+  const handback = message.metadata?.handback
+  if (handback) {
+    return (
+      <div className="flex flex-col items-center gap-1.5">
+        <div className="flex w-full items-center gap-3">
+          <span className="h-px flex-1 bg-betelgeuse/25" />
+          <span className="flex items-center gap-1.5 font-mono text-[11px] text-betelgeuse">
+            <Undo2Icon className="size-3.5" />
+            you handed the desktop back
+          </span>
+          <span className="h-px flex-1 bg-betelgeuse/25" />
+        </div>
+        {handback.note && (
+          <p className="max-w-[85%] text-center text-[13px] text-muted-foreground">
+            “{handback.note}”
+          </p>
+        )}
+      </div>
+    )
+  }
+
   return (
     <div className="flex justify-end">
       <div className="flex max-w-[85%] flex-col items-end gap-1">

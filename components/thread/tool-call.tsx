@@ -22,6 +22,7 @@ import {
   SquareTerminalIcon,
   XIcon,
   type LucideIcon,
+  HandIcon,
 } from "lucide-react"
 
 import {
@@ -29,6 +30,8 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
+import { useTakeover } from "@/components/thread/takeover"
+import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
 import type { OrynMessage } from "@/lib/agent/tools"
 import { cn } from "@/lib/utils"
@@ -91,6 +94,7 @@ const META: Record<string, Meta> = {
   },
   memory_write: { icon: BrainIcon, label: "remember", summary: (i) => str(i.note) },
   memory_forget: { icon: EraserIcon, label: "forget", summary: (i) => str(i.id) },
+  request_takeover: { icon: HandIcon, label: "hand over", summary: (i) => str(i.reason) },
 }
 
 export function toolName(part: ToolPart) {
@@ -260,6 +264,37 @@ function duration(part: ToolPart) {
   return ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`
 }
 
+// The agent paused and handed its desktop to the person
+function TakeoverRequest({ part }: { part: ToolPart }) {
+  const { available, active, start } = useTakeover()
+  const reason = String((part.input as { reason?: string } | undefined)?.reason ?? "")
+  return (
+    <div className="my-1 flex flex-col gap-2.5 rounded-lg border border-betelgeuse/30 bg-betelgeuse-soft p-3.5">
+      <span className="flex items-center gap-1.5 font-mono text-[11px] text-betelgeuse">
+        <HandIcon className="size-3.5" />
+        needs you at the screen
+      </span>
+      <p className="text-[13.5px] leading-relaxed">{reason}</p>
+      {available ? (
+        <div className="flex flex-wrap items-center gap-3">
+          <Button size="sm" onClick={start} disabled={active}>
+            <HandIcon data-icon="inline-start" />
+            {active ? "You have control" : "Take over"}
+          </Button>
+          <span className="text-[12px] text-muted-foreground">
+            Do your part, then hand it back — it carries on from there.
+          </span>
+        </div>
+      ) : (
+        <p className="text-[12px] text-muted-foreground">
+          Take over from this agent&apos;s own thread (Screen tab), then reply here when
+          you&apos;re done.
+        </p>
+      )}
+    </div>
+  )
+}
+
 export function ToolCall({ part, live = true }: { part: ToolPart; live?: boolean }) {
   const name = toolName(part)
   const meta = META[name] ?? { icon: SquareTerminalIcon, label: name }
@@ -271,6 +306,10 @@ export function ToolCall({ part, live = true }: { part: ToolPart; live?: boolean
   const failed = part.state === "output-error"
   const summary = meta.summary?.((part.input ?? {}) as Record<string, unknown>) ?? ""
   const time = duration(part)
+
+  if (toolName(part) === "request_takeover" && part.state === "output-available") {
+    return <TakeoverRequest part={part} />
+  }
 
   // A shared screen is meant to be seen, so it is shown open
   if (name === "screen_share" && part.state === "output-available") {
