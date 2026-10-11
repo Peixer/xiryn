@@ -7,9 +7,10 @@
 # Installs whatever is missing (Git, Node.js, Docker Desktop) with winget,
 # then Oryn's packages and the agents' workstation image, and starts Oryn.
 # It asks once before installing anything. $env:ORYN_YES = "1" skips it.
-# -NoStart sets everything up without starting Oryn.
+# -NoStart (or $env:ORYN_NO_START = "1") sets everything up without starting Oryn.
 
 param([switch]$NoStart)
+if ($env:ORYN_NO_START -eq "1") { $NoStart = $true }
 
 $ErrorActionPreference = "Stop"
 $Repo = "https://github.com/SouravBeraAkaSpeed/oryn.git"

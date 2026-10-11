@@ -117,7 +117,9 @@ function installPlan() {
       : null
   }
   if (process.platform === "darwin") {
-    return has("brew") ? { command: "brew", args: ["install", "--cask", "docker"] } : null
+    return has("brew")
+      ? { command: "brew", args: ["install", "--cask", "docker-desktop"] }
+      : null
   }
   return { command: "sh", args: ["-c", "curl -fsSL https://get.docker.com | sudo sh"] }
 }

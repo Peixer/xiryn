@@ -507,7 +507,7 @@ const INSTALL: Record<string, { command: string; href: string }> = {
     href: "https://docs.docker.com/desktop/setup/install/windows-install/",
   },
   darwin: {
-    command: "brew install --cask docker",
+    command: "brew install --cask docker-desktop",
     href: "https://docs.docker.com/desktop/setup/install/mac-install/",
   },
   linux: {
