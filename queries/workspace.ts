@@ -1,4 +1,5 @@
 import { and, asc, desc, eq, gte, isNotNull, sql } from "drizzle-orm"
+import type { SQLiteTable } from "drizzle-orm/sqlite-core"
 
 import { db, DB_PATH } from "@/db"
 import {
@@ -237,11 +238,11 @@ export function getSettingsView() {
     dbPath: DB_PATH,
     allowedHosts: process.env.ORYN_ALLOWED_HOSTS ?? null,
     counts: {
-      agents: db.$count(agents),
-      squads: db.$count(squads),
-      threads: db.$count(threads),
-      messages: db.$count(messages),
-      memories: db.$count(memories),
+      agents: countRows(agents),
+      squads: countRows(squads),
+      threads: countRows(threads),
+      messages: countRows(messages),
+      memories: countRows(memories),
     },
     maxStepsValue: getSetting("agent.maxSteps"),
     updateChecks: updateChecksEnabled(),
@@ -249,6 +250,16 @@ export function getSettingsView() {
 }
 
 export type SettingsData = ReturnType<typeof getSettingsView>
+
+// db.$count() is a promise even on SQLite, so count synchronously instead
+function countRows(table: SQLiteTable) {
+  return (
+    db
+      .select({ n: sql<number>`count(*)` })
+      .from(table)
+      .get()?.n ?? 0
+  )
+}
 
 /* ────────────────────────────── ledger ──────────────────────────── */
 
