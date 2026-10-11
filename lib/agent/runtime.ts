@@ -32,7 +32,7 @@ import {
   type ToolEnv,
 } from "@/lib/agent/tools"
 import { getMaxSteps } from "@/lib/config"
-import { emit } from "@/lib/events"
+import { emit, previewText } from "@/lib/events"
 import { createModel, resolveModelSpec } from "@/lib/providers/registry"
 import { isWebConfigured } from "@/lib/web"
 import { isWorkstationConfigured } from "@/lib/workstation"
@@ -409,7 +409,15 @@ export async function startTurn({
   const env: ToolEnv = {
     current: () => current,
     onTakeoverRequested: async (agent, reason) => {
-      emit({ type: "takeover", threadId, href, name: agent.name, reason })
+      emit({
+        type: "takeover",
+        threadId,
+        href,
+        name: agent.name,
+        glyph: agent.glyph,
+        via: channel,
+        reason,
+      })
       // Loaded lazily: the bridge itself depends on this module
       const { notifyTakeover } = await import("@/lib/telegram/bridge")
       await notifyTakeover({ agent, threadId, squadId: thread.squadId, reason }).catch(
@@ -586,7 +594,13 @@ export async function startTurn({
             threadId,
             href,
             name: current.name,
-            preview: preview.slice(0, 280),
+            glyph: current.glyph,
+            via: channel,
+            preview: previewText(
+              reply.parts
+                .flatMap((part) => (part.type === "text" ? [part.text] : []))
+                .join("\n\n")
+            ),
             ok: !failure,
             ...(failure && { error: failure }),
             durationMs,

@@ -2,9 +2,19 @@
 
 import * as React from "react"
 import { usePathname, useRouter } from "next/navigation"
+import { Toast as ToastPrimitive } from "@base-ui/react/toast"
+import { ArrowRightIcon, HandIcon, SendIcon, XIcon } from "lucide-react"
 
-import { toast } from "@/components/ui/toast"
+import { Glyph } from "@/components/glyph"
+import { Button } from "@/components/ui/button"
+import {
+  createToastManager,
+  Toast,
+  ToastPortal,
+  ToastViewport,
+} from "@/components/ui/toast"
 import type { OrynEvent } from "@/lib/events"
+import { cn } from "@/lib/utils"
 
 // Lets you know when an agent finishes, fails or needs you: a chime, a
 // desktop notification when Oryn isn't the window you're looking at, and a
@@ -77,25 +87,150 @@ function chime(kind: "done" | "attention" | "error") {
   } catch {}
 }
 
+function took(ms: number) {
+  const seconds = ms / 1000
+  if (seconds < 60) return `${seconds < 10 ? seconds.toFixed(1) : Math.round(seconds)}s`
+  const whole = Math.round(seconds)
+  return `${Math.floor(whole / 60)}m ${String(whole % 60).padStart(2, "0")}s`
+}
+
+type Kind = "done" | "attention" | "error"
+
 function describe(event: OrynEvent) {
   if (event.type === "takeover") {
     return {
-      kind: "attention" as const,
+      kind: "attention" as Kind,
+      status: "needs you",
       title: `${event.name} needs you`,
       body: event.reason,
     }
   }
   return event.ok
     ? {
-        kind: "done" as const,
-        title: `${event.name} finished`,
+        kind: "done" as Kind,
+        status: `finished · ${took(event.durationMs)}`,
+        title: `${event.name} finished · ${took(event.durationMs)}`,
         body: event.preview || "The reply is ready.",
       }
     : {
-        kind: "error" as const,
+        kind: "error" as Kind,
+        status: `stopped · ${took(event.durationMs)}`,
         title: `${event.name} stopped`,
         body: event.error ?? "Something went wrong.",
       }
+}
+
+/* ──────────────────────── notification card ──────────────────────── */
+
+// Cards get their own stack, separate from ordinary toasts
+const alerts = createToastManager()
+
+type CardData = {
+  kind: Kind
+  status: string
+  name: string
+  glyph: string
+  via: "web" | "telegram"
+  href: string
+  takeoverHref: string | null
+  timeout: number
+}
+
+const TONE: Record<Kind, { edge: string; text: string; bar: string }> = {
+  done: { edge: "bg-rigel", text: "text-rigel", bar: "bg-rigel/50" },
+  attention: { edge: "bg-betelgeuse", text: "text-betelgeuse", bar: "bg-betelgeuse/50" },
+  error: { edge: "bg-destructive", text: "text-destructive", bar: "bg-destructive/50" },
+}
+
+function Cards({ onOpen }: { onOpen: (href: string) => void }) {
+  const { toasts } = ToastPrimitive.useToastManager()
+  return toasts.map((item) => {
+    const data = item.data as CardData | undefined
+    if (!data) return null
+    const tone = TONE[data.kind]
+    return (
+      <Toast
+        key={item.id}
+        toast={item}
+        className="group/card overflow-hidden rounded-xl border-border/80 bg-popover/95 backdrop-blur-xl"
+      >
+        <span className={cn("absolute inset-y-0 left-0 w-[3px]", tone.edge)} />
+        <div className="flex flex-col gap-2.5 py-3 pr-3 pl-4">
+          <div className="flex items-center gap-2.5">
+            <Glyph seed={data.glyph} className="size-7 shrink-0" />
+            <div className="flex min-w-0 flex-1 flex-col leading-tight">
+              <ToastPrimitive.Title className="truncate text-[13px] font-semibold">
+                {data.name}
+              </ToastPrimitive.Title>
+              <span className="flex items-center gap-1.5 font-mono text-[10.5px] text-muted-foreground">
+                <span
+                  className={cn(
+                    "size-1.5 rounded-full",
+                    tone.edge,
+                    data.kind === "attention" && "animate-pulse-dot text-betelgeuse"
+                  )}
+                />
+                <span className={tone.text}>{data.status}</span>
+                {data.via === "telegram" && (
+                  <>
+                    <span className="text-faint">·</span>
+                    <SendIcon className="size-2.5" />
+                    via telegram
+                  </>
+                )}
+              </span>
+            </div>
+            <ToastPrimitive.Close
+              aria-label="Dismiss"
+              className="grid size-6 shrink-0 place-items-center self-start rounded-md text-faint transition-colors hover:bg-accent hover:text-foreground"
+            >
+              <XIcon className="size-3.5" />
+            </ToastPrimitive.Close>
+          </div>
+          <ToastPrimitive.Description className="line-clamp-3 text-[12.5px] leading-relaxed text-foreground/80" />
+          <div className="flex items-center justify-between gap-2 border-t border-dashed pt-2.5">
+            <span className="font-mono text-[10px] text-faint">
+              {data.kind === "attention" ? "// waiting for you" : "// oryn"}
+            </span>
+            <div className="flex items-center gap-1.5">
+              {data.takeoverHref && (
+                <Button
+                  size="xs"
+                  onClick={() => {
+                    onOpen(data.takeoverHref!)
+                    alerts.close(item.id)
+                  }}
+                >
+                  <HandIcon data-icon="inline-start" />
+                  Take over
+                </Button>
+              )}
+              <Button
+                size="xs"
+                variant={data.takeoverHref ? "ghost" : "secondary"}
+                onClick={() => {
+                  onOpen(data.href)
+                  alerts.close(item.id)
+                }}
+              >
+                Open thread
+                <ArrowRightIcon data-icon="inline-end" />
+              </Button>
+            </div>
+          </div>
+        </div>
+        {data.timeout > 0 && (
+          <span
+            style={{ "--countdown": `${data.timeout}ms` } as React.CSSProperties}
+            className={cn(
+              "absolute bottom-0 left-0 h-[2px] w-full origin-left animate-countdown group-hover/card:[animation-play-state:paused]",
+              tone.bar
+            )}
+          />
+        )}
+      </Toast>
+    )
+  })
 }
 
 export function NotificationsProvider({ children }: { children: React.ReactNode }) {
@@ -137,7 +272,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
       router.refresh()
       if (!here.current.enabled) return
 
-      const { kind, title, body } = describe(event)
+      const { kind, status, title, body } = describe(event)
       const looking = document.visibilityState === "visible" && document.hasFocus()
       const onThread = here.current.pathname === event.href.split("?")[0]
       // The thread you're reading already shows its own news
@@ -145,16 +280,21 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
 
       chime(kind)
       if (looking) {
-        toast.add({
-          type: kind === "done" ? "success" : kind === "error" ? "error" : undefined,
-          title,
-          description: body.length > 160 ? `${body.slice(0, 160)}…` : body,
-          timeout: kind === "attention" ? 0 : 8000,
-          actionProps: {
-            children: "Open",
-            onClick: () => router.push(event.href),
-          },
-        })
+        const timeout = kind === "attention" ? 0 : 9000
+        const data: CardData = {
+          kind,
+          status,
+          name: event.name,
+          glyph: event.glyph,
+          via: event.via,
+          href: event.href,
+          takeoverHref:
+            kind === "attention" && event.href.startsWith("/a/")
+              ? `${event.href}?takeover=1`
+              : null,
+          timeout,
+        }
+        alerts.add({ title: event.name, description: body, timeout, data })
         return
       }
       if ("Notification" in window && Notification.permission === "granted") {
@@ -191,5 +331,16 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     () => ({ enabled, permission, toggle }),
     [enabled, permission, toggle]
   )
-  return <NotificationsContext value={value}>{children}</NotificationsContext>
+  return (
+    <NotificationsContext value={value}>
+      {children}
+      <ToastPrimitive.Provider toastManager={alerts} limit={4}>
+        <ToastPortal>
+          <ToastViewport className="bottom-10 sm:right-4">
+            <Cards onOpen={(href) => router.push(href)} />
+          </ToastViewport>
+        </ToastPortal>
+      </ToastPrimitive.Provider>
+    </NotificationsContext>
+  )
 }
