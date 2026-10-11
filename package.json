@@ -1,6 +1,6 @@
 {
   "name": "oryn",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "The open-source, local-first answer to Muse, Grok Bot and Dots: AI agents with their own sandboxed Linux desktops, running in Docker on your machine, with your keys and any model.",
   "keywords": [
     "ai-agents",
