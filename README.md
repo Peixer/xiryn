@@ -49,6 +49,8 @@ curl -fsSL https://raw.githubusercontent.com/SouravBeraAkaSpeed/oryn/main/setup.
 irm https://raw.githubusercontent.com/SouravBeraAkaSpeed/oryn/main/setup.ps1 | iex
 ```
 
+**Have a coding agent?** Paste [one prompt](#set-up-with-your-coding-agent) into Claude Code, Codex or Cursor — it installs everything, asks you for your keys and starts Oryn.
+
 ## Why Oryn
 
 **🔒 Private by design.** No account, no sign-up, no payment details — ever. Conversations, memory, settings and keys live in a single SQLite file on your disk. Even the agents' machines run on your computer. The only things that leave it are the calls you configure (your model provider, plus Firecrawl or Telegram if you turn them on). Run a local model through Ollama and not even your prompts leave.
@@ -164,6 +166,32 @@ The setup asks once, then does the rest:
 4. Creates `.env` and starts Oryn at **<http://127.0.0.1:6796>**.
 
 > The first time, Docker Desktop may ask you to accept its terms, and on Windows it can ask for a restart to turn on WSL 2. Afterwards run the setup again; it skips everything that's already done.
+
+### Set up with your coding agent
+
+Using Claude Code, Codex, Cursor or another coding agent? Paste this prompt into it. It installs everything, asks you for your keys and starts Oryn:
+
+```text
+Install and start Oryn for me — an open-source app that runs AI agents on my own computer: https://github.com/SouravBeraAkaSpeed/oryn
+
+1. From my home folder, run Oryn's setup without prompts. It clones Oryn into ./oryn (or reuses it), installs Git, Node.js and Docker if they're missing, installs the packages and builds the agents' desktop image, which takes several minutes the first time — let it finish:
+   - macOS / Linux:  curl -fsSL https://raw.githubusercontent.com/SouravBeraAkaSpeed/oryn/main/setup.sh | ORYN_YES=1 ORYN_NO_START=1 bash
+   - Windows (PowerShell):  $env:ORYN_YES="1"; $env:ORYN_NO_START="1"; irm https://raw.githubusercontent.com/SouravBeraAkaSpeed/oryn/main/setup.ps1 | iex
+   (If you'd rather not pipe a script, clone the repo and run ./setup.sh or .\setup.ps1 inside it with the same two variables.)
+   - If it stops and shows a command that needs my password, show me that command, wait for me to run it in my own terminal, then run the setup again.
+   - If Docker Desktop was just installed or isn't running, ask me to open it and accept its terms (Windows may also ask for a restart). Wait until `docker info` works, then run the setup again.
+   - Node.js may have been installed into ~/.oryn/node/bin; add that to PATH in your shell if `node` isn't found.
+
+2. Ask me for my keys. Explain each in one sentence with where to get it, and let me skip the optional ones:
+   - Required, at least one model provider: OpenAI (OPENAI_API_KEY, platform.openai.com/api-keys), Anthropic (ANTHROPIC_API_KEY, console.anthropic.com), Google Gemini (GOOGLE_GENERATIVE_AI_API_KEY, aistudio.google.com/apikey) — or any other provider listed in .env.example, including a local Ollama or LM Studio.
+   - Optional: FIRECRAWL_API_KEY (firecrawl.dev) for fast web search.
+   - Optional: TELEGRAM_BOT_TOKEN to talk to my agents from my phone. Tell me how to get it: in Telegram, message @BotFather, send /newbot, choose a name and a username ending in "bot", and copy the token it replies with.
+   Put what I give you into the matching lines of oryn/.env. Never repeat the keys back to me, log them or commit .env.
+
+3. Start Oryn with `npm run dev` inside the oryn folder, in the background. Wait until http://127.0.0.1:6796 responds, then open it in my browser.
+
+4. Finish with a short summary: what got installed, which keys are set, how to start Oryn next time (cd oryn && npm run dev), and — if I added a Telegram token — that I should open Settings → Remote access in Oryn and scan the QR code with my phone to pair it.
+```
 
 <details>
 <summary>Prefer to do it by hand?</summary>
