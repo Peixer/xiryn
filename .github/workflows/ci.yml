@@ -57,3 +57,19 @@ jobs:
           context: .
           push: false
           tags: oryn:ci
+
+  workstation:
+    name: Workstation image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: docker build --tag oryn-workstation:ci workstation
+      # Boots the desktop and proves the tools agents rely on all work
+      - name: Smoke test
+        run: |
+          docker run -d --name ws -e ORYN_VNC_PASSWORD=ci-check oryn-workstation:ci
+          docker exec ws oryn-ready
+          docker exec ws oryn-run 30 'node --version && python --version && git --version'
+          docker exec ws xdotool mousemove 10 10 click 1
+          docker exec ws oryn-shot | base64 -d | head -c 3 | od -An -tx1 | grep -q 'ff d8 ff'
+          docker exec ws sh -c 'curl -sf -o /dev/null http://localhost:6080/vnc.html'
