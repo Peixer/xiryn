@@ -180,12 +180,25 @@ async function startEngine(docker) {
       spawn("open", ["-a", desktopApp], { detached: true, stdio: "ignore" }).unref()
     }
   } else if (process.platform === "linux") {
+    const root = process.getuid?.() === 0
+    const command = root ? "systemctl" : "sudo"
+    const args = root ? ["start", "docker"] : ["systemctl", "start", "docker"]
+    // Without a terminal, sudo can only work if it needs no password
+    const canSudo =
+      root ||
+      interactive ||
+      spawnSync("sudo", ["-n", "true"], { stdio: "ignore" }).status === 0
+    if (!canSudo) {
+      console.log(warn("Docker isn't running. Start it in your own terminal with:"))
+      console.log(`    ${bold("sudo systemctl start docker")}`)
+      return null
+    }
     if (
       !(await ask("Docker isn't running. Start it with `sudo systemctl start docker`?"))
     ) {
       return null
     }
-    await run("sudo", ["systemctl", "start", "docker"])
+    if (!(await run(command, args))) return null
   } else {
     return null
   }

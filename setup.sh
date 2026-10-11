@@ -161,7 +161,7 @@ install_node() {
   case "$manager" in
     apt)
       $sudo_cmd apt-get update -y && $sudo_cmd apt-get install -y ca-certificates curl
-      curl -fsSL "https://deb.nodesource.com/setup_$NODE_MAJOR.x" | $sudo_cmd -E bash -
+      curl -fsSL "https://deb.nodesource.com/setup_$NODE_MAJOR.x" | ${sudo_cmd:+$sudo_cmd -E} bash -
       $sudo_cmd apt-get install -y nodejs
       ;;
     dnf)
@@ -204,7 +204,7 @@ install_docker() {
   curl -fsSL https://get.docker.com | $sudo_cmd sh
   $sudo_cmd systemctl enable --now docker 2>/dev/null || true
   if [ -n "$sudo_cmd" ]; then
-    $sudo_cmd usermod -aG docker "$USER"
+    $sudo_cmd usermod -aG docker "${USER:-$(id -un)}"
     note "Added you to the docker group. New terminals pick it up after you log out and back in."
   fi
 }
@@ -235,7 +235,7 @@ ok "oryn in $(pwd)"
 # On Linux the docker group only applies to new logins; run Docker steps
 # through it now so nothing needs sudo
 run_with_docker() {
-  if [ "$platform" = linux ] && ! docker info >/dev/null 2>&1 && id -nG "$USER" | grep -qw docker; then
+  if [ "$platform" = linux ] && ! docker info >/dev/null 2>&1 && id -nG "${USER:-$(id -un)}" | grep -qw docker; then
     sg docker -c "$*"
   else
     bash -c "$*"
