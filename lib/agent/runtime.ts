@@ -187,6 +187,12 @@ function textOf(message: OrynMessage) {
     .trim()
 }
 
+// Added to the instructions for the last step a turn is allowed
+const LAST_STEP = `
+
+# Step limit reached
+This is your last step in this turn, and your tools are switched off. Tell the person what you have found or done so far, with the concrete details (names, times, prices, links, file paths), and what is still left. They can reply to have you carry on.`
+
 // Screenshots are heavy. Only the most recent few go back to the model.
 const SCREENS_IN_CONTEXT = 2
 
@@ -460,6 +466,7 @@ export async function startTurn({
   }
   let failure: string | null = null
   let appliedAgentId = first.id
+  const maxSteps = getMaxSteps()
 
   try {
     const result = streamText({
@@ -471,18 +478,25 @@ export async function startTurn({
       }),
       tools,
       // The turn also ends when the agent hands its screen to the person
-      stopWhen: [isStepCount(getMaxSteps()), hasToolCall("request_takeover")],
+      stopWhen: [isStepCount(maxSteps), hasToolCall("request_takeover")],
       abortSignal: run.controller.signal,
-      prepareStep: ({ messages: stepMessages }) => {
+      prepareStep: ({ messages: stepMessages, stepNumber }) => {
         // Long tool loops resend everything each step; keep it lean
         const compacted = compactContext(stepMessages)
-        // After a delegation the next step runs as the new agent, on its model
-        if (current.id === appliedAgentId) return { messages: compacted }
+        // The last step answers instead of acting, so a long task always
+        // ends with what was found and what's left
+        const lastStep = stepNumber === maxSteps - 1
+        const delegated = current.id !== appliedAgentId
+        if (!delegated && !lastStep) return { messages: compacted }
         appliedAgentId = current.id
         return {
           messages: compacted,
-          model: createModel(specFor(current)),
-          instructions: buildInstructions(current, capabilities, squadContext(current)),
+          // After a delegation the next step runs as the new agent, on its model
+          ...(delegated && { model: createModel(specFor(current)) }),
+          instructions:
+            buildInstructions(current, capabilities, squadContext(current)) +
+            (lastStep ? LAST_STEP : ""),
+          ...(lastStep && { toolChoice: "none" as const }),
         }
       },
       // Counted per model call, so a turn stopped mid-tool is still metered
