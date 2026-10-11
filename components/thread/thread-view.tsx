@@ -26,6 +26,7 @@ import { Confirm } from "@/components/confirm"
 import { Glyph, SquadGlyph } from "@/components/glyph"
 import { ModelSpecLabel } from "@/components/model-picker"
 import { Composer } from "@/components/thread/composer"
+import { TakeoverContext } from "@/components/thread/takeover"
 import { Transcript, type AgentLite } from "@/components/thread/transcript"
 import { Button } from "@/components/ui/button"
 import {
@@ -85,14 +86,26 @@ const TABS = [
 
 function Workbench({
   agentId,
+  agentName,
   refreshKey,
   workstationEnabled,
+  takeover,
+  onTakeover,
+  onHandBack,
+  onLeaveTakeover,
 }: {
   agentId: string
+  agentName: string
   refreshKey: number
   workstationEnabled: boolean
+  takeover: boolean
+  onTakeover: () => void
+  onHandBack: (note: string) => void
+  onLeaveTakeover: () => void
 }) {
-  const [tab, setTab] = React.useState<(typeof TABS)[number]["id"]>("screen")
+  const [chosenTab, setTab] = React.useState<(typeof TABS)[number]["id"]>("screen")
+  // A take-over always happens on the screen
+  const tab = takeover ? "screen" : chosenTab
   return (
     <div className="flex h-full min-h-0 flex-col bg-surface/40">
       <div className="hairline-b flex h-10 shrink-0 items-stretch gap-1 px-2">
@@ -118,7 +131,15 @@ function Workbench({
       </div>
       {/* Panels stay mounted so the desktop stream survives tab switches */}
       <div className={cn("min-h-0 flex-1 overflow-y-auto", tab !== "screen" && "hidden")}>
-        <Screen agentId={agentId} enabled={workstationEnabled} />
+        <Screen
+          agentId={agentId}
+          agentName={agentName}
+          enabled={workstationEnabled}
+          takeover={takeover}
+          onTakeover={onTakeover}
+          onHandBack={onHandBack}
+          onLeaveTakeover={onLeaveTakeover}
+        />
       </div>
       <div className={cn("min-h-0 flex-1", tab !== "memory" && "hidden")}>
         <MemoryPanel agentId={agentId} refreshKey={refreshKey} />
@@ -503,6 +524,78 @@ export function ThreadView(props: ThreadViewProps) {
     fetch(api, { method: "DELETE" }).finally(() => router.refresh())
   }
 
+  /* Take-over: the person borrows the agent's desktop; the agent pauses */
+  const [takeover, setTakeover] = React.useState(false)
+  const canTakeOver = kind === "agent" && status.workstation
+
+  // Shows the desktop and hands it to the person
+  const openTakeover = () => {
+    if (!workbenchOpen) toggleWorkbench()
+    setTakeover(true)
+  }
+
+  const takeOver = () => {
+    if (!canTakeOver) return
+    if (busy) halt()
+    openTakeover()
+  }
+
+  const handBack = (note: string) => {
+    setTakeover(false)
+    clearError()
+    const text = [
+      "I've handed your desktop back to you.",
+      note && `Note from me: ${note}`,
+      "Take a fresh look at the screen, work out what changed while I had control, and carry on with the task.",
+    ]
+      .filter(Boolean)
+      .join(" ")
+    sendMessage(
+      { text, metadata: { handback: note ? { note } : {} } },
+      { body: { agentId: addressee?.id } }
+    )
+    setTimeout(() => router.refresh(), 400)
+  }
+
+  const takeoverControl = React.useMemo(
+    () => ({ available: canTakeOver, active: takeover, start: takeOver }),
+    // takeOver closes over fresh state on every render
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [canTakeOver, takeover, busy, workbenchOpen]
+  )
+
+  // When the agent hands its screen over while you're watching, open it.
+  // Requests already in the history when the page loaded are left alone.
+  const seenRequests = React.useRef<Set<string> | null>(null)
+  React.useEffect(() => {
+    const ids = messages.flatMap((message) =>
+      message.parts.flatMap((part) =>
+        part.type === "tool-request_takeover" && part.state === "output-available"
+          ? [part.toolCallId]
+          : []
+      )
+    )
+    if (seenRequests.current === null) {
+      seenRequests.current = new Set(ids)
+      return
+    }
+    const fresh = ids.filter((id) => !seenRequests.current!.has(id))
+    fresh.forEach((id) => seenRequests.current!.add(id))
+    if (fresh.length > 0 && canTakeOver) openTakeover()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages, canTakeOver])
+
+  // Links from hand-off notices (?takeover=1) open straight into control
+  React.useEffect(() => {
+    const url = new URL(window.location.href)
+    if (url.searchParams.get("takeover") !== "1") return
+    url.searchParams.delete("takeover")
+    window.history.replaceState(null, "", url.pathname + url.search)
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (canTakeOver) openTakeover()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const chat = (
     <div className="flex h-full min-h-0 flex-col">
       <Transcript
@@ -549,29 +642,36 @@ export function ThreadView(props: ThreadViewProps) {
   )
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <ThreadHeader
-        props={props}
-        workbenchOpen={workbenchOpen}
-        onToggleWorkbench={kind === "agent" ? toggleWorkbench : undefined}
-      />
-      {kind === "agent" && workbenchOpen ? (
-        <ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1">
-          <ResizablePanel id="chat" minSize="35%">
-            {chat}
-          </ResizablePanel>
-          <ResizableHandle />
-          <ResizablePanel id="workbench" defaultSize="38%" minSize="24%" maxSize="60%">
-            <Workbench
-              agentId={members[0].id}
-              refreshKey={refreshKey}
-              workstationEnabled={status.workstation}
-            />
-          </ResizablePanel>
-        </ResizablePanelGroup>
-      ) : (
-        <div className="min-h-0 flex-1">{chat}</div>
-      )}
-    </div>
+    <TakeoverContext value={takeoverControl}>
+      <div className="flex min-h-0 flex-1 flex-col">
+        <ThreadHeader
+          props={props}
+          workbenchOpen={workbenchOpen}
+          onToggleWorkbench={kind === "agent" ? toggleWorkbench : undefined}
+        />
+        {kind === "agent" && workbenchOpen ? (
+          <ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1">
+            <ResizablePanel id="chat" minSize="35%">
+              {chat}
+            </ResizablePanel>
+            <ResizableHandle />
+            <ResizablePanel id="workbench" defaultSize="38%" minSize="24%" maxSize="60%">
+              <Workbench
+                agentId={members[0].id}
+                agentName={members[0].name}
+                refreshKey={refreshKey}
+                workstationEnabled={status.workstation}
+                takeover={takeover}
+                onTakeover={takeOver}
+                onHandBack={handBack}
+                onLeaveTakeover={() => setTakeover(false)}
+              />
+            </ResizablePanel>
+          </ResizablePanelGroup>
+        ) : (
+          <div className="min-h-0 flex-1">{chat}</div>
+        )}
+      </div>
+    </TakeoverContext>
   )
 }
