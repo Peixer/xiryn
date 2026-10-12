@@ -19,6 +19,7 @@
 </p>
 
 <p align="center">
+  <a href="https://xiryn.com"><strong>xiryn.com</strong></a> ·
   <a href="#quick-start">Quick start</a> ·
   <a href="#why-xiryn">Why Xiryn</a> ·
   <a href="#how-it-compares">Compare</a> ·
