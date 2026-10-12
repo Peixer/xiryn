@@ -28,7 +28,7 @@
   <a href="CONTRIBUTING.md">Contribute</a>
 </p>
 
-https://github.com/user-attachments/assets/87cc1585-3c16-49de-9d13-0e90735ab437
+https://github.com/user-attachments/assets/e9769ff2-b9ae-426c-a47e-629910b11155
 
 ---
 
