@@ -28,6 +28,15 @@
   <a href="CONTRIBUTING.md">Contribute</a>
 </p>
 
+<p align="center">
+  <a href="https://www.producthunt.com/products/xiryn?launch=xiryn&utm_source=badge-featured&utm_medium=badge&utm_campaign=xiryn-github">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1277481&theme=dark">
+      <img src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1277481&theme=light" alt="Xiryn on Product Hunt" width="250" height="54">
+    </picture>
+  </a>
+</p>
+
 https://github.com/user-attachments/assets/e9769ff2-b9ae-426c-a47e-629910b11155
 
 ---
