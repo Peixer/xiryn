@@ -3,6 +3,8 @@ import Link from "next/link"
 import { format, formatDistanceToNowStrict, subDays } from "date-fns"
 
 import { Glyph } from "@/components/glyph"
+import { BudgetCard, PriceButton } from "@/components/usage/spend-controls"
+import { formatUsd } from "@/lib/providers/pricing"
 import { cn } from "@/lib/utils"
 import { getUsage } from "@/queries/workspace"
 
@@ -39,6 +41,7 @@ export default function Page() {
       date,
       tokens: byDay.get(key)?.tokens ?? 0,
       turns: byDay.get(key)?.turns ?? 0,
+      cost: byDay.get(key)?.cost ?? 0,
     }
   })
   const peak = Math.max(1, ...days.map((d) => d.tokens))
@@ -50,12 +53,26 @@ export default function Page() {
           <span className="label-mono">{`// ledger · last ${usage.days} days`}</span>
           <h1 className="text-2xl font-semibold tracking-tight">Usage</h1>
           <p className="max-w-2xl text-[13.5px] leading-relaxed text-muted-foreground">
-            Every agent turn is recorded locally: the model it ran on and the tokens it
-            consumed. Your providers bill you directly — Xiryn just keeps the receipts.
+            Every agent turn is recorded locally: the model it ran on, the tokens it
+            consumed and what that cost. Local models are free. Your providers bill you
+            directly — Xiryn just keeps the receipts.
           </p>
         </header>
 
-        <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border bg-border sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border bg-border sm:grid-cols-3 lg:grid-cols-5">
+          <Stat
+            label="spent"
+            value={formatUsd(usage.spend.total)}
+            hint={
+              usage.spend.unpriced
+                ? `${usage.spend.unpriced} turns without a price`
+                : usage.spend.total === 0 && totals.turns > 0
+                  ? "all on local models"
+                  : usage.spend.estimated
+                    ? "older turns estimated"
+                    : undefined
+            }
+          />
           <Stat
             label="turns"
             value={compact.format(totals.turns)}
@@ -86,6 +103,8 @@ export default function Page() {
           />
         </div>
 
+        <BudgetCard spent={usage.spend.month} budget={usage.budget} />
+
         <section className="flex flex-col gap-3">
           <h2 className="label-mono">tokens per day</h2>
           <div className="rounded-xl border bg-surface/50 p-4">
@@ -108,7 +127,7 @@ export default function Page() {
                   />
                   <div className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-2 hidden -translate-x-1/2 rounded-md border bg-popover px-2 py-1 font-mono text-[10.5px] whitespace-nowrap shadow-md group-hover:block">
                     {format(day.date, "MMM d")} · {compact.format(day.tokens)} tokens ·{" "}
-                    {day.turns} turns
+                    {day.turns} turns{day.cost > 0 && ` · ${formatUsd(day.cost)}`}
                   </div>
                 </div>
               ))}
@@ -131,8 +150,24 @@ export default function Page() {
                 <div key={row.model} className="flex items-baseline gap-3 px-4 py-2.5">
                   <span className="min-w-0 flex-1 truncate">{row.model}</span>
                   <span className="text-muted-foreground">{row.turns} turns</span>
-                  <span className="w-28 text-right tabular-nums">
+                  <span className="w-24 text-right tabular-nums">
                     {compact.format(row.input)} / {compact.format(row.output)}
+                  </span>
+                  <span className="flex w-20 items-baseline justify-end gap-1.5 tabular-nums">
+                    {row.local ? (
+                      <span className="text-ok">free</span>
+                    ) : row.cost === null ? (
+                      <PriceButton spec={row.model} hasCustom={false} unknown />
+                    ) : (
+                      <>
+                        {formatUsd(row.cost)}
+                        <PriceButton
+                          spec={row.model}
+                          hasCustom={row.priceSource === "custom"}
+                          unknown={false}
+                        />
+                      </>
+                    )}
                   </span>
                 </div>
               ))}
@@ -153,8 +188,11 @@ export default function Page() {
                   <span className="font-mono text-muted-foreground">
                     {row.toolCalls} tools
                   </span>
-                  <span className="w-28 text-right font-mono tabular-nums">
+                  <span className="w-24 text-right font-mono tabular-nums">
                     {compact.format(row.input)} / {compact.format(row.output)}
+                  </span>
+                  <span className="w-16 text-right font-mono tabular-nums">
+                    {formatUsd(row.cost)}
                   </span>
                 </div>
               ))}
@@ -168,19 +206,27 @@ export default function Page() {
             <table className="w-full font-mono text-[11.5px]">
               <thead>
                 <tr className="border-b text-left text-muted-foreground">
-                  {["when", "agent", "model", "status", "in", "out", "steps", "time"].map(
-                    (h) => (
-                      <th key={h} className="px-3 py-2 font-normal">
-                        {h}
-                      </th>
-                    )
-                  )}
+                  {[
+                    "when",
+                    "agent",
+                    "model",
+                    "status",
+                    "in",
+                    "out",
+                    "cost",
+                    "steps",
+                    "time",
+                  ].map((h) => (
+                    <th key={h} className="px-3 py-2 font-normal">
+                      {h}
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody className="divide-y">
                 {usage.recent.length === 0 && (
                   <tr>
-                    <td colSpan={8} className="px-3 py-4 text-muted-foreground">
+                    <td colSpan={9} className="px-3 py-4 text-muted-foreground">
                       Nothing yet. Talk to an agent and its turns land here.
                     </td>
                   </tr>
@@ -225,6 +271,9 @@ export default function Page() {
                     <td className="px-3 py-2 tabular-nums">
                       {compact.format(turn.output)}
                     </td>
+                    <td className="px-3 py-2 tabular-nums">
+                      {turn.cost === null ? "—" : formatUsd(turn.cost)}
+                    </td>
                     <td className="px-3 py-2 tabular-nums">{turn.steps}</td>
                     <td className="px-3 py-2 tabular-nums">
                       {(turn.durationMs / 1000).toFixed(1)}s
@@ -235,8 +284,8 @@ export default function Page() {
             </table>
           </div>
           <p className="font-mono text-[10.5px] text-faint">
-            Costs aren&apos;t estimated — prices change. Check your provider&apos;s
-            dashboard for spend.{" "}
+            Costs use each provider&apos;s published prices as of {usage.pricesAsOf}, or
+            the prices you set. Your provider&apos;s bill is the final word.{" "}
             <Link href="/settings#providers" className="hover:text-foreground">
               providers →
             </Link>

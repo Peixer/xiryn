@@ -131,11 +131,46 @@ export const turns = sqliteTable(
     steps: integer().notNull().default(0),
     toolCalls: integer().notNull().default(0),
     durationMs: integer().notNull().default(0),
+    // What the turn cost in millionths of a dollar, priced when it ran. Zero
+    // on local models; null when the model's price isn't known.
+    costMicros: integer(),
     status: text({ enum: ["completed", "stopped", "failed"] }).notNull(),
     error: text(),
     createdAt: timestamp(),
   },
   (t) => [index("turns_created_idx").on(t.createdAt)]
+)
+
+/* ──────────────────────────── routines ──────────────────────────── */
+
+// When a routine runs, in this computer's local time
+export type RoutineSchedule =
+  | { kind: "daily" | "weekdays"; time: string }
+  | { kind: "weekly"; time: string; day: number }
+  | { kind: "hourly"; every: number }
+  // Just once, at a local date and time like "2026-10-21T09:00"
+  | { kind: "once"; at: string }
+
+// A task an agent (or a squad) does on its own on a schedule, e.g. a news
+// brief every morning. Each routine posts into its own thread.
+export const routines = sqliteTable(
+  "routines",
+  {
+    id: id(),
+    name: text().notNull(),
+    agentId: text().references(() => agents.id, { onDelete: "cascade" }),
+    squadId: text().references(() => squads.id, { onDelete: "cascade" }),
+    prompt: text().notNull(),
+    schedule: text({ mode: "json" }).notNull().$type<RoutineSchedule>(),
+    enabled: integer({ mode: "boolean" }).notNull().default(true),
+    threadId: text().references(() => threads.id, { onDelete: "set null" }),
+    nextRunAt: integer({ mode: "timestamp_ms" }),
+    lastRunAt: integer({ mode: "timestamp_ms" }),
+    lastStatus: text({ enum: ["running", "ok", "failed", "skipped"] }),
+    lastError: text(),
+    createdAt: timestamp(),
+  },
+  (t) => [index("routines_next_idx").on(t.enabled, t.nextRunAt)]
 )
 
 /* ───────────────────────────── vault ────────────────────────────── */
@@ -261,6 +296,63 @@ export const squadInputSchema = createInsertSchema(squads, {
     agentIds: z.array(z.string()).min(2, "A squad needs at least two agents."),
   })
 
+// US dollars per million tokens, for a model Xiryn has no price for
+export const modelPriceSchema = z.object({
+  spec: modelSpecSchema,
+  input: z.number().min(0, "Prices can't be negative.").max(10_000),
+  output: z.number().min(0, "Prices can't be negative.").max(10_000),
+  cached: z.number().min(0).max(10_000).optional(),
+})
+
+// Dollars a month; empty or 0 means no budget
+export const monthlyBudgetSchema = z
+  .string()
+  .trim()
+  .regex(/^(\d{1,6}(\.\d{1,2})?)?$/, "Use a dollar amount, e.g. 20 or 7.50.")
+
+const clock = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Use a time like 08:30.")
+
+export const routineScheduleSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.enum(["daily", "weekdays"]), time: clock }),
+  z.object({
+    kind: z.literal("weekly"),
+    time: clock,
+    day: z.number().int().min(0).max(6),
+  }),
+  z.object({ kind: z.literal("hourly"), every: z.number().int().min(1).max(24) }),
+  z.object({
+    kind: z.literal("once"),
+    at: z
+      .string()
+      .regex(
+        /^\d{4}-\d{2}-\d{2}T([01]\d|2[0-3]):[0-5]\d$/,
+        "Use a date and time like 2026-10-21T09:00."
+      ),
+  }),
+])
+
+export const routineInputSchema = z
+  .object({
+    name: z
+      .string()
+      .trim()
+      .min(1, "Name the routine.")
+      .max(60, "Keep it under 60 characters."),
+    agentId: z.string().nullish(),
+    squadId: z.string().nullish(),
+    prompt: z
+      .string()
+      .trim()
+      .min(1, "Say what to do each time.")
+      .max(4000, "Keep it under 4000 characters."),
+    schedule: routineScheduleSchema,
+    enabled: z.boolean().default(true),
+  })
+  .refine((value) => !!value.agentId !== !!value.squadId, {
+    message: "Pick one agent or one squad.",
+    path: ["agentId"],
+  })
+
 export const memoryInputSchema = z.object({
   content: z.string().trim().min(1, "Write something to remember.").max(2000),
 })
@@ -272,4 +364,6 @@ export type SquadInput = z.infer<typeof squadInputSchema>
 export type Thread = typeof threads.$inferSelect
 export type Memory = typeof memories.$inferSelect
 export type Turn = typeof turns.$inferSelect
+export type Routine = typeof routines.$inferSelect
+export type RoutineInput = z.infer<typeof routineInputSchema>
 export type MessageRow = typeof messages.$inferSelect

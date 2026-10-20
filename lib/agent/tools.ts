@@ -1,9 +1,19 @@
 import { tool, type InferUITools, type UIDataTypes, type UIMessage } from "ai"
-import { and, eq } from "drizzle-orm"
+import { and, asc, eq } from "drizzle-orm"
 import { z } from "zod"
 
 import { db } from "@/db"
-import { memories, type Agent } from "@/db/schema"
+import {
+  agents,
+  memories,
+  routines,
+  routineScheduleSchema,
+  squads,
+  threads,
+  type Agent,
+  type Routine,
+} from "@/db/schema"
+import { describeSchedule, nextRun } from "@/lib/schedule"
 import {
   activeApproval,
   createApproval,
@@ -585,22 +595,186 @@ export function createDelegateTool(
   }
 }
 
+/* ──────────────────────────── routines ─────────────────────────── */
+
+const WEEKDAY_NAMES = [
+  "sunday",
+  "monday",
+  "tuesday",
+  "wednesday",
+  "thursday",
+  "friday",
+  "saturday",
+] as const
+
+function routineOwner(routine: Routine) {
+  if (routine.agentId) {
+    return db
+      .select({ name: agents.name })
+      .from(agents)
+      .where(eq(agents.id, routine.agentId))
+      .get()?.name
+  }
+  if (!routine.squadId) return undefined
+  return db
+    .select({ name: squads.name })
+    .from(squads)
+    .where(eq(squads.id, routine.squadId))
+    .get()?.name
+}
+
+function describeRoutine(routine: Routine) {
+  return {
+    id: routine.id,
+    name: routine.name,
+    by: routineOwner(routine) ?? null,
+    when: describeSchedule(routine.schedule),
+    on: routine.enabled,
+    nextRun: routine.nextRunAt
+      ? routine.nextRunAt.toLocaleString("en-GB", {
+          weekday: "short",
+          day: "numeric",
+          month: "short",
+          hour: "2-digit",
+          minute: "2-digit",
+        })
+      : null,
+    task: routine.prompt,
+  }
+}
+
+// Scheduling from a conversation: "every morning at 8, send me…"
+export function createRoutineTools(env: ToolEnv) {
+  return {
+    routine_create: tool({
+      description:
+        'Schedule a task to run on its own later, in the person\'s local time: every day, on weekdays, once a week, every few hours, or just once at a set date and time. Use it whenever they ask for something to happen regularly or at a set time ("every morning at 8, brief me on…", "on Fridays at 5 check…", "tomorrow at 9 remind me…"). Each run, the task arrives as a message in the routine\'s own thread and is done without them watching; they\'re notified with the result in the app, on their desktop and on Telegram. It keeps working while Xiryn runs, even with no browser open. Ask first if the time is ambiguous.',
+      inputSchema: z.object({
+        name: z.string().min(1).max(60).describe('A short name, e.g. "Morning brief"'),
+        task: z
+          .string()
+          .min(1)
+          .max(4000)
+          .describe(
+            "What to do each time, as a self-contained request to yourself: it's read later, without this conversation"
+          ),
+        when: z
+          .enum(["daily", "weekdays", "weekly", "hourly", "once"])
+          .describe(
+            "daily, weekdays (Monday to Friday), weekly (one day a week), hourly (every few hours) or once"
+          ),
+        time: z
+          .string()
+          .optional()
+          .describe("For daily, weekdays and weekly: 24-hour local time, e.g. 08:30"),
+        day: z.enum(WEEKDAY_NAMES).optional().describe("For weekly: the day"),
+        every: z
+          .number()
+          .int()
+          .min(1)
+          .max(24)
+          .optional()
+          .describe("For hourly: how many hours apart"),
+        at: z
+          .string()
+          .optional()
+          .describe(
+            "For once: local date and time as YYYY-MM-DDTHH:MM, e.g. 2026-10-21T09:00"
+          ),
+      }),
+      execute: async ({ name, task, when, time, day, every, at }) => {
+        const parsed = routineScheduleSchema.safeParse(
+          when === "hourly"
+            ? { kind: when, every: every ?? 1 }
+            : when === "once"
+              ? { kind: when, at }
+              : when === "weekly"
+                ? { kind: when, time, day: day ? WEEKDAY_NAMES.indexOf(day) : undefined }
+                : { kind: when, time }
+        )
+        if (!parsed.success) {
+          throw new Error(
+            `The schedule isn't complete: ${parsed.error.issues
+              .map((issue) => `${issue.path.join(".") || "schedule"}: ${issue.message}`)
+              .join("; ")}`
+          )
+        }
+        const next = nextRun(parsed.data)
+        if (!next)
+          throw new Error("That time has already passed. Pick one in the future.")
+        // In a squad's thread the routine belongs to the squad
+        const thread = db
+          .select({ squadId: threads.squadId })
+          .from(threads)
+          .where(eq(threads.id, env.threadId))
+          .get()
+        const [routine] = db
+          .insert(routines)
+          .values({
+            name: name.trim(),
+            agentId: thread?.squadId ? null : env.current().id,
+            squadId: thread?.squadId ?? null,
+            prompt: task.trim(),
+            schedule: parsed.data,
+            nextRunAt: next,
+          })
+          .returning()
+          .all()
+        return describeRoutine(routine)
+      },
+    }),
+
+    routine_list: tool({
+      description:
+        "List the scheduled routines in this workspace: what each does, when, and when it runs next.",
+      inputSchema: z.object({}),
+      execute: async () => ({
+        routines: db
+          .select()
+          .from(routines)
+          .orderBy(asc(routines.createdAt))
+          .all()
+          .map(describeRoutine),
+      }),
+    }),
+
+    routine_delete: tool({
+      description:
+        "Delete a scheduled routine by its id (from routine_list) when the person asks to stop or cancel it. Its thread and past results are kept.",
+      inputSchema: z.object({ id: z.string().describe("The routine's id") }),
+      execute: async ({ id }) => {
+        const routine = db.select().from(routines).where(eq(routines.id, id)).get()
+        if (!routine)
+          throw new Error("No routine has that id. Use routine_list to find it.")
+        db.delete(routines).where(eq(routines.id, id)).run()
+        return { deleted: routine.name }
+      },
+    }),
+  }
+}
+
 /* ───────────────────────────── types ──────────────────────────── */
 
 export type XirynTools = ReturnType<typeof createWorkstationTools> &
   ReturnType<typeof createVaultTools> &
   ReturnType<typeof createMemoryTools> &
   ReturnType<typeof createWebTools> &
+  ReturnType<typeof createRoutineTools> &
   ReturnType<typeof createDelegateTool>
 
 export type XirynMetadata = {
   // The agent that started the reply, or that a squad message was sent to
   agentId?: string
   model?: string
-  usage?: { input: number; output: number }
+  usage?: { input: number; output: number; cached?: number }
+  // What the reply cost in dollars: 0 on a local model, null when the
+  // model's price isn't known
+  cost?: number | null
   durationMs?: number
   // Set on messages that arrived through Telegram
   via?: "telegram"
+  // Set on the message a routine sends when it runs
+  routine?: { id: string; name: string }
   // Set on the message sent when the person hands the desktop back
   handback?: { note?: string }
   // Set on the message that answers a payment approval or a secret request

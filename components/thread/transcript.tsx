@@ -3,6 +3,7 @@
 import * as React from "react"
 import type { ChatStatus } from "ai"
 import {
+  AlarmClockIcon,
   ArrowDownIcon,
   BrainIcon,
   ShieldCheckIcon,
@@ -22,6 +23,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
 import type { XirynMessage } from "@/lib/agent/tools"
+import { estimateCost, formatUsd, isFree } from "@/lib/providers/pricing"
 import { cn } from "@/lib/utils"
 
 export type AgentLite = {
@@ -58,6 +60,26 @@ function segments(message: XirynMessage, members: AgentLite[]) {
   const visible = (segment: (typeof result)[number]) =>
     segment.parts.some((part) => part.type !== "step-start")
   return result.filter((segment, i) => i === result.length - 1 || visible(segment))
+}
+
+// What a reply cost: priced when it ran, or estimated from today's prices
+// for replies saved before costs were recorded
+function ReplyCost({ meta }: { meta: NonNullable<XirynMessage["metadata"]> }) {
+  if (!meta.model) return null
+  if (isFree(meta.model)) {
+    return <span className="text-ok">free · local</span>
+  }
+  if (typeof meta.cost === "number") {
+    return (
+      <span title="What this reply cost, at the provider's price">
+        {formatUsd(meta.cost)}
+      </span>
+    )
+  }
+  if (meta.cost === null || !meta.usage) return null
+  const estimate = estimateCost(meta.model, meta.usage)
+  if (estimate === null) return null
+  return <span title="Estimated at today's prices">≈ {formatUsd(estimate)}</span>
 }
 
 function formatTokens(n: number) {
@@ -208,8 +230,16 @@ function UserMessage({
   return (
     <div className="flex justify-end">
       <div className="flex max-w-[85%] flex-col items-end gap-1">
-        {(addressee || message.metadata?.via === "telegram") && (
+        {(addressee ||
+          message.metadata?.via === "telegram" ||
+          message.metadata?.routine) && (
           <span className="flex items-center gap-1.5 font-mono text-[10.5px] text-muted-foreground">
+            {message.metadata?.routine && (
+              <span className="flex items-center gap-1 text-rigel">
+                <AlarmClockIcon className="size-3" /> routine ·{" "}
+                {message.metadata.routine.name}
+              </span>
+            )}
             {message.metadata?.via === "telegram" && (
               <span className="flex items-center gap-1 text-rigel">
                 <SendIcon className="size-3" /> via telegram
@@ -288,6 +318,7 @@ function AgentMessage({
               {formatTokens(meta.usage.input)} in · {formatTokens(meta.usage.output)} out
             </span>
           )}
+          <ReplyCost meta={meta} />
           {typeof meta.durationMs === "number" && (
             <span>{(meta.durationMs / 1000).toFixed(1)}s</span>
           )}

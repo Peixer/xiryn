@@ -606,6 +606,9 @@ const TOOL_LABELS: Record<string, (input: Record<string, unknown>) => string> = 
   web_fetch: (i) => `read ${String(i.url ?? "").replace(/^https?:\/\//, "")}`,
   memory_write: () => "saving to memory",
   memory_forget: () => "forgetting a note",
+  routine_create: (i) => `scheduling “${String(i.name ?? "a routine")}”`,
+  routine_list: () => "checking routines",
+  routine_delete: () => "removing a routine",
   request_takeover: () => "handing you the screen",
   vault_list: () => "checking your vault",
   vault_fill: (i) =>
@@ -900,6 +903,7 @@ export async function notifyFinished({
   reply,
   error,
   durationMs,
+  always = false,
 }: {
   name: string
   agentId: string
@@ -908,9 +912,11 @@ export async function notifyFinished({
   reply: string
   error: string | null
   durationMs: number
+  // Routines report every run, however short, unless notices are off
+  always?: boolean
 }) {
   const mode = getSetting("telegram.notify")
-  if (mode === "off" || (mode !== "all" && durationMs < 60_000)) return
+  if (mode === "off" || (mode !== "all" && !always && durationMs < 60_000)) return
   const token = getSetting("telegram.botToken")
   const owner = ownerId()
   if (!token || !owner || !state.bot) return

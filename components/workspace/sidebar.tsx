@@ -5,7 +5,10 @@ import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import {
   ActivityIcon,
+  AlarmClockIcon,
   ArrowUpCircleIcon,
+  LayoutGridIcon,
+  MailIcon,
   MoonIcon,
   PlusIcon,
   SearchIcon,
@@ -20,11 +23,13 @@ import { deleteThread } from "@/actions/threads"
 import { checkForUpdates } from "@/actions/updates"
 import { LogoMark, Wordmark } from "@/components/brand"
 import { Confirm } from "@/components/confirm"
+import { useFeedbackContext } from "@/components/feedback/feedback-prompt"
 import { Glyph, SquadGlyph } from "@/components/glyph"
 import { useWorkspace } from "@/components/workspace/context"
 import { Kbd } from "@/components/ui/kbd"
 import { toast } from "@/components/ui/toast"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { feedbackMailto } from "@/lib/feedback"
 import { REPOSITORY_URL, STARS_SHOWN_FROM, UPDATE_GUIDE_URL } from "@/lib/project"
 import type { UpdateInfo } from "@/lib/updates"
 import { cn } from "@/lib/utils"
@@ -133,12 +138,41 @@ function Item({
   )
 }
 
+// A page link in the sidebar's footer
+function FooterLink({
+  href,
+  pathname,
+  onNavigate,
+  children,
+}: {
+  href: string
+  pathname: string
+  onNavigate?: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <Link
+      href={href}
+      onClick={onNavigate}
+      className={cn(
+        "flex h-8 items-center gap-2.5 rounded-md px-2 text-[13px] transition-colors",
+        pathname === href
+          ? "bg-accent text-foreground"
+          : "text-muted-foreground hover:bg-accent/60 hover:text-foreground"
+      )}
+    >
+      {children}
+    </Link>
+  )
+}
+
 export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const { nav, status, openAgentDialog, openSquadDialog, openPalette } = useWorkspace()
   const pathname = usePathname()
   const router = useRouter()
   const { resolvedTheme, setTheme } = useTheme()
   const updates = useUpdates(status.updates)
+  const feedback = useFeedbackContext()
 
   const recent = nav.threads.slice(0, 8)
   const ownerOf = (thread: (typeof nav.threads)[number]) =>
@@ -330,6 +364,14 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
       </div>
 
       <div className="flex flex-col gap-px border-t p-2">
+        <FooterLink href="/templates" pathname={pathname} onNavigate={onNavigate}>
+          <LayoutGridIcon className="size-4" />
+          Templates
+        </FooterLink>
+        <FooterLink href="/routines" pathname={pathname} onNavigate={onNavigate}>
+          <AlarmClockIcon className="size-4" />
+          Routines
+        </FooterLink>
         <Link
           href="/usage"
           onClick={onNavigate}
@@ -363,6 +405,16 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
               />
             )}
           </Link>
+          <Tooltip>
+            <TooltipTrigger
+              render={<a href={feedbackMailto(feedback)} />}
+              aria-label="Send feedback"
+              className="grid size-8 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
+            >
+              <MailIcon className="size-4" />
+            </TooltipTrigger>
+            <TooltipContent side="top">Send feedback</TooltipContent>
+          </Tooltip>
           <Tooltip>
             <TooltipTrigger
               onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}

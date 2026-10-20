@@ -2,6 +2,24 @@
 
 All notable changes to Xiryn are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses [Semantic Versioning](https://semver.org/).
 
+## [0.5.0] — 2026-10-20
+
+Routines, free local models in one command, and what every reply costs.
+
+### Added
+
+- **Routines:** tasks agents do on their own on a schedule — every day, on weekdays, one day a week, every few hours, or just once — in your computer's local time. Set them up on the new **Routines** page (with ideas to start from: a morning brief, job alerts, a price watch, a weekly research digest, a plan for the week), or just ask an agent in a chat: *"every weekday at 9, check…"*. Each routine posts into its own thread; you're told when a run finishes in the app, on Telegram (every run, however short) and by your desktop.
+- **Agents can schedule:** new `routine_create`, `routine_list` and `routine_delete` tools. Agents now also know the local date, time and time zone.
+- **Background mode:** `npm run background` runs Xiryn with no terminal or browser open (`stop`, `restart`, `status`), and `npm run background -- login` starts it whenever you log in (Windows, macOS and Linux). It serves a production build, rebuilt automatically after updates, and logs to `data/xiryn.log`.
+- **Desktop notifications without a tab:** with no Xiryn tab open, the operating system shows a notification when an agent finishes or needs you. Off in **Settings → System** or with `XIRYN_DESKTOP_NOTIFY=off`.
+- **Free local models in one command:** `npm run setup:local` (or `--local` on the one-line installers) installs Ollama if it's missing, downloads a model with tool calling and vision that fits your computer's memory, and makes it every agent's default.
+- **Settings → Local models:** Ollama's status, your downloaded models, one-click downloads with progress (any model from ollama.com/library), and **Use as default**.
+- **What it costs:** every reply shows its price — *free · local* on local models — from up-to-date prices for OpenAI, Anthropic and Gemini models, including long-context and cached-input rates. The Usage page adds spend by day, model and agent, estimates older turns, and lets you set a price for models Xiryn doesn't know.
+- **Monthly budget:** set one on the Usage page or with `XIRYN_MONTHLY_BUDGET`. Once it's spent, paid models wait until the 1st; local models keep working.
+- **16 ready-made agents and 4 squads:** a new **Templates** page — Atlas, Altair (shopping), Polaris (travel), Mira (errands), Capella (jobs), Sirius (writing), Antares (social), Castor (leads), Vega (research), Deneb (news), Spica (tutor), Rigel (engineering), Arcturus (code review), Electra (websites), Lyra (data) and Pollux (budgets) — plus Crew, Launch crew, Trip team and Dev team, each created in one click. A new workspace offers the starter team straight away.
+- **Feedback:** after a few finished tasks, a small card asks how Xiryn is doing; answering opens a draft in your own email app to the author (nothing is sent by Xiryn). It's also in the sidebar and the command palette, next to *Report a bug on GitHub*.
+- **Export a thread:** *Copy as Markdown* and *Export as Markdown* in the thread menu, with who said what, the steps agents took, and the model and cost of each reply.
+
 ## [0.4.1] — 2026-10-12
 
 ### Changed
@@ -110,6 +128,7 @@ The first public release.
 - **Security:** loopback-only server, Host/Origin guard, masked secrets.
 - Constellation glyphs for agents and squads, dark and light themes, command palette (⌘K), responsive layout.
 
+[0.5.0]: https://github.com/SouravBeraAkaSpeed/xiryn/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/SouravBeraAkaSpeed/xiryn/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/SouravBeraAkaSpeed/xiryn/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/SouravBeraAkaSpeed/xiryn/compare/v0.2.0...v0.3.0

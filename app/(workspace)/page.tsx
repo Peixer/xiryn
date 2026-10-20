@@ -3,7 +3,13 @@ import { formatDistanceToNowStrict } from "date-fns"
 import { ArrowRightIcon } from "lucide-react"
 
 import { Glyph, SquadGlyph } from "@/components/glyph"
-import { NewAgentCard, NewSquadButton, TemplateGrid } from "@/components/home/actions"
+import {
+  NewAgentCard,
+  NewSquadButton,
+  StarterTeamButton,
+  TemplateGrid,
+} from "@/components/home/actions"
+import { agentTemplates } from "@/lib/templates"
 import { getNavigation, getSystemStatus } from "@/queries/workspace"
 import { cn } from "@/lib/utils"
 
@@ -155,8 +161,11 @@ export default function Home() {
         <section className="flex flex-col gap-4">
           <SectionTitle
             aside={
-              <span className="font-mono text-[10.5px] text-faint">
-                {nav.agents.length} total
+              <span className="flex items-center gap-3 font-mono text-[10.5px] text-faint">
+                {hasAgents && `${nav.agents.length} total`}
+                <Link href="/templates" className="text-rigel hover:underline">
+                  {agentTemplates.length} templates →
+                </Link>
               </span>
             }
           >
@@ -202,7 +211,26 @@ export default function Home() {
               <NewAgentCard />
             </div>
           ) : (
-            <TemplateGrid />
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-3 rounded-xl border border-rigel/25 bg-rigel/5 p-5 sm:flex-row sm:items-center">
+                <div className="flex min-w-0 flex-1 flex-col gap-1">
+                  <span className="text-[14px] font-semibold">Start with a team</span>
+                  <span className="text-[12.5px] leading-relaxed text-muted-foreground">
+                    Atlas (browser and desktop), Vega (research), Rigel (code) and Lyra
+                    (data), together in one squad. Ask the squad anything and they hand it
+                    to whoever fits.
+                  </span>
+                </div>
+                <StarterTeamButton className="shrink-0" />
+              </div>
+              <TemplateGrid ids={["altair", "polaris", "capella", "sirius"]} />
+              <Link
+                href="/templates"
+                className="self-start font-mono text-[11.5px] text-rigel hover:underline"
+              >
+                Browse all {agentTemplates.length} templates →
+              </Link>
+            </div>
           )}
         </section>
 

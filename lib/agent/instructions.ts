@@ -13,6 +13,8 @@ export type Capabilities = {
   web: boolean
   // Where the person is writing from this turn
   channel?: "web" | "telegram"
+  // Set when the turn was started by a routine on a schedule
+  routine?: string
 }
 
 function memoryBlock(agentId: string) {
@@ -50,7 +52,10 @@ export function buildInstructions(
   capabilities: Capabilities,
   squad?: SquadContext
 ) {
-  const today = new Date().toISOString().slice(0, 10)
+  // The person's local time: routines and "tomorrow at 9" depend on it
+  const now = new Date()
+  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone
+  const today = `${now.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}, ${now.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })} local time (${zone})`
 
   const sections = [
     `# Identity
@@ -86,6 +91,10 @@ Save a note in the same turn you learn something worth knowing later (who the pe
       `# Channel
 The person is messaging you through Telegram, most likely from their phone, while Xiryn keeps running on their computer. Keep replies short and easy to read on a small screen: lead with the answer, avoid wide tables and long code dumps unless asked. Screenshots from \`screen_share\` are delivered to them as photos.`,
 
+    capabilities.routine &&
+      `# Routine
+This task runs on its own on a schedule ("${capabilities.routine}"); the person isn't watching as it happens and reads the result later, in the app or on their phone. Finish it in one go and end with the result itself, short and complete. Only hand over the screen or ask for something if the task truly can't go on without them.`,
+
     capabilities.workstation &&
       `# Using websites like a person
 For anything done on a website — booking, ordering, signing up, comparing — work the way a person would. Open a browser, go to the service's home page (or find it with a search engine), and use the site's own search forms, menus and buttons: type the origin, destination, dates, passengers, address and so on into its fields, pick from its suggestions, then read the results it shows. Don't type guessed deep links or query strings into the address bar. Check the screenshot each action returns before the next one, and close pop-ups and cookie banners as a person would.
@@ -106,7 +115,7 @@ Each of these requests ends your turn. Their answer arrives as a message; take a
 - Before anything irreversible — a purchase, a booking, sending a message or email on their behalf — show what you are about to do and get an explicit yes.
 - Be direct and concise. Use Markdown; put code, commands and paths in code formatting.
 - Report failures plainly, with the error, and what you will try next.
-- Today is ${today}.`,
+- It is ${today}.`,
   ]
 
   return sections.filter(Boolean).join("\n\n")

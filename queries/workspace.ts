@@ -1,3 +1,4 @@
+import { format } from "date-fns"
 import { and, asc, desc, eq, gte, isNotNull, sql } from "drizzle-orm"
 import type { SQLiteTable } from "drizzle-orm/sqlite-core"
 
@@ -6,6 +7,7 @@ import {
   agents,
   memories,
   messages,
+  routines,
   squadMembers,
   squads,
   threads,
@@ -14,10 +16,21 @@ import {
 import { activeThreadIds, loadMessages } from "@/lib/agent/runtime"
 import { describeSetting, getSetting } from "@/lib/config"
 import { providers } from "@/lib/providers/catalog"
+import {
+  estimateCost,
+  findPrice,
+  fromMicros,
+  PRICES_AS_OF,
+  type CustomPrices,
+} from "@/lib/providers/pricing"
 import { configuredProviders, resolveModelSpec } from "@/lib/providers/registry"
 import { engineSnapshot } from "@/lib/docker"
+import { isRoutineRunning, threadHref } from "@/lib/routines"
+import { describeSchedule } from "@/lib/schedule"
+import { getCustomPrices, getMonthlyBudget, startOfMonth } from "@/lib/spend"
 import { isWebConfigured } from "@/lib/web"
 import { getUpdateInfo, updateChecksEnabled } from "@/lib/updates"
+import { desktopNotificationsEnabled } from "@/lib/desktop-notify"
 import { isWorkstationConfigured } from "@/lib/workstation"
 import { version } from "@/package.json"
 
@@ -246,6 +259,7 @@ export function getSettingsView() {
     },
     maxStepsValue: getSetting("agent.maxSteps"),
     updateChecks: updateChecksEnabled(),
+    desktopNotify: desktopNotificationsEnabled(),
   }
 }
 
@@ -262,6 +276,29 @@ function countRows(table: SQLiteTable) {
 }
 
 /* ────────────────────────────── ledger ──────────────────────────── */
+
+type CostRow = {
+  model: string
+  input: number
+  output: number
+  cached: number
+  steps: number
+  costMicros: number | null
+  createdAt: Date
+}
+
+// Dollars for one turn: what it was priced at when it ran, or, for turns
+// recorded before costs were, an estimate at the price for its date
+function turnCost(row: CostRow, custom: CustomPrices) {
+  if (row.costMicros !== null)
+    return { usd: fromMicros(row.costMicros), estimated: false }
+  const usd = estimateCost(
+    row.model,
+    { input: row.input, output: row.output, cached: row.cached, calls: row.steps },
+    { at: row.createdAt, custom }
+  )
+  return usd === null ? null : { usd, estimated: true }
+}
 
 export function getUsage(days = 30) {
   const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
@@ -347,7 +384,102 @@ export function getUsage(days = 30) {
     .limit(25)
     .all()
 
-  return { days, totals, byModel, byAgent, daily, recent }
+  // Costs, worked out per turn so each is priced for its own model and date
+  const custom = getCustomPrices()
+  const monthStart = startOfMonth()
+  const from = new Date(Math.min(since.getTime(), monthStart.getTime()))
+  const costRows = db
+    .select({
+      id: turns.id,
+      model: turns.model,
+      agentId: turns.agentId,
+      input: turns.inputTokens,
+      output: turns.outputTokens,
+      cached: turns.cachedTokens,
+      steps: turns.steps,
+      costMicros: turns.costMicros,
+      createdAt: turns.createdAt,
+    })
+    .from(turns)
+    .where(gte(turns.createdAt, from))
+    .all()
+
+  const spend = { total: 0, month: 0, estimated: false, unpriced: 0 }
+  const modelCost = new Map<string, number>()
+  const agentCost = new Map<string, number>()
+  const dayCost = new Map<string, number>()
+  const turnCosts = new Map<string, number | null>()
+  for (const row of costRows) {
+    const cost = turnCost(row, custom)
+    turnCosts.set(row.id, cost?.usd ?? null)
+    if (row.createdAt >= monthStart && cost) spend.month += cost.usd
+    if (row.createdAt < since) continue
+    if (!cost) {
+      spend.unpriced++
+      continue
+    }
+    spend.total += cost.usd
+    if (cost.estimated && cost.usd > 0) spend.estimated = true
+    modelCost.set(row.model, (modelCost.get(row.model) ?? 0) + cost.usd)
+    if (row.agentId)
+      agentCost.set(row.agentId, (agentCost.get(row.agentId) ?? 0) + cost.usd)
+    const day = format(row.createdAt, "yyyy-MM-dd")
+    dayCost.set(day, (dayCost.get(day) ?? 0) + cost.usd)
+  }
+
+  return {
+    days,
+    totals,
+    byModel: byModel.map((row) => {
+      const price = findPrice(row.model, { custom })
+      return {
+        ...row,
+        cost: price ? (modelCost.get(row.model) ?? 0) : null,
+        local: price?.kind === "local",
+        priceSource: price?.kind === "priced" ? price.source : null,
+      }
+    }),
+    byAgent: byAgent.map((row) => ({
+      ...row,
+      cost: row.agentId ? (agentCost.get(row.agentId) ?? 0) : 0,
+    })),
+    daily: daily.map((row) => ({ ...row, cost: dayCost.get(row.day) ?? 0 })),
+    recent: recent.map((row) => ({ ...row, cost: turnCosts.get(row.id) ?? null })),
+    spend,
+    budget: getMonthlyBudget(),
+    pricesAsOf: PRICES_AS_OF,
+  }
 }
 
 export type UsageData = ReturnType<typeof getUsage>
+
+/* ──────────────────────────── routines ──────────────────────────── */
+
+export function getRoutines() {
+  return db
+    .select()
+    .from(routines)
+    .orderBy(asc(routines.createdAt))
+    .all()
+    .map((routine) => ({
+      id: routine.id,
+      name: routine.name,
+      agentId: routine.agentId,
+      squadId: routine.squadId,
+      prompt: routine.prompt,
+      schedule: routine.schedule,
+      when: describeSchedule(routine.schedule),
+      enabled: routine.enabled,
+      nextRunAt: routine.nextRunAt?.toISOString() ?? null,
+      lastRunAt: routine.lastRunAt?.toISOString() ?? null,
+      lastStatus: isRoutineRunning(routine.id)
+        ? ("running" as const)
+        : routine.lastStatus === "running"
+          ? null
+          : routine.lastStatus,
+      lastError: routine.lastError,
+      href: threadHref(routine),
+    }))
+}
+
+export type RoutineView = ReturnType<typeof getRoutines>[number]

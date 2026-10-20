@@ -9,6 +9,12 @@
 # and the agents' workstation image, and starts Xiryn. It asks once before
 # installing anything. XIRYN_YES=1 skips the question.
 # --no-start (or XIRYN_NO_START=1) sets everything up without starting Xiryn.
+# --local (or XIRYN_LOCAL=1) also sets up free local models with Ollama, so
+# no API key is needed:
+#
+#   curl -fsSL https://raw.githubusercontent.com/SouravBeraAkaSpeed/xiryn/main/setup.sh | bash -s -- --local
+#
+# --model=qwen3.5:9b picks the local model yourself.
 
 set -euo pipefail
 
@@ -244,7 +250,14 @@ run_with_docker() {
 
 printf '\n'
 npm install --no-fund --no-audit --loglevel=error
-run_with_docker "node scripts/setup.mjs --yes"
+# Local models: --local and --model=… go on to the Node setup
+setup_args="--yes"
+for arg in "$@"; do
+  case "$arg" in
+    --local | --model=*) setup_args="$setup_args $arg" ;;
+  esac
+done
+run_with_docker "node scripts/setup.mjs $setup_args"
 
 printf '\n'
 no_start="${XIRYN_NO_START:-0}"

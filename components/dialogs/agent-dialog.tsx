@@ -43,7 +43,9 @@ import type { NavAgent } from "@/queries/workspace"
 function AgentForm({ agent, template }: { agent?: NavAgent; template?: AgentTemplate }) {
   const router = useRouter()
   const { status, closeDialog } = useWorkspace()
-  const [initialGlyph] = React.useState(() => agent?.glyph ?? nanoid(10))
+  const [initialGlyph] = React.useState(
+    () => agent?.glyph ?? template?.glyph ?? nanoid(10)
+  )
 
   const form = useForm({
     resolver: zodResolver(agentInputSchema),
@@ -62,6 +64,7 @@ function AgentForm({ agent, template }: { agent?: NavAgent; template?: AgentTemp
     form.setValue("name", next.name, options)
     form.setValue("role", next.role, options)
     form.setValue("instructions", next.instructions, options)
+    form.setValue("glyph", next.glyph, options)
   }
 
   const onSubmit = form.handleSubmit(async (values) => {
@@ -107,10 +110,10 @@ function AgentForm({ agent, template }: { agent?: NavAgent; template?: AgentTemp
         {!agent && (
           <div className="flex flex-col gap-2">
             <span className="label-mono">Start from</span>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <div className="grid max-h-[148px] grid-cols-2 gap-2 overflow-y-auto pr-1 sm:grid-cols-4">
               {agentTemplates.map((preset) => (
                 <button
-                  key={preset.name}
+                  key={preset.id}
                   type="button"
                   onClick={() => applyTemplate(preset)}
                   className="flex flex-col items-start gap-0.5 rounded-md border bg-background/40 px-2.5 py-2 text-left transition-colors hover:border-input hover:bg-accent/50"

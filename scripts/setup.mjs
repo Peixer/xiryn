@@ -6,11 +6,21 @@
 //   npm run setup                     everything
 //   npm run setup -- --yes            don't ask before installing or starting Docker
 //   npm run setup -- --skip-docker    leave Docker alone
+//   npm run setup -- --local          also set up free local models with Ollama
+//                                     (--model=qwen3.5:9b picks one yourself)
 //   npm run workstation:build         only (re)build the workstation image
 
 import { spawn, spawnSync } from "node:child_process"
 import { createHash } from "node:crypto"
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs"
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs"
+import os from "node:os"
 import path from "node:path"
 import { createInterface } from "node:readline/promises"
 
@@ -309,6 +319,197 @@ if (workstationOnly) {
   process.exit(workstations === "ready" ? 0 : 1)
 }
 
+/* ───────────────────────── local models ────────────────────────── *
+ * --local (or XIRYN_LOCAL=1) runs every agent on a free model on this
+ * computer: installs Ollama if it's missing (asking first), starts it,
+ * downloads a model that fits the machine's memory and makes it the
+ * default. Nothing leaves the computer, and nothing is billed.
+ * ────────────────────────────────────────────────────────────────── */
+
+const OLLAMA_URL = "http://127.0.0.1:11434"
+
+// Tool calling and vision, so agents can also use their desktop. Smaller
+// machines get smaller models; the agents' desktops need memory too.
+function recommendedModel() {
+  const gb = os.totalmem() / 1024 ** 3
+  if (gb < 12) return { model: "qwen3.5:2b", size: "2.7 GB" }
+  if (gb < 20) return { model: "qwen3.5:4b", size: "3.3 GB" }
+  if (gb < 40) return { model: "qwen3.5:9b", size: "6.6 GB" }
+  return { model: "qwen3.6:27b", size: "about 17 GB" }
+}
+
+function ollamaBinary() {
+  const candidates = [
+    "ollama",
+    ...(process.platform === "win32"
+      ? [path.join(process.env.LOCALAPPDATA ?? "", "Programs", "Ollama", "ollama.exe")]
+      : process.platform === "darwin"
+        ? [
+            "/usr/local/bin/ollama",
+            "/opt/homebrew/bin/ollama",
+            "/Applications/Ollama.app/Contents/Resources/ollama",
+          ]
+        : ["/usr/local/bin/ollama", "/usr/bin/ollama"]),
+  ]
+  for (const candidate of candidates) {
+    const result = spawnSync(candidate, ["--version"], { encoding: "utf8" })
+    if (!result.error && result.status === 0) return candidate
+  }
+  return null
+}
+
+async function ollamaUp() {
+  try {
+    const response = await fetch(`${OLLAMA_URL}/api/version`, {
+      signal: AbortSignal.timeout(2000),
+    })
+    return response.ok ? ((await response.json()).version ?? "running") : null
+  } catch {
+    return null
+  }
+}
+
+async function installOllama() {
+  const plan =
+    process.platform === "win32"
+      ? has("winget")
+        ? {
+            command: "winget",
+            args: [
+              "install",
+              "-e",
+              "--id",
+              "Ollama.Ollama",
+              "--accept-package-agreements",
+              "--accept-source-agreements",
+            ],
+          }
+        : null
+      : process.platform === "darwin"
+        ? has("brew")
+          ? { command: "brew", args: ["install", "ollama"] }
+          : null
+        : { command: "sh", args: ["-c", "curl -fsSL https://ollama.com/install.sh | sh"] }
+  console.log(
+    warn("Ollama isn't installed. It runs the models on this computer, for free.")
+  )
+  if (!plan) {
+    console.log(
+      `    Install it from ${bold("https://ollama.com/download")}, then run this again.`
+    )
+    return null
+  }
+  console.log(
+    `    It can be installed with: ${bold([plan.command, ...plan.args].join(" "))}`
+  )
+  if (!(await ask("Install Ollama now?"))) {
+    console.log(dim("    Skipped. Install it from https://ollama.com/download later."))
+    return null
+  }
+  if (!(await run(plan.command, plan.args))) {
+    console.log(bad("Ollama didn't install. Get it from https://ollama.com/download"))
+    return null
+  }
+  return ollamaBinary()
+}
+
+async function startOllama(binary) {
+  console.log(dim("  starting Ollama…"))
+  if (process.platform === "darwin" && existsSync("/Applications/Ollama.app")) {
+    spawn("open", ["-a", "Ollama"], { detached: true, stdio: "ignore" }).unref()
+  } else {
+    spawn(binary, ["serve"], {
+      detached: true,
+      stdio: "ignore",
+      windowsHide: true,
+    }).unref()
+  }
+  const deadline = Date.now() + 60_000
+  while (Date.now() < deadline) {
+    const version = await ollamaUp()
+    if (version) return version
+    await new Promise((resolve) => setTimeout(resolve, 1500))
+  }
+  return null
+}
+
+async function installedModels() {
+  try {
+    const response = await fetch(`${OLLAMA_URL}/api/tags`, {
+      signal: AbortSignal.timeout(5000),
+    })
+    const json = await response.json()
+    return (json.models ?? []).map((m) => m.name)
+  } catch {
+    return []
+  }
+}
+
+// Sets KEY=value in .env, over a commented-out example of it if there is one
+function setEnv(key, value) {
+  const text = readFileSync(envPath, "utf8")
+  const line = `${key}=${value}`
+  // Checkouts on Windows may use CRLF line endings; keep whichever the file has
+  const eol = text.includes("\r\n") ? "\r\n" : "\n"
+  const pattern = new RegExp(`^#?[ \\t]*${key}=[^\\r\\n]*`, "m")
+  writeFileSync(
+    envPath,
+    pattern.test(text)
+      ? text.replace(pattern, line)
+      : `${text.trimEnd()}${eol}${line}${eol}`
+  )
+}
+
+let localModel = null
+if (args.has("--local") || process.env.XIRYN_LOCAL === "1") {
+  console.log()
+  const chosen =
+    process.argv.find((arg) => arg.startsWith("--model="))?.slice("--model=".length) ||
+    process.env.XIRYN_LOCAL_MODEL ||
+    null
+  let binary = ollamaBinary()
+  let version = await ollamaUp()
+  if (!binary && !version) binary = await installOllama()
+  if (!version && binary) version = await startOllama(binary)
+  if (!version) {
+    console.log(
+      warn(
+        "Ollama isn't running. Open it (or run `ollama serve`), then `npm run setup -- --local`."
+      )
+    )
+  } else {
+    console.log(ok(`ollama ${version}`))
+    const pick = chosen ? { model: chosen, size: null } : recommendedModel()
+    const have = await installedModels()
+    const present = have.some(
+      (name) => name === pick.model || name === `${pick.model}:latest`
+    )
+    if (!present) {
+      const memory = Math.round(os.totalmem() / 1024 ** 3)
+      console.log(
+        `\n  Downloading ${bold(pick.model)}${pick.size ? dim(` (${pick.size})`) : ""}${chosen ? "" : ` — picked for this computer's ${memory} GB of memory`}.\n`
+      )
+    }
+    let pulled = present
+    if (!pulled && binary) pulled = await run(binary, ["pull", pick.model])
+    else if (!pulled) console.log(warn(`Download it with: ollama pull ${pick.model}`))
+    if (pulled) {
+      setEnv("OLLAMA_BASE_URL", `${OLLAMA_URL}/v1`)
+      setEnv("XIRYN_DEFAULT_MODEL", `ollama/${pick.model}`)
+      localModel = pick.model
+      console.log(
+        ok(
+          `local model ${bold(`ollama/${pick.model}`)} ${dim("— the default for every agent")}`
+        )
+      )
+    } else {
+      console.log(
+        bad(`${pick.model} didn't download. Try \`ollama pull ${pick.model}\`.`)
+      )
+    }
+  }
+}
+
 /* ──────────────────────────── keys ─────────────────────────────── */
 
 const env = Object.fromEntries(
@@ -328,7 +529,7 @@ const env = Object.fromEntries(
 )
 const set = (key) => !!env[key]
 
-const providers = [
+const configuredProviders = [
   "OPENAI_API_KEY",
   "ANTHROPIC_API_KEY",
   "GOOGLE_GENERATIVE_AI_API_KEY",
@@ -344,11 +545,13 @@ const providers = [
 
 console.log()
 console.log(
-  providers.length
+  configuredProviders.length
     ? ok(
-        `model provider${providers.length > 1 ? "s" : ""}: ${providers.map((k) => k.replace(/_(API_KEY|BASE_URL)$/, "").toLowerCase()).join(", ")}`
+        `model provider${configuredProviders.length > 1 ? "s" : ""}: ${configuredProviders.map((k) => k.replace(/_(API_KEY|BASE_URL)$/, "").toLowerCase()).join(", ")}${localModel ? dim(" · local models are free") : ""}`
       )
-    : warn("no model provider yet — add one key to .env (or later in Settings)")
+    : warn(
+        `no model provider yet — add a key to .env (or later in Settings), or run ${bold("npm run setup -- --local")} for free local models`
+      )
 )
 console.log(
   workstations === "ready"

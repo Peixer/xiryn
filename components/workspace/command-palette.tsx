@@ -4,7 +4,11 @@ import * as React from "react"
 import { useRouter } from "next/navigation"
 import {
   ActivityIcon,
+  AlarmClockIcon,
+  BugIcon,
   HomeIcon,
+  LayoutGridIcon,
+  MailIcon,
   MessageSquareIcon,
   MoonIcon,
   PlusIcon,
@@ -13,6 +17,7 @@ import {
 } from "lucide-react"
 import { useTheme } from "next-themes"
 
+import { useFeedbackContext } from "@/components/feedback/feedback-prompt"
 import { Glyph, SquadGlyph } from "@/components/glyph"
 import { useWorkspace } from "@/components/workspace/context"
 import {
@@ -25,12 +30,14 @@ import {
   CommandList,
   CommandShortcut,
 } from "@/components/ui/command"
+import { feedbackMailto, ISSUES_URL } from "@/lib/feedback"
 
 export function CommandPalette() {
   const router = useRouter()
   const { nav, dialog, openPalette, closeDialog, openAgentDialog, openSquadDialog } =
     useWorkspace()
   const { resolvedTheme, setTheme } = useTheme()
+  const feedback = useFeedbackContext()
   const open = dialog?.kind === "palette"
 
   React.useEffect(() => {
@@ -137,6 +144,20 @@ export function CommandPalette() {
               <UsersIcon />
               New squad
             </CommandItem>
+            <CommandItem
+              value="templates agents squads ready-made shopping travel jobs"
+              onSelect={() => go("/templates")}
+            >
+              <LayoutGridIcon />
+              Templates
+            </CommandItem>
+            <CommandItem
+              value="routines schedule daily every morning automatic recurring cron"
+              onSelect={() => go("/routines")}
+            >
+              <AlarmClockIcon />
+              Routines
+            </CommandItem>
             <CommandItem value="home overview" onSelect={() => go("/")}>
               <HomeIcon />
               Overview
@@ -151,6 +172,26 @@ export function CommandPalette() {
             >
               <SettingsIcon />
               Settings
+            </CommandItem>
+            <CommandItem
+              value="send feedback email developer"
+              onSelect={() => {
+                closeDialog()
+                window.location.href = feedbackMailto(feedback)
+              }}
+            >
+              <MailIcon />
+              Send feedback
+            </CommandItem>
+            <CommandItem
+              value="report a bug issue github"
+              onSelect={() => {
+                closeDialog()
+                window.open(ISSUES_URL, "_blank", "noopener")
+              }}
+            >
+              <BugIcon />
+              Report a bug on GitHub
             </CommandItem>
             <CommandItem
               value="toggle theme dark light"

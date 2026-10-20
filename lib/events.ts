@@ -1,3 +1,5 @@
+import { notifyDesktop } from "@/lib/desktop-notify"
+
 // Things worth telling the person about, wherever they are in the app. The
 // browser follows them over /api/events and turns them into a sound, a
 // desktop notification and a notification card.
@@ -22,6 +24,8 @@ export type XirynEvent =
       type: "turn-finished"
       preview: string
       ok: boolean
+      // The model the turn started on, as provider/model
+      model?: string
       error?: string
       durationMs: number
     })
@@ -44,6 +48,25 @@ export function emit(event: XirynEvent) {
     } catch (error) {
       console.error("[xiryn] event listener failed:", error)
     }
+  }
+  // Every open Xiryn tab listens; with none open, the operating system
+  // shows it instead (Telegram turns are already on the person's phone)
+  if (listeners.size === 0 && event.via !== "telegram") desktopNotice(event)
+}
+
+function desktopNotice(event: XirynEvent) {
+  switch (event.type) {
+    case "turn-finished":
+      return notifyDesktop(
+        event.ok ? `${event.name} finished` : `${event.name} stopped`,
+        event.ok ? event.preview || "Done." : (event.error ?? "Something went wrong.")
+      )
+    case "takeover":
+      return notifyDesktop(`${event.name} needs you at the screen`, event.reason)
+    case "payment":
+      return notifyDesktop(`${event.name} wants to make a payment`, event.reason)
+    case "secret":
+      return notifyDesktop(`${event.name} needs a detail from you`, event.reason)
   }
 }
 

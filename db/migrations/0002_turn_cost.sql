@@ -1,0 +1,1 @@
+ALTER TABLE `turns` ADD `cost_micros` integer;

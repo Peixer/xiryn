@@ -8,9 +8,14 @@
 # then Xiryn's packages and the agents' workstation image, and starts Xiryn.
 # It asks once before installing anything. $env:XIRYN_YES = "1" skips it.
 # -NoStart (or $env:XIRYN_NO_START = "1") sets everything up without starting Xiryn.
+# -Local (or $env:XIRYN_LOCAL = "1") also sets up free local models with
+# Ollama, so no API key is needed; -Model qwen3.5:9b picks the model yourself:
+#
+#   $env:XIRYN_LOCAL = "1"; irm https://raw.githubusercontent.com/SouravBeraAkaSpeed/xiryn/main/setup.ps1 | iex
 
-param([switch]$NoStart)
+param([switch]$NoStart, [switch]$Local, [string]$Model)
 if ($env:XIRYN_NO_START -eq "1") { $NoStart = $true }
+if ($env:XIRYN_LOCAL -eq "1") { $Local = $true }
 
 $ErrorActionPreference = "Stop"
 $Repo = "https://github.com/SouravBeraAkaSpeed/xiryn.git"
@@ -103,8 +108,11 @@ Write-Host ""
 npm install --no-fund --no-audit --loglevel=error
 if ($LASTEXITCODE -ne 0) { Fail "npm install failed." }
 
-# Docker Desktop, the workstation image and .env
-node scripts/setup.mjs --yes
+# Docker Desktop, the workstation image and .env (and local models with -Local)
+$setupArgs = @("--yes")
+if ($Local) { $setupArgs += "--local" }
+if ($Model) { $setupArgs += "--model=$Model" }
+node scripts/setup.mjs @setupArgs
 if ($LASTEXITCODE -ne 0 -and $dockerFresh) {
   Note "If Docker Desktop asked to restart Windows, restart, then run setup.cmd again."
 }

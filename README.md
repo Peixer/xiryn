@@ -52,6 +52,16 @@ curl -fsSL https://raw.githubusercontent.com/SouravBeraAkaSpeed/xiryn/main/setup
 irm https://raw.githubusercontent.com/SouravBeraAkaSpeed/xiryn/main/setup.ps1 | iex
 ```
 
+**No API key? Run it free.** Add `--local` and the same command also installs [Ollama](https://ollama.com), downloads a model that fits your computer's memory and makes it every agent's default — nothing leaves your machine, nothing is billed:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/SouravBeraAkaSpeed/xiryn/main/setup.sh | bash -s -- --local
+```
+
+```powershell
+$env:XIRYN_LOCAL="1"; irm https://raw.githubusercontent.com/SouravBeraAkaSpeed/xiryn/main/setup.ps1 | iex
+```
+
 **Have a coding agent?** Paste [one prompt](#set-up-with-your-coding-agent) into Claude Code, Codex or Cursor — it installs everything, asks you for your keys and starts Xiryn.
 
 ## Why Xiryn
@@ -92,7 +102,10 @@ irm https://raw.githubusercontent.com/SouravBeraAkaSpeed/xiryn/main/setup.ps1 | 
 <td width="50%" valign="top">
 
 **Agents with a job**<br>
-Name, role, standing orders, and a model of their own. Start from templates or write your own.
+Name, role, standing orders, and a model of their own. Start from [16 ready-made agents and 4 squads](#ready-made-agents) or write your own.
+
+**Routines — tasks on a schedule**<br>
+"Every morning at 8, brief me on…" — say it in the chat or set it up on the Routines page. Daily, weekdays, weekly, every few hours, or once. It runs on its own, even with the browser closed, and tells you when it's done.
 
 **A workstation per agent**<br>
 A Docker container with a shell, a persistent home folder and a 1280×800 desktop with Chromium — created on first use, stopped when idle, never touching your own files.
@@ -117,6 +130,12 @@ A chime and a desktop notification when an agent finishes, fails or needs you �
 
 **Talk instead of typing**<br>
 Hit the mic and speak your request. It uses your browser's speech recognition — on the device itself where the browser supports it, so your voice never leaves your computer.
+
+**Free local models in one click**<br>
+Settings → Local models shows Ollama, downloads models with a progress bar and makes one the default. Replies on local models are marked *free*.
+
+**Know what every reply costs**<br>
+Each reply shows its price; the Usage page adds it up by day, model and agent. Set a monthly budget and paid models pause when it's reached.
 
 </td>
 </tr>
@@ -234,6 +253,19 @@ OPENAI_API_KEY=sk-...          # or any other provider
 FIRECRAWL_API_KEY=fc-...       # optional: web search & reading
 ```
 
+<details>
+<summary>No key? Use free local models instead</summary>
+
+In the Xiryn folder, run:
+
+```bash
+npm run setup:local
+```
+
+It installs [Ollama](https://ollama.com) if it's missing (asking first), downloads a model with tool calling and vision that fits your memory — `qwen3.5:2b` under 12 GB, `qwen3.5:4b` under 20 GB, `qwen3.5:9b` under 40 GB, `qwen3.6:27b` above — and makes it the default. Pick one yourself with `npm run setup -- --local --model=gemma4:e4b`, or download more later in **Settings → Local models**. Local models are slower and less capable than the big hosted ones, but they cost nothing and nothing leaves your computer.
+
+</details>
+
 ### 3 · Start it any time
 
 ```bash
@@ -244,6 +276,16 @@ npm run dev                    # or: npm run build && npm start
 Open **<http://127.0.0.1:6796>** and deploy your first agent. Prefer containers all the way down? `docker compose up -d` runs Xiryn itself in Docker too.
 
 Click **alerts** in the status bar once to allow desktop notifications: you'll hear a chime and get a notification whenever an agent finishes, fails or needs you — even with Xiryn in the background.
+
+### Keep it running in the background
+
+```bash
+npm run background              # starts Xiryn with no terminal or browser needed
+npm run background -- login     # …and whenever you log in to this computer
+npm run background -- stop      # stop it (status, restart and no-login work too)
+```
+
+It serves a production build on 127.0.0.1, built once and again after each update, and logs to `data/xiryn.log`. Agents, routines and Telegram keep working with every window closed; with no Xiryn tab open, your computer itself shows a notification when an agent finishes or needs you.
 
 ## Updating
 
@@ -289,6 +331,32 @@ When an agent needs you — a payment, a login, a code — the bot pings you wit
 
 Full walkthrough: **[docs/telegram.md](docs/telegram.md)**.
 
+## Routines
+
+Tasks your agents do on their own, on a schedule — while you sleep, with the browser closed.
+
+- **Just ask.** Tell any agent *"every weekday at 9, check for new jobs that fit me"* or *"tomorrow at 7, remind me to call the bank"* — it schedules the routine itself. Ask it to list or cancel them the same way.
+- **Or set it up** on the **Routines** page: who does it, what to do each time, and when — every day, weekdays, one day a week, every few hours, or just once. Start from ideas like a morning news brief, job alerts, a price watch, a weekly research digest or a plan for the week.
+- **Results come to you.** Each routine has its own thread. When a run finishes you get an in-app notification, a desktop notification when no tab is open, and a Telegram message if it's paired — reply there to follow up.
+- **Runs on your computer.** Times are your computer's local time, and Xiryn has to be running: `npm run background -- login` keeps it that way. A run missed while the computer slept still happens if it's back within a few hours.
+
+## Ready-made agents
+
+Open **Templates** in the sidebar, pick one, and change anything before it goes online. Each gets its own desktop and memory.
+
+| | Agents |
+| --- | --- |
+| **Everyday** | **Atlas** — operator for anything that needs a real browser · **Altair** — shopping scout that compares prices and buys with your OK · **Polaris** — travel planner for flights, stays and day-by-day plans · **Mira** — personal assistant for forms, bookings and errands |
+| **Work** | **Capella** — job hunter that finds roles and tailors applications · **Sirius** — writer for posts, emails and docs in your voice · **Antares** — social media manager · **Castor** — lead researcher that builds outreach lists |
+| **Research** | **Vega** — research analyst with sources · **Deneb** — news briefer for the topics you follow · **Spica** — tutor that explains step by step |
+| **Build** | **Rigel** — software engineer · **Arcturus** — code reviewer · **Electra** — website builder · **Lyra** — data analyst · **Pollux** — budget keeper for bank CSVs |
+
+**Squads in one click:** *Crew* (Atlas, Vega, Rigel, Lyra), *Launch crew* (Vega, Sirius, Antares), *Trip team* (Polaris, Altair, Mira) and *Dev team* (Rigel, Arcturus, Electra).
+
+## Feedback
+
+After a few finished tasks Xiryn asks, once, how it's going. Your answer opens a draft in **your own email app** to [souravberaofficial@gmail.com](mailto:souravberaofficial@gmail.com) — nothing is sent by Xiryn itself. You can also write any time from the mail icon in the sidebar, or [open an issue](https://github.com/SouravBeraAkaSpeed/xiryn/issues/new/choose).
+
 ## Architecture
 
 ```mermaid
@@ -331,6 +399,7 @@ Every setting can come from `.env` **or** from **Settings** in the app. Values s
 | `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_GENERATIVE_AI_API_KEY`, `XAI_API_KEY`, `GROQ_API_KEY`, `MISTRAL_API_KEY`, `DEEPSEEK_API_KEY`, `OPENROUTER_API_KEY` | Hosted model providers |
 | `OLLAMA_BASE_URL`, `LMSTUDIO_BASE_URL`, `CUSTOM_BASE_URL` | Local runtimes and any OpenAI-compatible API |
 | `XIRYN_DEFAULT_MODEL`, `XIRYN_MAX_STEPS` | Default `provider/model`, max tool calls per turn |
+| `XIRYN_MONTHLY_BUDGET` | Dollars a month for paid models; once spent they wait for the 1st (local models keep working) |
 | `XIRYN_WORKSTATION_CPUS`, `XIRYN_WORKSTATION_MEMORY_GB` | Limits for each agent's machine (default 2 CPUs, 4 GB) |
 | `XIRYN_WORKSTATION_AUTO_STOP_MINUTES`, `XIRYN_WORKSTATION_AUTO_DELETE_MINUTES` | Idle stop; disposable machines |
 | `XIRYN_PHONE_TAKEOVER` | `off` leaves the phone link out of Telegram hand-offs |
@@ -340,6 +409,7 @@ Every setting can come from `.env` **or** from **Settings** in the app. Values s
 | `XIRYN_DATA_DIR`, `XIRYN_ALLOWED_HOSTS` | Data location; extra hostnames behind your own proxy |
 | `XIRYN_URL` | Where you open Xiryn, for links in Telegram hand-offs |
 | `XIRYN_UPDATE_CHECK` | `off` stops the update check and star count |
+| `XIRYN_DESKTOP_NOTIFY` | `off` stops operating-system notifications when no Xiryn tab is open |
 
 ## Security & privacy
 
@@ -373,20 +443,23 @@ In `data/xiryn.db` on your disk. Back it up by copying the file; erase everythin
 Without Docker, agents chat, remember and (with Firecrawl) research, but can't run code or use a desktop. Without Firecrawl, they search and read the web with their own browser. The app tells you what's missing.
 
 **Can I use only local models?**
-Yes — point `OLLAMA_BASE_URL` or `LMSTUDIO_BASE_URL` at your runtime and pick a model with tool calling.
+Yes — `npm run setup:local` sets up Ollama and a model in one go, or use **Settings → Local models**. LM Studio works too: point `LMSTUDIO_BASE_URL` at it and pick a model with tool calling.
+
+**Does it keep working when I close the browser?**
+Yes. Agents run in the Xiryn server, not the page: close the tab mid-task and it carries on. Run `npm run background` and you can close the terminal too; routines run on time and you're notified when they finish.
 
 **What does it cost?**
-Xiryn is free and MIT-licensed. Agents' machines run on your own computer, so they cost nothing. Your model provider (and Firecrawl, if you use it) bill you directly; the **Usage** page shows tokens per model and agent.
+Xiryn is free and MIT-licensed. Agents' machines run on your own computer, so they cost nothing, and so do local models. Your model provider (and Firecrawl, if you use it) bill you directly: every reply shows what it cost, the **Usage** page adds it up per day, model and agent, and an optional monthly budget pauses paid models when it's reached.
 
 ## Roadmap
 
 Ideas we're exploring — not shipped yet. Have opinions? [Open an issue](https://github.com/SouravBeraAkaSpeed/xiryn/issues/new/choose).
 
-- [ ] Scheduled and recurring tasks — standing goals that run while you sleep
+- [x] Scheduled and recurring tasks — [routines](#routines)
 - [ ] More remote channels: WhatsApp, Discord, Slack
 - [ ] MCP connectors for email, calendar and docs
 - [ ] Voice in and out
-- [ ] Shareable agent templates
+- [ ] Shareable agent templates (16 built in today)
 
 ## Contributing
 

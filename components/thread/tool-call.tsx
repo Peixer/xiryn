@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import {
+  AlarmClockIcon,
   BrainIcon,
   CameraIcon,
   CheckIcon,
@@ -98,6 +99,21 @@ const META: Record<string, Meta> = {
   },
   memory_write: { icon: BrainIcon, label: "remember", summary: (i) => str(i.note) },
   memory_forget: { icon: EraserIcon, label: "forget", summary: (i) => str(i.id) },
+  routine_create: {
+    icon: AlarmClockIcon,
+    label: "schedule",
+    summary: (i) => str(i.name),
+  },
+  routine_list: {
+    icon: AlarmClockIcon,
+    label: "routines",
+    summary: () => "list scheduled",
+  },
+  routine_delete: {
+    icon: AlarmClockIcon,
+    label: "unschedule",
+    summary: (i) => str(i.id),
+  },
   request_takeover: { icon: HandIcon, label: "hand over", summary: (i) => str(i.reason) },
   vault_list: { icon: LockIcon, label: "vault", summary: () => "list saved items" },
   vault_fill: {
@@ -285,6 +301,26 @@ function Details({ part }: { part: ToolPart }) {
       ) : null
     case "memory_write":
       return <p className="text-[13px]">{str(input.note)}</p>
+    case "routine_create":
+      return (
+        <div className="flex flex-col gap-1.5 text-[13px]">
+          {output && (
+            <span className="font-mono text-[11px] text-rigel">
+              {str(output.when)}
+              {output.nextRun ? ` · next ${str(output.nextRun)}` : ""}
+            </span>
+          )}
+          <p>{str(input.task)}</p>
+          {output && (
+            <a
+              href="/routines"
+              className="w-fit font-mono text-[11px] text-muted-foreground hover:text-foreground"
+            >
+              manage in routines →
+            </a>
+          )}
+        </div>
+      )
     default:
       return (
         <div className="flex flex-col gap-2">

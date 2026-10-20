@@ -2,6 +2,7 @@ import { headers } from "next/headers"
 
 import { AgentDialog } from "@/components/dialogs/agent-dialog"
 import { SquadDialog } from "@/components/dialogs/squad-dialog"
+import { FeedbackPrompt } from "@/components/feedback/feedback-prompt"
 import { CommandPalette } from "@/components/workspace/command-palette"
 import { WorkspaceProvider } from "@/components/workspace/context"
 import { MobileNav } from "@/components/workspace/mobile-nav"
@@ -36,6 +37,7 @@ export default async function WorkspaceLayout({
         <CommandPalette />
         <AgentDialog />
         <SquadDialog />
+        <FeedbackPrompt />
       </NotificationsProvider>
     </WorkspaceProvider>
   )

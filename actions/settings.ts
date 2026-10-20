@@ -40,8 +40,18 @@ export async function saveSettings(values: Record<string, string | null>) {
     if (key === "telegram.notify" && value && !/^(long|all|off)$/.test(value.trim())) {
       throw new Error("Telegram notices are long, all or off.")
     }
+    if (key === "notify.desktop" && value && !/^(on|off)$/.test(value.trim())) {
+      throw new Error("Desktop notifications are either on or off.")
+    }
     if (key === "updates.check" && value && !/^(on|off)$/.test(value.trim())) {
       throw new Error("The update check is either on or off.")
+    }
+    if (
+      key === "usage.monthlyBudget" &&
+      value &&
+      !/^\d{1,6}(\.\d{1,2})?$/.test(value.trim())
+    ) {
+      throw new Error("The budget is a dollar amount, e.g. 20 or 7.50.")
     }
     if (key === "agent.maxSteps" && value && !/^\d{1,3}$/.test(value.trim())) {
       throw new Error("Max steps must be a whole number.")

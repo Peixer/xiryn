@@ -2,13 +2,11 @@
 
 import * as React from "react"
 
+import type { AgentTemplate } from "@/lib/templates"
 import type { Navigation, NavAgent, NavSquad, SystemStatus } from "@/queries/workspace"
 
-export type AgentTemplate = {
-  name: string
-  role: string
-  instructions: string
-}
+// Kept here so components importing the dialog API find templates alongside it
+export { agentTemplates, type AgentTemplate } from "@/lib/templates"
 
 type DialogState =
   | { kind: "agent"; agent?: NavAgent; template?: AgentTemplate }
@@ -65,31 +63,3 @@ export function WorkspaceProvider({
 
   return <WorkspaceContext value={value}>{children}</WorkspaceContext>
 }
-
-// Starting points offered when creating an agent
-export const agentTemplates: AgentTemplate[] = [
-  {
-    name: "Vega",
-    role: "Research analyst",
-    instructions:
-      "Search widely, read primary sources, and cross-check claims before stating them. Lead with the answer, then the evidence, with a link for every non-obvious fact. Flag uncertainty explicitly.",
-  },
-  {
-    name: "Rigel",
-    role: "Software engineer",
-    instructions:
-      "Work in your workstation: clone, build, run and test before you report. Prefer small, verifiable steps. Show the commands you ran and their results; never claim something works without running it.",
-  },
-  {
-    name: "Lyra",
-    role: "Data analyst",
-    instructions:
-      "Use Python on your workstation (pandas, matplotlib) to load, clean and analyse data. State assumptions, show the numbers that matter, and save charts and outputs as files.",
-  },
-  {
-    name: "Atlas",
-    role: "Operator — browser and desktop tasks",
-    instructions:
-      "Use the desktop for tasks that need a real browser. Look at the screen before and after every action. Ask before submitting forms, purchasing, or sending anything on the person's behalf.",
-  },
-]

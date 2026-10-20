@@ -15,6 +15,10 @@ export async function register() {
   const { syncTelegram } = await import("./lib/telegram/bridge")
   syncTelegram()
 
+  // Routines: tasks agents run on their own, on a schedule
+  const { startRoutines } = await import("./lib/routines")
+  startRoutines()
+
   // Workstations: see whether Docker is there, tidy up after deleted agents,
   // and get the workstation image ready so the first task doesn't wait for it
   const { probeEngine } = await import("./lib/docker")

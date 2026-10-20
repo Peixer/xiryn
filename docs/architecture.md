@@ -44,6 +44,7 @@ Defined in `lib/agent/tools.ts`. Every tool resolves "the agent holding the turn
 | Workstation | `shell`, `fs_read`, `fs_write`, `fs_list` | `docker exec` into the agent's container |
 | Desktop | `screen_capture`, `screen_share`, `pointer_*`, `key_*` | `scrot` and `xdotool` on the container's X display |
 | Memory | `memory_write`, `memory_forget` | Local SQLite |
+| Routines | `routine_create`, `routine_list`, `routine_delete` | Local SQLite; run by the scheduler (not offered during a routine's own runs) |
 | Web | `web_search`, `web_fetch` | Firecrawl v2 |
 | Squad | `delegate` | Runtime (swaps agent, instructions and model) |
 | Hand-off | `request_takeover` | Runtime (ends the turn) + Telegram notice |
@@ -72,7 +73,17 @@ Answers continue the thread as ordinary messages that carry ids and hints only (
 
 ## Notifications
 
-The runtime emits an event when a turn finishes (or fails) and when an agent hands over its screen (`lib/events.ts`). The browser follows them over a server-sent event stream at `/api/events`: the notifier plays a short synthesized chime and shows a desktop notification when Xiryn isn't the window in focus, or a toast when you're elsewhere in the app. A finished turn that started in the app is also sent to the paired Telegram account when it took a minute or more (`XIRYN_TELEGRAM_NOTIFY`).
+The runtime emits an event when a turn finishes (or fails) and when an agent hands over its screen (`lib/events.ts`). The browser follows them over a server-sent event stream at `/api/events`: the notifier plays a short synthesized chime and shows a desktop notification when Xiryn isn't the window in focus, or a toast when you're elsewhere in the app. A finished turn that started in the app is also sent to the paired Telegram account when it took a minute or more (`XIRYN_TELEGRAM_NOTIFY`); a routine's runs are sent however short. When no tab is listening — Xiryn running with `npm run background`, say — `lib/desktop-notify.ts` asks the operating system to show the notification instead (a toast through PowerShell on Windows, `osascript` on macOS, `notify-send` on Linux), passing the text as arguments or environment, never through a shell (`XIRYN_DESKTOP_NOTIFY`).
+
+## Routines
+
+A routine (`routines` table) is a prompt, an owner (an agent or a squad) and a schedule — daily, weekdays, weekly, every few hours, or once — in the server's local time. `lib/routines.ts` is started from `instrumentation.ts` and checks every 30 seconds for routines that are due. Each run moves `next_run_at` on first (so a failed run never repeats; a one-off switches itself off), then sends the prompt into the routine's own thread through `startTurn` with `routine` set: the message carries `metadata.routine`, the instructions tell the agent nobody is watching, and the routine tools are left out so a run can't schedule more runs. A run missed by up to six hours (the computer slept) still happens; older ones are skipped until the next time. If the thread is busy, it tries again in five minutes.
+
+`scripts/background.mjs` keeps the server running with no terminal: it builds once per version or commit, starts `next start` detached on 127.0.0.1, records the pid in `data/background.pid` and logs to `data/xiryn.log`. `login` adds an entry the operating system starts at login (a hidden `.vbs` in the Windows Startup folder, a LaunchAgent on macOS, an XDG autostart entry on Linux).
+
+## Local models
+
+`lib/ollama.ts` talks only to the Ollama endpoint configured for Xiryn (`/api/version`, `/api/tags`, `/api/pull`). Settings → Local models starts a pull, which streams progress as lines of JSON into an in-memory map the panel polls. Downloading or choosing a model points Xiryn at Ollama if nothing else does. `npm run setup:local` does the same from the terminal, installing Ollama first if needed.
 
 ## Squads and delegation
 
@@ -97,7 +108,8 @@ Everything lives in `data/xiryn.db` (override with `XIRYN_DATA_DIR`). Schema: `d
 | `squads`, `squad_members` | Squads and their ordered members |
 | `threads`, `messages` | Conversations and their UI messages (JSON parts) |
 | `memories` | Long-term notes per agent |
-| `turns` | The usage ledger |
+| `turns` | The usage ledger, with each turn's cost in millionths of a dollar |
+| `routines` | Scheduled tasks: prompt, owner, schedule, next and last run |
 | `settings` | Values saved from Settings (override `.env`) |
 
 ## Settings resolution

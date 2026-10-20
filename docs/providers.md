@@ -31,16 +31,39 @@ Run models on your own hardware and nothing — not even the prompt — leaves y
 
 ### Ollama
 
+The quickest way: in the Xiryn folder, run
+
 ```bash
-ollama pull qwen3:8b
+npm run setup:local
+```
+
+It installs Ollama if it's missing (asking first), starts it, downloads a model that fits your computer's memory and makes it the default for every agent. To choose the model yourself: `npm run setup -- --local --model=gemma4:e4b`.
+
+From the app, **Settings → Local models** shows whether Ollama is running, lists your downloaded models, downloads new ones with a progress bar (any name from [ollama.com/library](https://ollama.com/library)) and makes one the default in a click.
+
+By hand:
+
+```bash
+ollama pull qwen3.5:9b
 ```
 
 ```bash
 # .env
 OLLAMA_BASE_URL=http://127.0.0.1:11434/v1
+XIRYN_DEFAULT_MODEL=ollama/qwen3.5:9b
 ```
 
-Then use `ollama/qwen3:8b`. Choose a model with tool-calling support.
+Agents need a model with tool calling; one with vision also lets them see their desktop. These work well:
+
+| Model | Download | Fits |
+| --- | --- | --- |
+| `qwen3.5:2b` | 2.7 GB | any computer — chat and simple tasks |
+| `qwen3.5:4b` | 3.3 GB | 12 GB of memory and up |
+| `gemma4:e4b` | 6.6 GB | 16 GB and up |
+| `qwen3.5:9b` | 6.6 GB | 20 GB and up — better reasoning and desktop use |
+| `qwen3.6:27b` | about 17 GB | 40 GB and up — the strongest |
+
+Replies on local models are marked *free* and never count toward the monthly budget.
 
 ### LM Studio
 

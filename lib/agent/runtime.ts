@@ -25,6 +25,7 @@ import { buildInstructions, type Capabilities } from "@/lib/agent/instructions"
 import {
   createDelegateTool,
   createMemoryTools,
+  createRoutineTools,
   createWebTools,
   createVaultTools,
   createWorkstationTools,
@@ -34,7 +35,9 @@ import {
 } from "@/lib/agent/tools"
 import { getMaxSteps } from "@/lib/config"
 import { emit, previewText } from "@/lib/events"
+import { callCost, findPrice, toMicros } from "@/lib/providers/pricing"
 import { createModel, resolveModelSpec } from "@/lib/providers/registry"
+import { budgetBlock, getCustomPrices } from "@/lib/spend"
 import { isWebConfigured } from "@/lib/web"
 import { isWorkstationConfigured } from "@/lib/workstation"
 
@@ -332,11 +335,13 @@ export async function startTurn({
   message,
   agentId,
   channel = "web",
+  routine,
 }: {
   threadId: string
   message: XirynMessage
   agentId?: string
   channel?: "web" | "telegram"
+  routine?: { id: string; name: string }
 }) {
   if (getActiveRun(threadId)) {
     throw new TurnError("An agent is already working in this thread.", 409)
@@ -355,6 +360,7 @@ export async function startTurn({
     workstation: isWorkstationConfigured(),
     web: isWebConfigured(),
     channel,
+    routine: routine?.name,
   }
 
   // Fail before anything is saved when the model can't be reached
@@ -368,6 +374,9 @@ export async function startTurn({
     return spec
   }
   const firstSpec = specFor(first)
+  // A monthly budget holds turns on paid models once it's spent
+  const blocked = budgetBlock(firstSpec)
+  if (blocked) throw new TurnError(blocked, 402)
   const firstModel = (() => {
     try {
       return createModel(firstSpec)
@@ -383,6 +392,7 @@ export async function startTurn({
     metadata: {
       ...(thread.squad && { agentId: first.id }),
       ...(channel === "telegram" && { via: "telegram" as const }),
+      ...(routine && { routine }),
       ...(message.metadata?.handback && { handback: message.metadata.handback }),
       ...(message.metadata?.vault && { vault: message.metadata.vault }),
     },
@@ -473,6 +483,8 @@ export async function startTurn({
       : {}),
     ...createMemoryTools(env),
     ...(capabilities.web ? createWebTools() : {}),
+    // A routine's own runs don't schedule more routines
+    ...(routine ? {} : createRoutineTools(env)),
     ...(thread.squad
       ? createDelegateTool((targetId, handoverBrief) => {
           const target = members.find((member) => member.id === targetId)
@@ -513,11 +525,24 @@ export async function startTurn({
 
   // Accumulated across steps so stopped and failed turns are still metered
   const usage = { input: 0, output: 0, reasoning: 0, cached: 0, steps: 0, toolCalls: 0 }
+  // Priced call by call, at the rate of whichever model made the call: a
+  // squad can hand the turn to an agent on another model. Null once any
+  // call ran on a model without a known price.
+  const customPrices = getCustomPrices()
+  let activeSpec = firstSpec
+  let cost: number | null = 0
   const addUsage = (step: LanguageModelUsage) => {
-    usage.input += step.inputTokens ?? 0
-    usage.output += step.outputTokens ?? 0
+    const call = {
+      input: step.inputTokens ?? 0,
+      output: step.outputTokens ?? 0,
+      cached: step.inputTokenDetails?.cacheReadTokens ?? 0,
+    }
+    usage.input += call.input
+    usage.output += call.output
     usage.reasoning += step.outputTokenDetails?.reasoningTokens ?? 0
-    usage.cached += step.inputTokenDetails?.cacheReadTokens ?? 0
+    usage.cached += call.cached
+    const callUsd = callCost(findPrice(activeSpec, { custom: customPrices }), call)
+    cost = cost === null || callUsd === null ? null : cost + callUsd
   }
   let failure: string | null = null
   let appliedAgentId = first.id
@@ -550,6 +575,7 @@ export async function startTurn({
         const delegated = current.id !== appliedAgentId
         if (!delegated && !lastStep) return { messages: compacted }
         appliedAgentId = current.id
+        if (delegated) activeSpec = specFor(current)
         return {
           messages: compacted,
           // After a delegation the next step runs as the new agent, on its model
@@ -582,7 +608,8 @@ export async function startTurn({
           return {
             agentId: first.id,
             model: firstSpec,
-            usage: { input: usage.input, output: usage.output },
+            usage: { input: usage.input, output: usage.output, cached: usage.cached },
+            cost,
             durationMs: Date.now() - run.startedAt,
           }
         }
@@ -597,7 +624,8 @@ export async function startTurn({
             ...responseMessage.metadata,
             agentId: first.id,
             model: firstSpec,
-            usage: { input: usage.input, output: usage.output },
+            usage: { input: usage.input, output: usage.output, cached: usage.cached },
+            cost,
             durationMs,
           },
         } as XirynMessage
@@ -625,6 +653,7 @@ export async function startTurn({
             steps: usage.steps,
             toolCalls: usage.toolCalls,
             durationMs,
+            costMicros: cost === null ? null : toMicros(cost),
             status: failure ? "failed" : isAborted ? "stopped" : "completed",
             error: failure,
           })
@@ -655,6 +684,7 @@ export async function startTurn({
             ok: !failure,
             ...(failure && { error: failure }),
             durationMs,
+            model: firstSpec,
           })
           if (channel !== "telegram") {
             import("@/lib/telegram/bridge")
@@ -671,6 +701,7 @@ export async function startTurn({
                     .trim(),
                   error: failure,
                   durationMs,
+                  always: !!routine,
                 })
               )
               .catch((error) =>

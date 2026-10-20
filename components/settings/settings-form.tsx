@@ -19,6 +19,7 @@ import { fetchProviderModels, saveSettings, testIntegration } from "@/actions/se
 import { buildWorkstationImage, dockerStatus, startDocker } from "@/actions/workstation"
 import { ModelPicker } from "@/components/model-picker"
 import { Button } from "@/components/ui/button"
+import { LocalModelsCard } from "@/components/settings/local-models"
 import { VaultPanel } from "@/components/settings/vault-panel"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
@@ -896,6 +897,35 @@ function UpdateCheck({ enabled }: { enabled: boolean }) {
   )
 }
 
+function DesktopNotify({ enabled }: { enabled: boolean }) {
+  const { save, pending } = useSave()
+  return (
+    <label className="flex items-start gap-2.5 rounded-xl border bg-surface/50 p-4">
+      <Checkbox
+        checked={enabled}
+        disabled={pending}
+        onCheckedChange={(checked) =>
+          save(
+            { "notify.desktop": checked ? null : "off" },
+            checked ? "Desktop notifications on" : "Desktop notifications off"
+          )
+        }
+        className="mt-0.5"
+      />
+      <span className="flex flex-col gap-0.5">
+        <span className="text-[13px] font-medium">
+          Desktop notifications in the background
+        </span>
+        <span className="text-[12px] leading-relaxed text-muted-foreground">
+          When no Xiryn tab is open — a routine finishing overnight, an agent that needs
+          you while Xiryn runs in the background — your computer shows the notification
+          itself.
+        </span>
+      </span>
+    </label>
+  )
+}
+
 /* ──────────────────────────── page ─────────────────────────────── */
 
 export function SettingsForm({
@@ -907,6 +937,7 @@ export function SettingsForm({
 }) {
   const nav = [
     ["model", "Model"],
+    ["local", "Local models"],
     ["providers", "Providers"],
     ["integrations", "Integrations"],
     ["vault", "Vault"],
@@ -950,8 +981,17 @@ export function SettingsForm({
         </Section>
 
         <Section
+          id="local"
+          kicker="02 · local models"
+          title="Local models"
+          description="Run agents for free on this computer. Download a model with one click and make it the default."
+        >
+          <LocalModelsCard />
+        </Section>
+
+        <Section
           id="providers"
-          kicker="02 · providers"
+          kicker="03 · providers"
           title="Model providers"
           description="Bring your own keys. Configure as many providers as you like and mix them across agents. Local runtimes (Ollama, LM Studio) need only an endpoint."
         >
@@ -964,7 +1004,7 @@ export function SettingsForm({
 
         <Section
           id="integrations"
-          kicker="03 · integrations"
+          kicker="04 · integrations"
           title="Workstations & web"
           description="Agents' machines run in Docker on this computer. Firecrawl is optional: without it agents search and read the web only by browsing."
         >
@@ -992,7 +1032,7 @@ export function SettingsForm({
 
         <Section
           id="vault"
-          kicker="04 · vault"
+          kicker="05 · vault"
           title="Vault"
           description="What agents may use on your behalf — encrypted here, never shown to them."
         >
@@ -1001,7 +1041,7 @@ export function SettingsForm({
 
         <Section
           id="remote"
-          kicker="05 · remote access"
+          kicker="06 · remote access"
           title="Telegram"
           description="Talk to your agents from anywhere. Xiryn polls Telegram from this machine — no public URL, no port forwarding, no tunnel."
         >
@@ -1010,7 +1050,7 @@ export function SettingsForm({
 
         <Section
           id="system"
-          kicker="06 · system"
+          kicker="07 · system"
           title="System"
           description="Where your data lives and what Xiryn is running on."
         >
@@ -1033,6 +1073,7 @@ export function SettingsForm({
               </div>
             ))}
           </div>
+          <DesktopNotify enabled={data.desktopNotify} />
           <UpdateCheck enabled={data.updateChecks} />
         </Section>
       </div>

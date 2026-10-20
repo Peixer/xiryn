@@ -1,9 +1,15 @@
 "use client"
 
-import { PlusIcon, UsersIcon } from "lucide-react"
+import * as React from "react"
+import { useRouter } from "next/navigation"
+import { PlusIcon, SparklesIcon, UsersIcon } from "lucide-react"
 
-import { agentTemplates, useWorkspace } from "@/components/workspace/context"
+import { createSquadFromTemplate } from "@/actions/templates"
 import { Glyph } from "@/components/glyph"
+import { Button } from "@/components/ui/button"
+import { Spinner } from "@/components/ui/spinner"
+import { toast } from "@/components/ui/toast"
+import { agentTemplates, useWorkspace } from "@/components/workspace/context"
 
 export function NewAgentCard() {
   const { openAgentDialog } = useWorkspace()
@@ -36,22 +42,22 @@ export function NewSquadButton({ disabled }: { disabled?: boolean }) {
   )
 }
 
-// Seeds chosen so each template shows a distinct sky
-const templateSeeds = ["vega-1", "rigel-7", "lyra-3", "atlas-5"]
-
-export function TemplateGrid() {
+export function TemplateGrid({ ids }: { ids?: string[] }) {
   const { openAgentDialog } = useWorkspace()
+  const shown = ids
+    ? ids.flatMap((id) => agentTemplates.filter((template) => template.id === id))
+    : agentTemplates
   return (
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-      {agentTemplates.map((template, i) => (
+      {shown.map((template) => (
         <button
-          key={template.name}
+          key={template.id}
           type="button"
           onClick={() => openAgentDialog({ template })}
           className="group flex flex-col gap-3 rounded-xl border bg-surface/50 p-4 text-left transition-colors hover:border-input hover:bg-surface"
         >
           <div className="flex items-center gap-2.5">
-            <Glyph seed={templateSeeds[i]} className="size-9" />
+            <Glyph seed={template.glyph} className="size-9" />
             <div className="flex min-w-0 flex-col leading-tight">
               <span className="text-[14px] font-semibold">{template.name}</span>
               <span className="truncate font-mono text-[10.5px] text-muted-foreground">
@@ -60,7 +66,7 @@ export function TemplateGrid() {
             </div>
           </div>
           <p className="line-clamp-3 text-[12.5px] leading-relaxed text-muted-foreground">
-            {template.instructions}
+            {template.blurb}
           </p>
           <span className="mt-auto font-mono text-[11px] text-rigel opacity-70 transition-opacity group-hover:opacity-100">
             deploy →
@@ -68,5 +74,44 @@ export function TemplateGrid() {
         </button>
       ))}
     </div>
+  )
+}
+
+// One click to a working team: four agents and a squad to talk to them in
+export function StarterTeamButton({ className }: { className?: string }) {
+  const router = useRouter()
+  const [pending, setPending] = React.useState(false)
+  return (
+    <Button
+      className={className}
+      disabled={pending}
+      onClick={async () => {
+        setPending(true)
+        try {
+          const { href, name } = await createSquadFromTemplate("starter")
+          toast.add({
+            type: "success",
+            title: `${name} is ready`,
+            description: "Atlas, Vega, Rigel and Lyra are online.",
+          })
+          router.push(href)
+        } catch (error) {
+          toast.add({
+            type: "error",
+            title: "Couldn't create the team",
+            description: error instanceof Error ? error.message : String(error),
+          })
+        } finally {
+          setPending(false)
+        }
+      }}
+    >
+      {pending ? (
+        <Spinner data-icon="inline-start" />
+      ) : (
+        <SparklesIcon data-icon="inline-start" />
+      )}
+      Create a starter team
+    </Button>
   )
 }

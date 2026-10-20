@@ -9,7 +9,9 @@ import { formatDistanceToNowStrict } from "date-fns"
 import {
   BrainIcon,
   ChevronDownIcon,
+  CopyIcon,
   CpuIcon,
+  DownloadIcon,
   MessageSquarePlusIcon,
   MonitorIcon,
   MoreHorizontalIcon,
@@ -60,6 +62,7 @@ import { Screen } from "@/components/workbench/screen"
 import { useWorkspace } from "@/components/workspace/context"
 import { useNotifications } from "@/components/workspace/notifier"
 import type { XirynMessage } from "@/lib/agent/tools"
+import { exportFilename, threadToMarkdown } from "@/lib/export"
 import { cn } from "@/lib/utils"
 
 export type ThreadSummary = { id: string; title: string | null; activeAt: string }
@@ -223,10 +226,12 @@ function RenameThreadDialog({
 
 function ThreadHeader({
   props,
+  messages,
   workbenchOpen,
   onToggleWorkbench,
 }: {
   props: ThreadViewProps
+  messages: XirynMessage[]
   workbenchOpen: boolean
   onToggleWorkbench?: () => void
 }) {
@@ -256,6 +261,27 @@ function ThreadHeader({
 
   const agentModel =
     kind === "agent" ? (props.members[0]?.model ?? status.defaultModel) : null
+
+  const markdown = () =>
+    threadToMarkdown({ title, owner: owner.name, members: props.members, messages })
+
+  const download = () => {
+    const url = URL.createObjectURL(new Blob([markdown()], { type: "text/markdown" }))
+    const link = document.createElement("a")
+    link.href = url
+    link.download = exportFilename(title)
+    link.click()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+  }
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(markdown())
+      toast.add({ type: "success", title: "Copied as Markdown" })
+    } catch {
+      toast.add({ type: "error", title: "Couldn't copy to the clipboard" })
+    }
+  }
 
   return (
     <header className="hairline-b flex h-12 shrink-0 items-center gap-3 px-4">
@@ -357,6 +383,15 @@ function ThreadHeader({
               <PencilIcon />
               Rename
             </DropdownMenuItem>
+            <DropdownMenuItem disabled={!messages.length} onClick={copy}>
+              <CopyIcon />
+              Copy as Markdown
+            </DropdownMenuItem>
+            <DropdownMenuItem disabled={!messages.length} onClick={download}>
+              <DownloadIcon />
+              Export as Markdown
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
             <DropdownMenuItem variant="destructive" onClick={() => setDeleting(true)}>
               <Trash2Icon />
               Delete thread
@@ -693,6 +728,7 @@ export function ThreadView(props: ThreadViewProps) {
       <div className="flex min-h-0 flex-1 flex-col">
         <ThreadHeader
           props={props}
+          messages={messages}
           workbenchOpen={workbenchOpen}
           onToggleWorkbench={kind === "agent" ? toggleWorkbench : undefined}
         />
