@@ -155,6 +155,34 @@ async function start() {
   process.exit(1)
 }
 
+// The Node processes in a process tree on Windows, the root first
+function nodeTree(root) {
+  const result = spawnSync(
+    "powershell.exe",
+    [
+      "-NoProfile",
+      "-NonInteractive",
+      "-Command",
+      "Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name | ConvertTo-Json -Compress",
+    ],
+    { encoding: "utf8", windowsHide: true }
+  )
+  let processes = []
+  try {
+    processes = JSON.parse(result.stdout)
+  } catch {
+    return [root]
+  }
+  const tree = [root]
+  for (let i = 0; i < tree.length; i++) {
+    for (const p of processes) {
+      if (p.ParentProcessId === tree[i] && /^node(\.exe)?$/i.test(p.Name))
+        tree.push(p.ProcessId)
+    }
+  }
+  return tree
+}
+
 function stop() {
   const pid = readPid()
   if (!pid || !alive(pid)) {
@@ -163,9 +191,14 @@ function stop() {
     return
   }
   if (process.platform === "win32") {
-    spawnSync("taskkill", ["/PID", String(pid), "/T", "/F"], { stdio: "ignore" })
+    // The server's own Node processes only: apps it started for you, like
+    // Ollama or Docker Desktop, keep running
+    for (const node of nodeTree(pid)) {
+      spawnSync("taskkill", ["/PID", String(node), "/F"], { stdio: "ignore" })
+    }
   } else {
-    // The whole group: the server and anything it started
+    // The whole group: the server and its workers. Apps it started for you,
+    // like Ollama, run in groups of their own and keep running
     try {
       process.kill(-pid, "SIGTERM")
     } catch {

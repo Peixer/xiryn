@@ -93,7 +93,7 @@ The person is messaging you through Telegram, most likely from their phone, whil
 
     capabilities.routine &&
       `# Routine
-This task runs on its own on a schedule ("${capabilities.routine}"); the person isn't watching as it happens and reads the result later, in the app or on their phone. Finish it in one go and end with the result itself, short and complete. Only hand over the screen or ask for something if the task truly can't go on without them.`,
+This message is a scheduled run of the routine "${capabilities.routine}", and it is due now. Do the task right away and reply with the result itself (the brief, the list, the quote), short and complete: the person reads it later, in the app or on their phone, without watching as it happens. Don't schedule anything or promise to do it later; this run is the delivery. Only hand over the screen or ask for something if the task truly can't go on without them.`,
 
     capabilities.workstation &&
       `# Using websites like a person

@@ -445,6 +445,70 @@ async function installedModels() {
   }
 }
 
+// Downloads a model through Ollama's own API, for when Ollama is running but
+// its command isn't on the PATH (a portable copy, say). Shows one progress line.
+async function pullThroughApi(model) {
+  try {
+    const response = await fetch(`${OLLAMA_URL}/api/pull`, {
+      method: "POST",
+      body: JSON.stringify({ model, stream: true }),
+    })
+    if (!response.ok || !response.body) throw new Error(`${response.status}`)
+    const decoder = new TextDecoder()
+    let buffer = ""
+    for await (const chunk of response.body) {
+      buffer += decoder.decode(chunk, { stream: true })
+      const lines = buffer.split("\n")
+      buffer = lines.pop() ?? ""
+      for (const line of lines.filter((l) => l.trim())) {
+        const event = JSON.parse(line)
+        if (event.error) throw new Error(event.error)
+        const gb = (bytes) => (bytes / 1024 ** 3).toFixed(1)
+        const progress = event.total
+          ? ` ${Math.floor(((event.completed ?? 0) / event.total) * 100)}% of ${gb(event.total)} GB`
+          : ""
+        if (process.stdout.isTTY) {
+          process.stdout.write(`\r\x1b[2K  ${dim(`${event.status}${progress}`)}`)
+        }
+      }
+    }
+    if (process.stdout.isTTY) process.stdout.write("\r\x1b[2K")
+    return true
+  } catch (error) {
+    if (process.stdout.isTTY) process.stdout.write("\n")
+    console.log(bad(`Download failed: ${error instanceof Error ? error.message : error}`))
+    return false
+  }
+}
+
+// Ollama runs models with a small context unless told otherwise (4K on many
+// machines), which cuts off an agent's instructions; save a larger one on it
+async function giveContext(model) {
+  const want = os.totalmem() / 1024 ** 3 < 12 ? 16_384 : 32_768
+  try {
+    const show = await fetch(`${OLLAMA_URL}/api/show`, {
+      method: "POST",
+      body: JSON.stringify({ model }),
+    })
+    const current = Number(
+      (await show.json()).parameters?.match(/^num_ctx\s+(\d+)/m)?.[1] ?? 0
+    )
+    if (current >= want) return true
+    const create = await fetch(`${OLLAMA_URL}/api/create`, {
+      method: "POST",
+      body: JSON.stringify({
+        model,
+        from: model,
+        parameters: { num_ctx: want },
+        stream: false,
+      }),
+    })
+    return create.ok
+  } catch {
+    return false
+  }
+}
+
 // Sets KEY=value in .env, over a commented-out example of it if there is one
 function setEnv(key, value) {
   const text = readFileSync(envPath, "utf8")
@@ -491,8 +555,16 @@ if (args.has("--local") || process.env.XIRYN_LOCAL === "1") {
       )
     }
     let pulled = present
-    if (!pulled && binary) pulled = await run(binary, ["pull", pick.model])
-    else if (!pulled) console.log(warn(`Download it with: ollama pull ${pick.model}`))
+    if (!pulled) {
+      pulled = binary
+        ? await run(binary, ["pull", pick.model])
+        : await pullThroughApi(pick.model)
+    }
+    if (pulled && !(await giveContext(pick.model))) {
+      console.log(
+        warn(`Couldn't give ${pick.model} a larger context; Xiryn retries on first use.`)
+      )
+    }
     if (pulled) {
       setEnv("OLLAMA_BASE_URL", `${OLLAMA_URL}/v1`)
       setEnv("XIRYN_DEFAULT_MODEL", `ollama/${pick.model}`)

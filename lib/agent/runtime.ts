@@ -35,6 +35,8 @@ import {
 } from "@/lib/agent/tools"
 import { getMaxSteps } from "@/lib/config"
 import { emit, previewText } from "@/lib/events"
+import { prepareLocalModel } from "@/lib/ollama"
+import { parseModelSpec } from "@/lib/providers/catalog"
 import { callCost, findPrice, toMicros } from "@/lib/providers/pricing"
 import { createModel, resolveModelSpec } from "@/lib/providers/registry"
 import { budgetBlock, getCustomPrices } from "@/lib/spend"
@@ -243,6 +245,28 @@ function pruneScreens(history: XirynMessage[]) {
     .reverse()
 }
 
+// A routine's message is shown as the plain task, but the model reads it as
+// what it is: a run that's due now, to be done and answered with the result
+function frameRoutineRuns(history: XirynMessage[]) {
+  return history.map((message) => {
+    const routine = message.role === "user" ? message.metadata?.routine : undefined
+    if (!routine) return message
+    return {
+      ...message,
+      parts: message.parts.map((part) =>
+        part.type === "text"
+          ? {
+              ...part,
+              text: `[Scheduled run of the routine "${routine.name}", due now. Do this task right now and reply with the result itself; don't schedule anything or promise it for later.]
+
+${part.text}`,
+            }
+          : part
+      ),
+    } as XirynMessage
+  })
+}
+
 // Desktop actions each return a screenshot. Saving all of them would grow
 // the database by megabytes per task, so a saved reply keeps the images of
 // what the agent chose to show or look at, plus the latest action's.
@@ -377,6 +401,15 @@ export async function startTurn({
   // A monthly budget holds turns on paid models once it's spent
   const blocked = budgetBlock(firstSpec)
   if (blocked) throw new TurnError(blocked, 402)
+  // Local models get a context their instructions fit in (once per model)
+  await Promise.all(
+    [...new Set(members.map((member) => resolveModelSpec(member.model)))].flatMap(
+      (spec) => {
+        const parsed = spec ? parseModelSpec(spec) : null
+        return parsed?.provider === "ollama" ? [prepareLocalModel(parsed.model)] : []
+      }
+    )
+  )
   const firstModel = (() => {
     try {
       return createModel(firstSpec)
@@ -552,7 +585,7 @@ export async function startTurn({
     const result = streamText({
       model: firstModel,
       instructions: buildInstructions(first, capabilities, squadContext(first)),
-      messages: await convertToModelMessages(pruneScreens(history), {
+      messages: await convertToModelMessages(pruneScreens(frameRoutineRuns(history)), {
         tools,
         ignoreIncompleteToolCalls: true,
       }),

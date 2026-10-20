@@ -83,7 +83,7 @@ A routine (`routines` table) is a prompt, an owner (an agent or a squad) and a s
 
 ## Local models
 
-`lib/ollama.ts` talks only to the Ollama endpoint configured for Xiryn (`/api/version`, `/api/tags`, `/api/pull`). Settings → Local models starts a pull, which streams progress as lines of JSON into an in-memory map the panel polls. Downloading or choosing a model points Xiryn at Ollama if nothing else does. `npm run setup:local` does the same from the terminal, installing Ollama first if needed.
+`lib/ollama.ts` talks only to the Ollama endpoint configured for Xiryn (`/api/version`, `/api/tags`, `/api/pull`). Settings → Local models starts a pull, which streams progress as lines of JSON into an in-memory map the panel polls. Downloading or choosing a model points Xiryn at Ollama if nothing else does, and saves a 32K context on it (`num_ctx` through `/api/create`, same name): Ollama's default is often 4K, which would cut an agent's prompt, and its OpenAI-style endpoint can't ask for more. Before a turn on an Ollama model Xiryn checks this once per model. `npm run setup:local` does the same from the terminal, installing Ollama first if needed.
 
 ## Squads and delegation
 

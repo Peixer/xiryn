@@ -656,7 +656,7 @@ export function createRoutineTools(env: ToolEnv) {
           .min(1)
           .max(4000)
           .describe(
-            "What to do each time, as a self-contained request to yourself: it's read later, without this conversation"
+            'What to do on one run, as a self-contained instruction to yourself that is read later without this conversation. Leave the schedule out: "Write me a short motivational quote", not "Every Sunday, send me a quote"'
           ),
         when: z
           .enum(["daily", "weekdays", "weekly", "hourly", "once"])

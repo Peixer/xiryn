@@ -15,6 +15,8 @@ export type LocalModel = {
   size: number
   parameters?: string
   family?: string
+  // The context Ollama runs it with, in tokens; null when it's Ollama's default
+  context: number | null
 }
 
 export type RecommendedModel = {
@@ -102,19 +104,87 @@ export async function ollamaStatus() {
         details?: { parameter_size?: string; family?: string }
       }[]
     }
+    const models = json.models ?? []
+    const contexts = await Promise.all(models.map((m) => modelContext(m.name)))
     return {
       running: true as const,
       root,
       version: ((await version.json()) as { version?: string }).version ?? null,
-      models: (json.models ?? []).map((m): LocalModel => ({
+      models: models.map((m, i): LocalModel => ({
         name: m.name,
         size: m.size,
         parameters: m.details?.parameter_size,
         family: m.details?.family,
+        context: contexts[i],
       })),
     }
   } catch {
     return { running: false as const, root, version: null, models: [] as LocalModel[] }
+  }
+}
+
+/* Context. Unless a model says otherwise, Ollama runs it with a small context
+   (4K on many machines) and quietly cuts longer prompts, which drops most of
+   an agent's instructions. Its OpenAI-style endpoint can't ask for more, so
+   Xiryn saves a larger context on the models agents use, the way a Modelfile
+   would: the same model, under the same name, with num_ctx set. */
+
+export function agentContext() {
+  return os.totalmem() / 1024 ** 3 < 12 ? 16_384 : 32_768
+}
+
+export async function modelContext(model: string) {
+  try {
+    const response = await fetch(`${ollamaRoot()}/api/show`, {
+      method: "POST",
+      body: JSON.stringify({ model }),
+      signal: AbortSignal.timeout(5000),
+      cache: "no-store",
+    })
+    if (!response.ok) return null
+    const { parameters } = (await response.json()) as { parameters?: string }
+    const match = parameters?.match(/^num_ctx\s+(\d+)/m)
+    return match ? Number(match[1]) : null
+  } catch {
+    return null
+  }
+}
+
+// Gives a model enough context for an agent's instructions; true if it changed
+export async function ensureContext(model: string) {
+  const want = agentContext()
+  const current = await modelContext(model)
+  if (current !== null && current >= want) return false
+  const response = await fetch(`${ollamaRoot()}/api/create`, {
+    method: "POST",
+    body: JSON.stringify({
+      model,
+      from: model,
+      parameters: { num_ctx: want },
+      stream: false,
+    }),
+  })
+  if (!response.ok) {
+    throw new Error(
+      `Ollama couldn't update ${model}: ${(await response.text()).slice(0, 200)}`
+    )
+  }
+  return true
+}
+
+const globalForContext = globalThis as unknown as { xirynOllamaContext?: Set<string> }
+const checked = (globalForContext.xirynOllamaContext ??= new Set())
+
+// Before a turn: once per model while Xiryn runs. Never in the way of the turn.
+export async function prepareLocalModel(model: string) {
+  if (checked.has(model)) return
+  try {
+    if (await ensureContext(model)) {
+      console.log(`[xiryn] ollama: gave ${model} a ${agentContext() / 1024}K context`)
+    }
+    checked.add(model)
+  } catch (error) {
+    console.error("[xiryn] ollama:", error instanceof Error ? error.message : error)
   }
 }
 
@@ -159,6 +229,7 @@ export function pullModel(model: string) {
       }
       const reader = response.body.getReader()
       const decoder = new TextDecoder()
+      const layers = new Map<string, { total: number; completed: number }>()
       let buffer = ""
       for (;;) {
         const { done, value } = await reader.read()
@@ -170,22 +241,38 @@ export function pullModel(model: string) {
           if (!line.trim()) continue
           const event = JSON.parse(line) as {
             status?: string
+            digest?: string
             completed?: number
             total?: number
             error?: string
           }
           if (event.error) throw new Error(event.error)
-          const current = pulls.get(model)
-          const keep = current?.state === "pulling" ? current : null
+          // A model comes in several layers; progress is their sum
+          if (event.digest && event.total) {
+            layers.set(event.digest, {
+              total: event.total,
+              completed: event.completed ?? 0,
+            })
+          }
+          const sizes = [...layers.values()]
           pulls.set(model, {
             model,
             state: "pulling",
-            status: event.status ?? keep?.status ?? "",
-            completed: event.completed ?? (event.total ? 0 : (keep?.completed ?? 0)),
-            total: event.total ?? keep?.total ?? 0,
+            status: event.digest ? "downloading" : (event.status ?? ""),
+            completed: sizes.reduce((sum, layer) => sum + layer.completed, 0),
+            total: sizes.reduce((sum, layer) => sum + layer.total, 0),
           })
         }
       }
+      pulls.set(model, {
+        model,
+        state: "pulling",
+        status: "setting up for agents",
+        completed: 0,
+        total: 0,
+      })
+      await ensureContext(model)
+      checked.add(model)
       pulls.set(model, { model, state: "done" })
     } catch (error) {
       pulls.set(model, {

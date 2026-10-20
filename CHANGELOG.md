@@ -2,6 +2,18 @@
 
 All notable changes to Xiryn are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses [Semantic Versioning](https://semver.org/).
 
+## [0.5.1] — 2026-10-20
+
+Fixes from running 0.5.0 end to end with a real Ollama on Windows.
+
+### Fixed
+
+- **Local models no longer lose their instructions.** Ollama runs models with a small context unless told otherwise (4K on an 8 GB graphics card) and quietly cut Xiryn's agent prompt in half, so agents forgot the question. Xiryn now saves a 32K context on the models it downloads or makes the default (16K under 12 GB of memory), checks any other Ollama model once before its first turn, and Settings → Local models shows each model's context with a one-click fix.
+- `npm run background -- stop` on Windows no longer stops Ollama or Docker Desktop when Xiryn had started them; it ends only Xiryn's own processes.
+- A routine's run now delivers the result instead of replying that it's scheduled, even on small local models: the agent reads each run as due now, and routines created from a chat describe one run rather than the schedule.
+- `npm run setup:local` downloads the model through Ollama's API when Ollama is running but its command isn't on the PATH (a portable copy, say), instead of stopping.
+- Download progress in Settings → Local models counts the whole model rather than one layer at a time.
+
 ## [0.5.0] — 2026-10-20
 
 Routines, free local models in one command, and what every reply costs.
@@ -128,6 +140,7 @@ The first public release.
 - **Security:** loopback-only server, Host/Origin guard, masked secrets.
 - Constellation glyphs for agents and squads, dark and light themes, command palette (⌘K), responsive layout.
 
+[0.5.1]: https://github.com/SouravBeraAkaSpeed/xiryn/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/SouravBeraAkaSpeed/xiryn/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/SouravBeraAkaSpeed/xiryn/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/SouravBeraAkaSpeed/xiryn/compare/v0.3.0...v0.4.0
