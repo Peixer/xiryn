@@ -36,6 +36,8 @@ import {
 import { getMaxSteps } from "@/lib/config"
 import { loadConnectorTools } from "@/lib/mcp/load"
 import { isApprovalHold } from "@/lib/mcp/policy"
+import { bedrockMaxOutputTokens } from "@/lib/providers/bedrock-routing"
+import { bedrockMaxOutputOverrides } from "@/lib/providers/bedrock"
 import { emit, previewText } from "@/lib/events"
 import { prepareLocalModel } from "@/lib/ollama"
 import { parseModelSpec } from "@/lib/providers/catalog"
@@ -44,6 +46,14 @@ import { createModel, resolveModelSpec } from "@/lib/providers/registry"
 import { budgetBlock, getCustomPrices } from "@/lib/spend"
 import { isWebConfigured } from "@/lib/web"
 import { isWorkstationConfigured } from "@/lib/workstation"
+
+function bedrockOutputCap(spec: string) {
+  const parsed = parseModelSpec(spec)
+  if (parsed?.provider !== "bedrock") return {}
+  return {
+    maxOutputTokens: bedrockMaxOutputTokens(parsed.model, bedrockMaxOutputOverrides()),
+  }
+}
 
 /* ───────────────────────────── runs ───────────────────────────────
  * A run is one agent turn executing inside this process. Its output is
@@ -614,9 +624,7 @@ export async function startTurn({
           steps.at(-1)?.toolResults.some((result) => isApprovalHold(result.output)) ??
           false,
       ],
-      ...(parseModelSpec(firstSpec)?.provider === "bedrock"
-        ? { maxOutputTokens: 16_384 }
-        : {}),
+      ...bedrockOutputCap(firstSpec),
       abortSignal: run.controller.signal,
       prepareStep: ({ messages: stepMessages, stepNumber }) => {
         // Long tool loops resend everything each step; keep it lean
@@ -625,11 +633,7 @@ export async function startTurn({
         // ends with what was found and what's left
         const lastStep = stepNumber === maxSteps - 1
         const delegated = current.id !== appliedAgentId
-        const cap =
-          parseModelSpec(delegated ? specFor(current) : activeSpec)?.provider ===
-          "bedrock"
-            ? { maxOutputTokens: 16_384 }
-            : {}
+        const cap = bedrockOutputCap(delegated ? specFor(current) : activeSpec)
         if (!delegated && !lastStep) return { messages: compacted, ...cap }
         appliedAgentId = current.id
         if (delegated) activeSpec = specFor(current)

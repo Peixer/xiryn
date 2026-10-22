@@ -46,7 +46,33 @@ Bedrock stays off until one of these is true: both keys are set, `AWS_REGION` is
 | Amazon Nova Lite | `bedrock/eu.amazon.nova-lite-v1:0` |
 | Amazon Nova Micro | `bedrock/eu.amazon.nova-micro-v1:0` |
 
-**Test connection** asks `ListInferenceProfiles` in your region and merges that list with the table above. Output is capped at 16,384 tokens per Bedrock call so a request does not reserve the model's whole output quota.
+**Test connection** lists inference profiles in `AWS_REGION`, then profiles and on-demand models in each extra region. Output tokens are capped per model: 16,384 by default (Claude Sonnet 4.6 accepts that), 10,000 for Nova Pro, Lite and Micro, and 4,096 for Llama 3.3 70B Instruct. Override one id with `XIRYN_BEDROCK_MAX_OUTPUT=eu.amazon.nova-pro-v1:0=8000`.
+
+## Models in another region
+
+The default region stays `AWS_REGION`. To also call models that are not in that region, name the other regions:
+
+```bash
+XIRYN_BEDROCK_EXTRA_REGIONS=us-east-2
+```
+
+With `us-east-2` listed, the picker shows **Llama 3.3 70B (Ohio)**. Select:
+
+```text
+bedrock/meta.llama3-3-70b-instruct-v1:0
+```
+
+That id is the on-demand model in Ohio, so the call stays in `us-east-2`. The US profile `us.meta.llama3-3-70b-instruct-v1:0` also shows up once the live list returns; invoking it from Ohio is allowed, and Bedrock may serve it from us-east-1, us-east-2, or us-west-2. EU models such as `bedrock/eu.anthropic.claude-sonnet-4-6` keep using `eu-west-3`.
+
+Pin any other id yourself:
+
+```bash
+XIRYN_BEDROCK_MODEL_REGIONS=some.model-id=us-east-2
+```
+
+`BEDROCK_BASE_URL`, when set, is the endpoint for the default region only.
+
+Llama 3.3 70B Instruct's model card says tool use and streaming cannot be combined (`ConverseStream` plus tools returns "This model doesn't support tool use in streaming mode"). Chat still streams. A step that calls tools uses the non-streaming Converse API, then the reply is played into the transcript, so tools still run. The reply on that step arrives in one piece rather than token by token.
 
 The Usage page prices these ids. Nova rates are the public eu-west-3 on-demand prices from the Amazon Bedrock price list published 16 October 2026. Claude on Bedrock is billed through AWS Marketplace; the rows match Anthropic's published rates already used for the Anthropic provider. Confirm the bill if AWS applies a geographic premium.
 

@@ -68,6 +68,12 @@ const bedrockSettings = {
   "provider.bedrock.accessKeyId": { env: "AWS_ACCESS_KEY_ID", secret: true },
   "provider.bedrock.secretAccessKey": { env: "AWS_SECRET_ACCESS_KEY", secret: true },
   "provider.bedrock.sessionToken": { env: "AWS_SESSION_TOKEN", secret: true },
+  // Comma-separated regions to list and call in addition to AWS_REGION.
+  "bedrock.extraRegions": { env: "XIRYN_BEDROCK_EXTRA_REGIONS" },
+  // model-id=region pairs. Overrides the extra-region catalog and discovery.
+  "bedrock.modelRegions": { env: "XIRYN_BEDROCK_MODEL_REGIONS" },
+  // model-id=tokens pairs. Overrides the built-in output ceilings.
+  "bedrock.maxOutput": { env: "XIRYN_BEDROCK_MAX_OUTPUT" },
 } satisfies Record<string, SettingDef>
 
 const providerSettings = Object.fromEntries(

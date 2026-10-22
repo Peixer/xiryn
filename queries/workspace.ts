@@ -250,6 +250,9 @@ export function getSettingsView() {
               accessKeyId: describeSetting("provider.bedrock.accessKeyId"),
               secretAccessKey: describeSetting("provider.bedrock.secretAccessKey"),
               sessionToken: describeSetting("provider.bedrock.sessionToken"),
+              extraRegions: describeSetting("bedrock.extraRegions"),
+              modelRegions: describeSetting("bedrock.modelRegions"),
+              maxOutput: describeSetting("bedrock.maxOutput"),
               ambient: bedrockAmbientChain(),
             }
           : null,

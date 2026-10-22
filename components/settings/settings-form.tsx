@@ -208,6 +208,12 @@ function ProviderRow({ provider }: { provider: SettingsData["providers"][number]
   const [region, setRegion] = React.useState(
     aws?.region.source === "local" ? (aws.region.value ?? "") : ""
   )
+  const [extraRegions, setExtraRegions] = React.useState(
+    aws?.extraRegions.source === "local" ? (aws.extraRegions.value ?? "") : ""
+  )
+  const [modelRegions, setModelRegions] = React.useState(
+    aws?.modelRegions.source === "local" ? (aws.modelRegions.value ?? "") : ""
+  )
   const [baseUrl, setBaseUrl] = React.useState(
     provider.baseUrl.source === "local" ? (provider.baseUrl.value ?? "") : ""
   )
@@ -333,6 +339,47 @@ function ProviderRow({ provider }: { provider: SettingsData["providers"][number]
                   onChange={setSessionToken}
                 />
               </label>
+              <label className="flex flex-col gap-1.5">
+                <span className="flex items-center justify-between">
+                  <span className="label-mono">Extra regions</span>
+                  <span className="font-mono text-[10px] text-faint">
+                    XIRYN_BEDROCK_EXTRA_REGIONS
+                  </span>
+                </span>
+                <TextInput
+                  value={extraRegions}
+                  onChange={setExtraRegions}
+                  placeholder={
+                    aws.extraRegions.source === "env"
+                      ? `${aws.extraRegions.value} (from .env)`
+                      : "us-east-2"
+                  }
+                />
+              </label>
+              <label className="flex flex-col gap-1.5">
+                <span className="flex items-center justify-between">
+                  <span className="label-mono">Model regions</span>
+                  <span className="font-mono text-[10px] text-faint">
+                    XIRYN_BEDROCK_MODEL_REGIONS
+                  </span>
+                </span>
+                <TextInput
+                  value={modelRegions}
+                  onChange={setModelRegions}
+                  placeholder={
+                    aws.modelRegions.source === "env"
+                      ? `${aws.modelRegions.value} (from .env)`
+                      : "meta.llama3-3-70b-instruct-v1:0=us-east-2"
+                  }
+                />
+              </label>
+              <p className="text-[12px] leading-relaxed text-muted-foreground">
+                Extra regions are listed alongside {aws.region.value ?? "the default"}. A
+                model id in the map is called in that region. With{" "}
+                <span className="font-mono">us-east-2</span> listed, the picker offers
+                Llama 3.3 70B Instruct (Ohio) as{" "}
+                <span className="font-mono">meta.llama3-3-70b-instruct-v1:0</span>.
+              </p>
             </>
           )}
           {showsKey && (
@@ -376,6 +423,14 @@ function ProviderRow({ provider }: { provider: SettingsData["providers"][number]
                   !sessionToken.trim() &&
                   region ===
                     (aws?.region.source === "local" ? (aws.region.value ?? "") : "") &&
+                  extraRegions ===
+                    (aws?.extraRegions.source === "local"
+                      ? (aws.extraRegions.value ?? "")
+                      : "") &&
+                  modelRegions ===
+                    (aws?.modelRegions.source === "local"
+                      ? (aws.modelRegions.value ?? "")
+                      : "") &&
                   baseUrl ===
                     (provider.baseUrl.source === "local" ? provider.baseUrl.value : ""))
               }
@@ -386,6 +441,8 @@ function ProviderRow({ provider }: { provider: SettingsData["providers"][number]
                 if (key.trim()) values[`provider.${provider.id}.apiKey`] = key.trim()
                 if (aws) {
                   values["provider.bedrock.region"] = region.trim() || null
+                  values["bedrock.extraRegions"] = extraRegions.trim() || null
+                  values["bedrock.modelRegions"] = modelRegions.trim() || null
                   if (accessKeyId.trim())
                     values["provider.bedrock.accessKeyId"] = accessKeyId.trim()
                   if (secretAccessKey.trim())

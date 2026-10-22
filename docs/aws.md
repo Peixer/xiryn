@@ -73,6 +73,14 @@ XIRYN_DEFAULT_MODEL=bedrock/eu.anthropic.claude-sonnet-5-5
 
 Leave `AWS_ACCESS_KEY_ID` unset. Setting `AWS_REGION` is what turns the Bedrock provider on when there are no keys. See `docs/providers.md` for the model ids.
 
+A model that is not served from Paris needs its region named. Llama 3.3 70B Instruct is on-demand in Ohio (`us-east-2`), and the instance role already applies in every region:
+
+```bash
+XIRYN_BEDROCK_EXTRA_REGIONS=us-east-2
+```
+
+Restart, then pick **Llama 3.3 70B (Ohio)**, id `bedrock/meta.llama3-3-70b-instruct-v1:0`. Claude Sonnet 4.6 stays `bedrock/eu.anthropic.claude-sonnet-4-6` in `eu-west-3`. Nova Pro, Lite and Micro are capped at 10,000 output tokens; Llama 3.3 at 4,096. Details are in `docs/providers.md`.
+
 ## Environment
 
 ```bash

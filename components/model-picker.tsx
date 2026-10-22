@@ -24,9 +24,11 @@ import { cn } from "@/lib/utils"
 import type { SystemStatus } from "@/queries/workspace"
 
 type ProviderOption = SystemStatus["providerOptions"][number]
+type ListedModel = { id: string; label?: string }
+
 type Listing = {
   state: "idle" | "loading" | "ready" | "error"
-  models: string[]
+  models: ListedModel[]
   error?: string
 }
 
@@ -39,7 +41,7 @@ function loadModels(provider: ProviderId, refresh = false) {
   if (!pending) {
     pending = fetchProviderModels(provider).then((result) =>
       result.ok
-        ? { state: "ready" as const, models: result.models.map((m) => m.id) }
+        ? { state: "ready" as const, models: result.models }
         : { state: "error" as const, models: [], error: result.error }
     )
     cache.set(provider, pending)
@@ -188,9 +190,15 @@ export function ModelPicker({
             )}
             {configured.map((provider) => {
               const listing = listings[provider.id]
-              const models = [
-                ...new Set([...provider.suggested, ...(listing?.models ?? [])]),
-              ]
+              const models = new Map<string, ListedModel>()
+              for (const id of provider.suggested) models.set(id, { id })
+              for (const model of listing?.models ?? []) {
+                const current = models.get(model.id)
+                models.set(model.id, {
+                  id: model.id,
+                  label: model.label ?? current?.label,
+                })
+              }
               return (
                 <CommandGroup
                   key={provider.id}
@@ -209,11 +217,29 @@ export function ModelPicker({
                     </span>
                   }
                 >
-                  {models.map((model) => {
-                    const spec = `${provider.id}/${model}`
+                  {[...models.values()].map((model) => {
+                    const spec = `${provider.id}/${model.id}`
                     return (
-                      <CommandItem key={spec} value={spec} onSelect={() => pick(spec)}>
-                        <span className="truncate font-mono text-[12px]">{model}</span>
+                      <CommandItem
+                        key={spec}
+                        value={`${spec} ${model.label ?? ""}`}
+                        onSelect={() => pick(spec)}
+                      >
+                        <span className="flex min-w-0 flex-col">
+                          {model.label && (
+                            <span className="truncate text-[12.5px]">{model.label}</span>
+                          )}
+                          <span
+                            className={cn(
+                              "truncate font-mono",
+                              model.label
+                                ? "text-[11px] text-muted-foreground"
+                                : "text-[12px]"
+                            )}
+                          >
+                            {model.id}
+                          </span>
+                        </span>
                         {value === spec && <CheckIcon className="ml-auto size-3.5" />}
                       </CommandItem>
                     )
