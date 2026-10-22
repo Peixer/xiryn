@@ -72,7 +72,7 @@ XIRYN_BEDROCK_MODEL_REGIONS=some.model-id=us-east-2
 
 `BEDROCK_BASE_URL`, when set, is the endpoint for the default region only.
 
-Llama 3.3 70B Instruct's model card says tool use and streaming cannot be combined (`ConverseStream` plus tools returns "This model doesn't support tool use in streaming mode"). Chat still streams. A step that calls tools uses the non-streaming Converse API, then the reply is played into the transcript, so tools still run. The reply on that step arrives in one piece rather than token by token.
+Llama 3.3 70B Instruct's model card says tool use and streaming cannot be combined (`ConverseStream` plus tools returns "This model doesn't support tool use in streaming mode"). Chat still streams. A step that calls tools uses the non-streaming Converse API, which sends `toolConfig` and reads `toolUse` blocks. Llama 3.x often still prints the call as text (`{"type":"function","name":"shell","parameters":{...}}`, `<|python_tag|>`, or a code fence). Xiryn turns that text into a real tool call, runs it, and continues to a final answer. The tool step arrives in one piece rather than token by token.
 
 The Usage page prices these ids. Nova rates are the public eu-west-3 on-demand prices from the Amazon Bedrock price list published 16 October 2026. Claude on Bedrock is billed through AWS Marketplace; the rows match Anthropic's published rates already used for the Anthropic provider. Confirm the bill if AWS applies a geographic premium.
 

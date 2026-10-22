@@ -17,6 +17,7 @@ import {
   parseModelRegionMap,
   resolveBedrockRegion,
 } from "@/lib/providers/bedrock-routing"
+import { liftLlamaTextToolCalls } from "@/lib/providers/llama-tool-text"
 import { getProviderMeta } from "@/lib/providers/catalog"
 
 type DiscoveredModel = { id: string; label?: string }
@@ -117,20 +118,39 @@ export function createBedrockModel(model: string) {
   })
   const languageModel = provider(model)
   // Llama 3.3 rejects ConverseStream once tools are attached. A step with
-  // tools uses Converse, and the finished reply is played back as a stream.
+  // tools uses Converse (which sends toolConfig and parses toolUse blocks).
+  // If the model still prints the call as text, that text becomes a real
+  // tool call so the agent loop runs it.
   if (bedrockStreamsWithTools(model)) return languageModel
   const simulate = simulateStreamingMiddleware()
   return wrapLanguageModel({
     model: languageModel,
     middleware: {
       specificationVersion: "v4",
+      wrapGenerate: async ({ doGenerate, params }) =>
+        liftLlamaTextToolCalls(await doGenerate(), namesOf(params.tools)),
       wrapStream: async (options) => {
         if (!options.params.tools?.length || !simulate.wrapStream)
           return options.doStream()
-        return simulate.wrapStream(options)
+        return simulate.wrapStream({
+          ...options,
+          doGenerate: async () =>
+            liftLlamaTextToolCalls(
+              await options.doGenerate(),
+              namesOf(options.params.tools)
+            ),
+        })
       },
     },
   })
+}
+
+function namesOf(tools: ReadonlyArray<{ type?: string; name?: string }> | undefined) {
+  const names = new Set<string>()
+  for (const tool of tools ?? []) {
+    if ((tool.type === "function" || tool.type == null) && tool.name) names.add(tool.name)
+  }
+  return names
 }
 
 const SKIP =
