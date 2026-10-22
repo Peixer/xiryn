@@ -12,6 +12,7 @@ export type ProviderId =
   | "ollama"
   | "lmstudio"
   | "custom"
+  | "bedrock"
 
 export type ProviderMeta = {
   id: ProviderId
@@ -27,6 +28,8 @@ export type ProviderMeta = {
   requiresBaseUrl?: boolean
   // Runs on this machine; nothing leaves it
   local?: boolean
+  // "aws" uses the default credential chain, with optional explicit keys
+  auth?: "aws"
   keysUrl?: string
   // A few known-good ids, shown before the live list is fetched
   suggested: string[]
@@ -142,6 +145,30 @@ export const providers: ProviderMeta[] = [
     requiresKey: false,
     requiresBaseUrl: true,
     suggested: [],
+  },
+  {
+    id: "bedrock",
+    name: "Amazon Bedrock",
+    // No single API key. Optional access keys live in their own settings;
+    // otherwise the AWS SDK default chain (instance role, profile, …) is used.
+    keyEnv: null,
+    baseUrlEnv: "BEDROCK_BASE_URL",
+    defaultBaseUrl: "",
+    requiresKey: false,
+    auth: "aws",
+    keysUrl: "https://docs.aws.amazon.com/bedrock/latest/userguide/security-iam.html",
+    // EU geographic inference profiles that list eu-west-3 (Paris) as a source
+    // region. Checked against the AWS model cards on 22 October 2026.
+    // https://docs.aws.amazon.com/bedrock/latest/userguide/inference-profiles-support.html
+    suggested: [
+      "eu.anthropic.claude-sonnet-5-5",
+      "eu.anthropic.claude-haiku-5-5",
+      "eu.anthropic.claude-sonnet-4-6",
+      "eu.anthropic.claude-haiku-4-5-20251001-v1:0",
+      "eu.amazon.nova-pro-v1:0",
+      "eu.amazon.nova-lite-v1:0",
+      "eu.amazon.nova-micro-v1:0",
+    ],
   },
 ]
 

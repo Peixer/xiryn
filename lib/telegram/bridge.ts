@@ -15,6 +15,7 @@ import {
 import type { XirynMessage, SecretRequest } from "@/lib/agent/tools"
 import { getSetting, setSetting } from "@/lib/config"
 import { getApproval, type Approval, type VaultItemView } from "@/lib/vault"
+import { answerAction, getActionApproval, type ActionApproval } from "@/lib/mcp/approval"
 import { answerPayment, answerSecret, type VaultMarker } from "@/lib/vault-requests"
 import { getTakeoverLink } from "@/lib/workstation"
 import { resolveModelSpec } from "@/lib/providers/registry"
@@ -500,6 +501,9 @@ async function handleCallback(token: string, query: TgCallbackQuery) {
   }
   const pay = query.data?.match(/^pay:([\w-]+):([\w-]+)$/)
   if (pay) return handlePayment(token, query, pay[1], pay[2])
+  const act = query.data?.match(/^act:([\w-]+):(yes|no)$/)
+  if (act)
+    return handleAction(token, query, act[1], act[2] === "yes" ? "approve" : "decline")
   const match = query.data?.match(/^use:(a|s):(.+)$/)
   if (!match) return
   const [, kind, id] = match
@@ -616,6 +620,15 @@ const TOOL_LABELS: Record<string, (input: Record<string, unknown>) => string> = 
   request_payment_approval: (i) =>
     `asking you to approve ${String(i.amount ?? "a payment")}`,
   request_secret: () => "asking you for a detail",
+  gmail_search: (i) => `searching mail “${String(i.query ?? "")}”`,
+  gmail_read: () => "reading an email",
+  gmail_send: (i) => `sending mail to ${String(i.to ?? "")}`,
+  gmail_reply: () => "replying to an email",
+  gmail_draft: (i) => `drafting mail to ${String(i.to ?? "")}`,
+  calendar_list_events: () => "checking the calendar",
+  calendar_create_event: (i) => `creating “${String(i.summary ?? "an event")}”`,
+  calendar_update_event: () => "updating an event",
+  calendar_delete_event: () => "deleting an event",
   delegate: () => "delegating",
 }
 
@@ -1022,6 +1035,98 @@ const globalForNotices = globalThis as unknown as {
   __xirynPaymentNotices?: Map<string, { chatId: number; messageId: number }>
 }
 const paymentNotices = (globalForNotices.__xirynPaymentNotices ??= new Map())
+
+const globalForActions = globalThis as unknown as {
+  __xirynActionNotices?: Map<string, { chatId: number; messageId: number }>
+}
+const actionNotices = (globalForActions.__xirynActionNotices ??= new Map())
+
+export async function notifyAction({
+  agent,
+  squadId,
+  approval,
+}: {
+  agent: Agent
+  squadId: string | null
+  approval: ActionApproval
+}) {
+  const token = getSetting("telegram.botToken")
+  const owner = ownerId()
+  if (!token || !owner) return
+  const inApp = threadLink(approval.threadId, agent.id, squadId)
+  const sent = await callTelegram<TgMessage>(token, "sendMessage", {
+    chat_id: owner,
+    parse_mode: "HTML",
+    text: [
+      `<b>${escape(agent.name)}</b> wants to`,
+      escape(approval.summary),
+      "",
+      "Nothing is sent until you approve.",
+      `<a href="${escape(inApp)}">Open in Xiryn</a>`,
+    ].join("\n"),
+    reply_markup: {
+      inline_keyboard: [
+        [
+          { text: "Approve", callback_data: `act:${approval.id}:yes` },
+          { text: "Decline", callback_data: `act:${approval.id}:no` },
+        ],
+      ],
+    },
+  })
+  actionNotices.set(approval.id, { chatId: owner, messageId: sent.message_id })
+}
+
+export async function closeActionNotice(approvalId: string, outcome: string) {
+  const notice = actionNotices.get(approvalId)
+  actionNotices.delete(approvalId)
+  if (!notice) return
+  const token = getSetting("telegram.botToken")
+  if (!token) return
+  await edit(token, notice.chatId, notice.messageId, escape(outcome)).catch(() => {})
+}
+
+async function handleAction(
+  token: string,
+  query: TgCallbackQuery,
+  approvalId: string,
+  choice: "approve" | "decline"
+) {
+  const chatId = query.message?.chat.id
+  let outcome: ReturnType<typeof answerAction>
+  try {
+    outcome = answerAction(approvalId, choice)
+  } catch (error) {
+    await callTelegram(token, "answerCallbackQuery", {
+      callback_query_id: query.id,
+      text: (error instanceof Error ? error.message : String(error)).slice(0, 190),
+    }).catch(() => {})
+    return
+  }
+  const approval = getActionApproval(approvalId)
+  await callTelegram(token, "answerCallbackQuery", {
+    callback_query_id: query.id,
+    text: outcome.marker.summary.slice(0, 190),
+  }).catch(() => {})
+  if (chatId && query.message) {
+    actionNotices.delete(approvalId)
+    await edit(
+      token,
+      chatId,
+      query.message.message_id,
+      `${choice === "approve" ? "✅" : "✕"} ${escape(outcome.marker.summary)}`
+    ).catch(() => {})
+  }
+  if (!approval || !chatId) return
+  const owner = threadOwner(approval.threadId)
+  const agentId = approval.agentId ?? owner?.agentId
+  if (!owner || !agentId) return
+  setTarget(
+    owner.squadId
+      ? { squadId: owner.squadId, threadId: approval.threadId }
+      : { agentId, threadId: approval.threadId }
+  )
+  await converse(token, chatId, outcome.text, outcome.marker)
+}
 
 export async function closePaymentNotice(approvalId: string, outcome: string) {
   const notice = paymentNotices.get(approvalId)

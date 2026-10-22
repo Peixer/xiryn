@@ -56,6 +56,20 @@ export async function saveSettings(values: Record<string, string | null>) {
     if (key === "agent.maxSteps" && value && !/^\d{1,3}$/.test(value.trim())) {
       throw new Error("Max steps must be a whole number.")
     }
+    if (
+      key === "provider.bedrock.region" &&
+      value &&
+      !/^[a-z]{2}-[a-z]+-\d$/.test(value.trim())
+    ) {
+      throw new Error("The region looks like eu-west-3.")
+    }
+    if (
+      (key === "connectors.gmail" || key === "connectors.calendar") &&
+      value &&
+      !/^(on|off)$/.test(value.trim())
+    ) {
+      throw new Error("A connector is either on or off.")
+    }
     setSetting(key, value)
   }
   revalidatePath("/", "layout")

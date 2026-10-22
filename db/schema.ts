@@ -227,6 +227,30 @@ export const vaultApprovals = sqliteTable(
   (t) => [index("vault_approvals_thread_idx").on(t.threadId)]
 )
 
+// A write or send an agent asked to make through a connector (Gmail, Calendar,
+// or any MCP tool marked as a write). The tool does not run until this is approved.
+export const actionApprovals = sqliteTable(
+  "action_approvals",
+  {
+    id: id(),
+    threadId: text()
+      .notNull()
+      .references(() => threads.id, { onDelete: "cascade" }),
+    agentId: text().references(() => agents.id, { onDelete: "set null" }),
+    tool: text().notNull(),
+    // Canonical JSON of the arguments, so a later identical call can be matched
+    args: text().notNull(),
+    summary: text().notNull(),
+    status: text({ enum: ["pending", "approved", "declined", "used"] })
+      .notNull()
+      .default("pending"),
+    createdAt: timestamp(),
+    decidedAt: integer({ mode: "timestamp_ms" }),
+    expiresAt: integer({ mode: "timestamp_ms" }),
+  },
+  (t) => [index("action_approvals_thread_idx").on(t.threadId, t.status)]
+)
+
 /* ──────────────────────────── settings ──────────────────────────── */
 
 // Values saved from the Settings screen. They take precedence over .env.

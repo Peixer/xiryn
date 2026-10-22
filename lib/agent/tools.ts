@@ -14,6 +14,7 @@ import {
   type Routine,
 } from "@/db/schema"
 import { describeSchedule, nextRun } from "@/lib/schedule"
+import type { ActionApproval } from "@/lib/mcp/approval"
 import {
   activeApproval,
   createApproval,
@@ -71,6 +72,8 @@ export type ToolEnv = {
   ) => Promise<void> | void
   // A detail only they can give, through a secure form
   onSecretRequested?: (agent: Agent, request: SecretRequest) => Promise<void> | void
+  // A connector wants to send, create, or change something
+  onActionRequested?: (agent: Agent, approval: ActionApproval) => Promise<void> | void
 }
 
 const MAX_OUTPUT = 20_000

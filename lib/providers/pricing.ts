@@ -131,6 +131,31 @@ const catalog: Record<string, Entry> = {
   },
   "google/gemini-2.5-flash": { input: 0.3, cached: 0.03, output: 2.5 },
   "google/gemini-2.5-flash-lite": { input: 0.1, cached: 0.01, output: 0.4 },
+
+  // Amazon Bedrock, EU geographic profiles called from eu-west-3.
+  // Claude is billed through AWS Marketplace. These rows match the Anthropic
+  // rates already in this file (published prices as of 20 October 2026).
+  // Confirm the geographic premium, if any, on the AWS pricing page.
+  "bedrock/eu.anthropic.claude-sonnet-5-5": { input: 2, cached: 0.1, output: 10 },
+  "bedrock/eu.anthropic.claude-sonnet-5": { input: 2, cached: 0.2, output: 10 },
+  "bedrock/eu.anthropic.claude-sonnet-4-6": { input: 3, cached: 0.3, output: 15 },
+  "bedrock/eu.anthropic.claude-haiku-4-5-20251001-v1:0": {
+    input: 1,
+    cached: 0.1,
+    output: 5,
+  },
+  "bedrock/eu.anthropic.claude-haiku-5-5": {
+    input: 0.1,
+    cached: 0.01,
+    output: 0.5,
+    long: { above: 100_000, input: 0.5, cached: 0.05, output: 2.5 },
+  },
+  // Nova, standard on-demand in EU (Paris), from the public Amazon Bedrock
+  // price list for eu-west-3 published 16 October 2026. Dollars per million
+  // tokens (the list quotes per 1,000).
+  "bedrock/eu.amazon.nova-pro-v1:0": { input: 1.18, cached: 0.295, output: 4.72 },
+  "bedrock/eu.amazon.nova-lite-v1:0": { input: 0.088, cached: 0.022, output: 0.352 },
+  "bedrock/eu.amazon.nova-micro-v1:0": { input: 0.052, cached: 0.013, output: 0.208 },
 }
 
 // Prices the person set themselves, by model spec

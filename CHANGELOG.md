@@ -2,6 +2,14 @@
 
 All notable changes to Xiryn are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- **Amazon Bedrock** as a provider. Uses the AWS credential chain (an EC2 instance role, with no keys stored) or `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_SESSION_TOKEN`. Region defaults to `eu-west-3` and is what turns Bedrock on when you are not pasting keys. EU inference profiles for Claude Sonnet and Haiku and for Nova Pro, Lite and Micro are in the picker. Streaming and tool calling go through the same path as the other providers.
+- **MCP connectors**, plus built-in Gmail and Google Calendar. Configure other servers (stdio or streamable HTTP) in `data/mcp.json` or Settings → Connectors. Sends and other writes wait for approval in the thread or on Telegram. Google OAuth finishes at `https://<host>/api/google/oauth/callback`. See [docs/mcp.md](docs/mcp.md).
+- **Server deploy files** in `deploy/` and [docs/aws.md](docs/aws.md): systemd, Caddy with basic auth (including the chat stream and the desktop websocket), and `deploy.sh`.
+
 ## [0.5.1] — 2026-10-20
 
 Fixes from running 0.5.0 end to end with a real Ollama on Windows.

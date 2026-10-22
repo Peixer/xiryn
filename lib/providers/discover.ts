@@ -1,3 +1,4 @@
+import { discoverBedrockModels } from "@/lib/providers/bedrock"
 import { getProviderMeta, type ProviderId } from "@/lib/providers/catalog"
 import { getProviderCredentials } from "@/lib/providers/registry"
 
@@ -27,6 +28,7 @@ async function getJson(url: string, init: RequestInit) {
 export async function discoverModels(id: ProviderId): Promise<DiscoveredModel[]> {
   const meta = getProviderMeta(id)
   if (!meta) throw new Error("Unknown provider")
+  if (id === "bedrock") return discoverBedrockModels()
   const { apiKey, baseUrl } = getProviderCredentials(id)
   const base = (baseUrl || meta.defaultBaseUrl).replace(/\/+$/, "")
   if (!base) throw new Error(`${meta.name} has no endpoint configured.`)

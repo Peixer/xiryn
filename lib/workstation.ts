@@ -572,9 +572,8 @@ export function pressKey(agentId: string, key: string, modifiers: string[]) {
   return xdotool(agentId, ["key", "--clearmodifiers", combo])
 }
 
-// Where the browser's VNC client connects. The port is published on this
-// computer's loopback interface only, and the desktop asks for a password.
-export async function getDesktopAccess(agentId: string) {
+// The container's own websockify port, on this machine's loopback only.
+export async function getDesktopEndpoint(agentId: string) {
   const name = await ensureWorkstation(agentId)
   const session = shared.recent.get(agentId)
   if (!session?.port || !session.password) {
@@ -595,9 +594,39 @@ export async function getDesktopAccess(agentId: string) {
       ?.slice("XIRYN_VNC_PASSWORD=".length)
     if (!binding || !password) throw new Error("The desktop isn't reachable yet.")
     if (session) Object.assign(session, { port: Number(binding[1]), password })
-    return { url: `ws://127.0.0.1:${binding[1]}/websockify`, password }
+    return { port: Number(binding[1]), password }
   }
-  return { url: `ws://127.0.0.1:${session.port}/websockify`, password: session.password }
+  return { port: session.port, password: session.password }
+}
+
+function loopbackHost(hostname: string) {
+  return (
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname === "::1" ||
+    hostname === "[::1]"
+  )
+}
+
+// Where the browser's VNC client connects. On this computer it talks to the
+// container directly. Behind a public XIRYN_URL it uses a same-origin path
+// that the desktop proxy (and Caddy) forward, so the port stays on loopback.
+export async function getDesktopAccess(agentId: string) {
+  const { port, password } = await getDesktopEndpoint(agentId)
+  let url = `ws://127.0.0.1:${port}/websockify`
+  const raw = process.env.XIRYN_URL?.trim()
+  if (raw) {
+    try {
+      const app = new URL(raw)
+      if (!loopbackHost(app.hostname)) {
+        const ws = app.protocol === "https:" ? "wss:" : "ws:"
+        url = `${ws}//${app.host}/desktop/${agentId}/websockify`
+      }
+    } catch {
+      // A bad XIRYN_URL keeps the direct loopback address.
+    }
+  }
+  return { url, password }
 }
 
 export function phoneLinksEnabled() {

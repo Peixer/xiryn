@@ -1,0 +1,25 @@
+# HTTPS and basic auth for a single-user Xiryn.
+# 1. Replace the hostname.
+# 2. Replace the hash: `caddy hash-password` (the username is the first word).
+# 3. sudo cp deploy/Caddyfile /etc/caddy/Caddyfile && sudo systemctl reload caddy
+#
+# The app stays on 127.0.0.1:6796. The desktop websocket proxy stays on
+# 127.0.0.1:6797. Both are covered by the same login.
+
+xiryn.example.com {
+	basic_auth {
+		xiryn $2a$14$ReplaceThisWithTheOutputOfCaddyHashPassword
+	}
+
+	handle /desktop/* {
+		reverse_proxy 127.0.0.1:6797
+	}
+
+	# Pages, server actions, the chat stream and the SSE event stream.
+	reverse_proxy 127.0.0.1:6796 {
+		flush_interval -1
+		header_up Host {host}
+		header_up X-Forwarded-Host {host}
+		header_up X-Forwarded-Proto {scheme}
+	}
+}

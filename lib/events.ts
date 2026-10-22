@@ -32,7 +32,7 @@ export type XirynEvent =
   | (Common & {
       // The agent handed over its screen, wants a payment approved, or
       // needs a detail only the person has
-      type: "takeover" | "payment" | "secret"
+      type: "takeover" | "payment" | "secret" | "action"
       reason: string
     })
 
@@ -67,6 +67,11 @@ function desktopNotice(event: XirynEvent) {
       return notifyDesktop(`${event.name} wants to make a payment`, event.reason)
     case "secret":
       return notifyDesktop(`${event.name} needs a detail from you`, event.reason)
+    case "action":
+      return notifyDesktop(
+        `${event.name} wants to send or change something`,
+        event.reason
+      )
   }
 }
 

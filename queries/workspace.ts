@@ -23,14 +23,23 @@ import {
   PRICES_AS_OF,
   type CustomPrices,
 } from "@/lib/providers/pricing"
-import { configuredProviders, resolveModelSpec } from "@/lib/providers/registry"
+import { bedrockAmbientChain } from "@/lib/providers/bedrock"
+import {
+  configuredProviders,
+  isProviderConfigured,
+  resolveModelSpec,
+} from "@/lib/providers/registry"
 import { engineSnapshot } from "@/lib/docker"
 import { isRoutineRunning, threadHref } from "@/lib/routines"
 import { describeSchedule } from "@/lib/schedule"
 import { getCustomPrices, getMonthlyBudget, startOfMonth } from "@/lib/spend"
 import { isWebConfigured } from "@/lib/web"
 import { getUpdateInfo, updateChecksEnabled } from "@/lib/updates"
+import fs from "node:fs"
+
 import { desktopNotificationsEnabled } from "@/lib/desktop-notify"
+import { MCP_CONFIG_PATH, readMcpConfig } from "@/lib/mcp/config"
+import { googleConnected, googleRedirectUri } from "@/lib/mcp/google"
 import { isWorkstationConfigured } from "@/lib/workstation"
 import { version } from "@/package.json"
 
@@ -231,8 +240,19 @@ export function getSettingsView() {
   return {
     providers: providers.map((p) => ({
       ...p,
+      configured: isProviderConfigured(p.id),
       apiKey: describeSetting(`provider.${p.id}.apiKey`),
       baseUrl: describeSetting(`provider.${p.id}.baseUrl`),
+      aws:
+        p.id === "bedrock"
+          ? {
+              region: describeSetting("provider.bedrock.region"),
+              accessKeyId: describeSetting("provider.bedrock.accessKeyId"),
+              secretAccessKey: describeSetting("provider.bedrock.secretAccessKey"),
+              sessionToken: describeSetting("provider.bedrock.sessionToken"),
+              ambient: bedrockAmbientChain(),
+            }
+          : null,
     })),
     defaultModel: describeSetting("model.default"),
     resolvedDefaultModel: resolveModelSpec(null),
@@ -247,6 +267,24 @@ export function getSettingsView() {
     firecrawl: {
       apiKey: describeSetting("firecrawl.apiKey"),
       apiUrl: describeSetting("firecrawl.apiUrl"),
+    },
+    connectors: {
+      gmail: describeSetting("connectors.gmail"),
+      calendar: describeSetting("connectors.calendar"),
+      clientId: describeSetting("google.clientId"),
+      clientSecret: describeSetting("google.clientSecret"),
+      connected: googleConnected(),
+      redirectUri: googleRedirectUri(),
+      mcpPath: MCP_CONFIG_PATH,
+      mcpText: fs.existsSync(MCP_CONFIG_PATH)
+        ? fs.readFileSync(MCP_CONFIG_PATH, "utf8")
+        : "",
+      mcpError: readMcpConfig().error,
+      servers: readMcpConfig().servers.map((server) => ({
+        id: server.id,
+        transport: server.transport,
+        enabled: server.enabled !== false,
+      })),
     },
     dbPath: DB_PATH,
     allowedHosts: process.env.XIRYN_ALLOWED_HOSTS ?? null,

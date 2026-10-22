@@ -19,6 +19,7 @@ import { fetchProviderModels, saveSettings, testIntegration } from "@/actions/se
 import { buildWorkstationImage, dockerStatus, startDocker } from "@/actions/workstation"
 import { ModelPicker } from "@/components/model-picker"
 import { Button } from "@/components/ui/button"
+import { ConnectorsPanel } from "@/components/settings/connectors-panel"
 import { LocalModelsCard } from "@/components/settings/local-models"
 import { VaultPanel } from "@/components/settings/vault-panel"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -199,17 +200,20 @@ function TestLine({ result }: { result: TestResult }) {
 
 function ProviderRow({ provider }: { provider: SettingsData["providers"][number] }) {
   const { save, pending } = useSave()
+  const aws = provider.aws
   const [key, setKey] = React.useState("")
+  const [accessKeyId, setAccessKeyId] = React.useState("")
+  const [secretAccessKey, setSecretAccessKey] = React.useState("")
+  const [sessionToken, setSessionToken] = React.useState("")
+  const [region, setRegion] = React.useState(
+    aws?.region.source === "local" ? (aws.region.value ?? "") : ""
+  )
   const [baseUrl, setBaseUrl] = React.useState(
     provider.baseUrl.source === "local" ? (provider.baseUrl.value ?? "") : ""
   )
   const [testing, setTesting] = React.useState(false)
   const [result, setResult] = React.useState<TestResult>(null)
-  const configured = provider.local
-    ? provider.baseUrl.source === "local" || provider.baseUrl.source === "env"
-    : provider.requiresBaseUrl
-      ? provider.baseUrl.set
-      : provider.apiKey.set
+  const configured = provider.configured
   const showsKey = provider.keyEnv !== null
 
   const test = async () => {
@@ -236,12 +240,25 @@ function ProviderRow({ provider }: { provider: SettingsData["providers"][number]
           </span>
         )}
         <span className="ml-auto flex items-center gap-2">
-          {showsKey && provider.apiKey.set && (
+          {aws?.accessKeyId.set ? (
             <span className="hidden font-mono text-[11px] text-muted-foreground sm:inline">
-              {provider.apiKey.value}
+              {aws.accessKeyId.value}
             </span>
+          ) : (
+            showsKey &&
+            provider.apiKey.set && (
+              <span className="hidden font-mono text-[11px] text-muted-foreground sm:inline">
+                {provider.apiKey.value}
+              </span>
+            )
           )}
-          {showsKey ? (
+          {aws ? (
+            configured ? (
+              <SourceBadge setting={aws.accessKeyId.set ? aws.accessKeyId : aws.region} />
+            ) : (
+              <span className="font-mono text-[10px] text-faint">not enabled</span>
+            )
+          ) : showsKey ? (
             <SourceBadge setting={provider.apiKey} />
           ) : (
             <SourceBadge setting={provider.baseUrl} />
@@ -251,6 +268,73 @@ function ProviderRow({ provider }: { provider: SettingsData["providers"][number]
       </CollapsibleTrigger>
       <CollapsibleContent>
         <div className="flex flex-col gap-3 border-t bg-background/40 px-4 py-4">
+          {aws && (
+            <>
+              <p className="text-[12.5px] leading-relaxed text-muted-foreground">
+                Leave the keys empty to use the AWS credential chain — an EC2 instance
+                role, <span className="font-mono">AWS_PROFILE</span>, or web identity.
+                Saving a region, or setting <span className="font-mono">AWS_REGION</span>,
+                turns Bedrock on without keys. The built-in default eu-west-3 does not, so
+                other installations stay as they are.
+                {aws.ambient && " A credential chain is already visible in this process."}
+              </p>
+              <label className="flex flex-col gap-1.5">
+                <span className="flex items-center justify-between">
+                  <span className="label-mono">Region</span>
+                  <span className="font-mono text-[10px] text-faint">AWS_REGION</span>
+                </span>
+                <TextInput
+                  value={region}
+                  onChange={setRegion}
+                  placeholder={
+                    aws.region.source === "env"
+                      ? `${aws.region.value} (from .env)`
+                      : "eu-west-3"
+                  }
+                />
+              </label>
+              <label className="flex flex-col gap-1.5">
+                <span className="flex items-center justify-between">
+                  <span className="label-mono">Access key id (optional)</span>
+                  <span className="font-mono text-[10px] text-faint">
+                    AWS_ACCESS_KEY_ID
+                  </span>
+                </span>
+                <SecretInput
+                  setting={aws.accessKeyId}
+                  value={accessKeyId}
+                  onChange={setAccessKeyId}
+                  placeholder="Leave empty to use the instance role"
+                />
+              </label>
+              <label className="flex flex-col gap-1.5">
+                <span className="flex items-center justify-between">
+                  <span className="label-mono">Secret access key (optional)</span>
+                  <span className="font-mono text-[10px] text-faint">
+                    AWS_SECRET_ACCESS_KEY
+                  </span>
+                </span>
+                <SecretInput
+                  setting={aws.secretAccessKey}
+                  value={secretAccessKey}
+                  onChange={setSecretAccessKey}
+                />
+              </label>
+              <label className="flex flex-col gap-1.5">
+                <span className="flex items-center justify-between">
+                  <span className="label-mono">Session token (optional)</span>
+                  <span className="font-mono text-[10px] text-faint">
+                    AWS_SESSION_TOKEN
+                  </span>
+                </span>
+                <SecretInput
+                  setting={aws.sessionToken}
+                  value={sessionToken}
+                  onChange={setSessionToken}
+                />
+              </label>
+            </>
+          )}
           {showsKey && (
             <label className="flex flex-col gap-1.5">
               <span className="flex items-center justify-between">
@@ -287,6 +371,11 @@ function ProviderRow({ provider }: { provider: SettingsData["providers"][number]
               disabled={
                 pending ||
                 (!key.trim() &&
+                  !accessKeyId.trim() &&
+                  !secretAccessKey.trim() &&
+                  !sessionToken.trim() &&
+                  region ===
+                    (aws?.region.source === "local" ? (aws.region.value ?? "") : "") &&
                   baseUrl ===
                     (provider.baseUrl.source === "local" ? provider.baseUrl.value : ""))
               }
@@ -295,7 +384,21 @@ function ProviderRow({ provider }: { provider: SettingsData["providers"][number]
                   [`provider.${provider.id}.baseUrl`]: baseUrl.trim() || null,
                 }
                 if (key.trim()) values[`provider.${provider.id}.apiKey`] = key.trim()
-                if (await save(values, `${provider.name} saved`)) setKey("")
+                if (aws) {
+                  values["provider.bedrock.region"] = region.trim() || null
+                  if (accessKeyId.trim())
+                    values["provider.bedrock.accessKeyId"] = accessKeyId.trim()
+                  if (secretAccessKey.trim())
+                    values["provider.bedrock.secretAccessKey"] = secretAccessKey.trim()
+                  if (sessionToken.trim())
+                    values["provider.bedrock.sessionToken"] = sessionToken.trim()
+                }
+                if (await save(values, `${provider.name} saved`)) {
+                  setKey("")
+                  setAccessKeyId("")
+                  setSecretAccessKey("")
+                  setSessionToken("")
+                }
               }}
             >
               {pending && <Spinner data-icon="inline-start" />}
@@ -327,6 +430,26 @@ function ProviderRow({ provider }: { provider: SettingsData["providers"][number]
                 Forget saved key
               </Button>
             )}
+            {aws?.accessKeyId.source === "local" && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-muted-foreground"
+                onClick={() =>
+                  save(
+                    {
+                      "provider.bedrock.accessKeyId": null,
+                      "provider.bedrock.secretAccessKey": null,
+                      "provider.bedrock.sessionToken": null,
+                    },
+                    "Saved AWS keys removed"
+                  )
+                }
+              >
+                <RotateCcwIcon data-icon="inline-start" />
+                Forget saved keys
+              </Button>
+            )}
             {provider.keysUrl && (
               <a
                 href={provider.keysUrl}
@@ -334,7 +457,7 @@ function ProviderRow({ provider }: { provider: SettingsData["providers"][number]
                 rel="noreferrer"
                 className="ml-auto inline-flex items-center gap-1 font-mono text-[11px] text-muted-foreground hover:text-foreground"
               >
-                get a key <ExternalLinkIcon className="size-3" />
+                {aws ? "IAM guide" : "get a key"} <ExternalLinkIcon className="size-3" />
               </a>
             )}
           </div>
@@ -939,6 +1062,7 @@ export function SettingsForm({
     ["model", "Model"],
     ["local", "Local models"],
     ["providers", "Providers"],
+    ["connectors", "Connectors"],
     ["integrations", "Integrations"],
     ["vault", "Vault"],
     ["remote", "Remote access"],
@@ -1003,8 +1127,17 @@ export function SettingsForm({
         </Section>
 
         <Section
+          id="connectors"
+          kicker="04 · connectors"
+          title="Mail, calendar and MCP"
+          description="Agents can use Gmail, Google Calendar, and any MCP server you list. Sending and other writes wait for your approval."
+        >
+          <ConnectorsPanel connectors={data.connectors} />
+        </Section>
+
+        <Section
           id="integrations"
-          kicker="04 · integrations"
+          kicker="05 · integrations"
           title="Workstations & web"
           description="Agents' machines run in Docker on this computer. Firecrawl is optional: without it agents search and read the web only by browsing."
         >
@@ -1032,7 +1165,7 @@ export function SettingsForm({
 
         <Section
           id="vault"
-          kicker="05 · vault"
+          kicker="06 · vault"
           title="Vault"
           description="What agents may use on your behalf — encrypted here, never shown to them."
         >
@@ -1041,7 +1174,7 @@ export function SettingsForm({
 
         <Section
           id="remote"
-          kicker="06 · remote access"
+          kicker="07 · remote access"
           title="Telegram"
           description="Talk to your agents from anywhere. Xiryn polls Telegram from this machine — no public URL, no port forwarding, no tunnel."
         >
@@ -1050,7 +1183,7 @@ export function SettingsForm({
 
         <Section
           id="system"
-          kicker="07 · system"
+          kicker="08 · system"
           title="System"
           description="Where your data lives and what Xiryn is running on."
         >

@@ -9,6 +9,7 @@ import { createXai } from "@ai-sdk/xai"
 import type { LanguageModel } from "ai"
 
 import { getSetting, getSettingSource } from "@/lib/config"
+import { createBedrockModel, isBedrockConfigured } from "@/lib/providers/bedrock"
 import {
   formatModelSpec,
   getProviderMeta,
@@ -33,6 +34,7 @@ export function getProviderCredentials(id: ProviderId) {
 export function isProviderConfigured(id: ProviderId) {
   const meta = getProviderMeta(id)
   if (!meta) return false
+  if (meta.auth === "aws") return isBedrockConfigured()
   const { apiKey, baseUrl } = getProviderCredentials(id)
   if (meta.requiresKey && !apiKey) return false
   if (meta.requiresBaseUrl && !baseUrl) return false
@@ -84,6 +86,14 @@ export function createModel(spec: string): LanguageModel {
   const baseURL = baseUrl && baseUrl !== meta.defaultBaseUrl ? baseUrl : undefined
 
   switch (provider) {
+    case "bedrock":
+      try {
+        return createBedrockModel(model)
+      } catch (error) {
+        throw new ModelConfigError(
+          error instanceof Error ? error.message : "Amazon Bedrock is not configured."
+        )
+      }
     case "openai":
       return createOpenAI({ apiKey, baseURL })(model)
     case "anthropic":
