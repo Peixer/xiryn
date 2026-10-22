@@ -1,3 +1,4 @@
+import { firecrawlProbeDetail, probeFirecrawl } from "@/lib/firecrawl-probe"
 import { getSetting } from "@/lib/config"
 
 // Web access goes through Firecrawl: search returns ranked results, fetch
@@ -75,14 +76,17 @@ export async function webFetch(url: string, maxChars = 12_000) {
   }
 }
 
-// Free call used by Settings to prove the key works
+// Settings → Integrations uses this to prove Firecrawl answers. Cloud reads
+// the credit route. Anything else, or a credit route that errors, is checked
+// with one scrape of example.com.
 export async function pingFirecrawl() {
-  const data = await firecrawl<{ remainingCredits?: number; planCredits?: number }>(
-    "/v2/team/credit-usage",
-    { method: "GET" }
-  )
-  return {
-    remainingCredits: data.remainingCredits ?? null,
-    planCredits: data.planCredits ?? null,
+  const apiKey = getSetting("firecrawl.apiKey")
+  if (!apiKey) {
+    throw new Error(
+      "Web access is off: add FIRECRAWL_API_KEY to .env or paste a key in Settings → Integrations."
+    )
   }
+  const apiUrl = getSetting("firecrawl.apiUrl") ?? "https://api.firecrawl.dev"
+  const probe = await probeFirecrawl({ apiUrl, apiKey })
+  return { detail: firecrawlProbeDetail(probe) }
 }
