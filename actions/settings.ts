@@ -95,12 +95,8 @@ export async function fetchProviderModels(provider: ProviderId) {
 export async function testIntegration(name: "firecrawl") {
   if (name !== "firecrawl") return { ok: false as const, error: "Unknown integration" }
   try {
-    const { remainingCredits, planCredits } = await pingFirecrawl()
-    const credits =
-      remainingCredits === null
-        ? ""
-        : ` · ${remainingCredits.toLocaleString()}${planCredits ? ` / ${planCredits.toLocaleString()}` : ""} credits left`
-    return { ok: true as const, detail: `Connected${credits}` }
+    const { detail } = await pingFirecrawl()
+    return { ok: true as const, detail }
   } catch (error) {
     return { ok: false as const, error: reason(error) }
   }
