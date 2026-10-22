@@ -34,6 +34,10 @@ import {
   type ToolEnv,
 } from "@/lib/agent/tools"
 import { getMaxSteps } from "@/lib/config"
+import { loadConnectorTools } from "@/lib/mcp/load"
+import { isApprovalHold } from "@/lib/mcp/policy"
+import { bedrockMaxOutputTokens } from "@/lib/providers/bedrock-routing"
+import { bedrockMaxOutputOverrides } from "@/lib/providers/bedrock"
 import { emit, previewText } from "@/lib/events"
 import { prepareLocalModel } from "@/lib/ollama"
 import { parseModelSpec } from "@/lib/providers/catalog"
@@ -42,6 +46,14 @@ import { createModel, resolveModelSpec } from "@/lib/providers/registry"
 import { budgetBlock, getCustomPrices } from "@/lib/spend"
 import { isWebConfigured } from "@/lib/web"
 import { isWorkstationConfigured } from "@/lib/workstation"
+
+function bedrockOutputCap(spec: string) {
+  const parsed = parseModelSpec(spec)
+  if (parsed?.provider !== "bedrock") return {}
+  return {
+    maxOutputTokens: bedrockMaxOutputTokens(parsed.model, bedrockMaxOutputOverrides()),
+  }
+}
 
 /* ───────────────────────────── runs ───────────────────────────────
  * A run is one agent turn executing inside this process. Its output is
@@ -452,7 +464,7 @@ export async function startTurn({
     ? `/s/${thread.squadId}/${threadId}`
     : `/a/${first.id}/${threadId}`
   const attention = (
-    type: "takeover" | "payment" | "secret",
+    type: "takeover" | "payment" | "secret" | "action",
     agent: Agent,
     reason: string
   ) =>
@@ -498,7 +510,17 @@ export async function startTurn({
         telegramFailed
       )
     },
+    onActionRequested: async (agent, approval) => {
+      attention("action", agent, approval.summary)
+      const { notifyAction } = await bridge()
+      await notifyAction({ agent, squadId: thread.squadId, approval }).catch(
+        telegramFailed
+      )
+    },
   }
+
+  const connectors = await loadConnectorTools(env)
+  if (connectors.summary) capabilities.connectors = connectors.summary
 
   const squadContext = (agent: Agent) =>
     thread.squad
@@ -518,6 +540,7 @@ export async function startTurn({
     ...(capabilities.web ? createWebTools() : {}),
     // A routine's own runs don't schedule more routines
     ...(routine ? {} : createRoutineTools(env)),
+    ...connectors.tools,
     ...(thread.squad
       ? createDelegateTool((targetId, handoverBrief) => {
           const target = members.find((member) => member.id === targetId)
@@ -597,7 +620,11 @@ export async function startTurn({
         hasToolCall("request_takeover"),
         hasToolCall("request_payment_approval"),
         hasToolCall("request_secret"),
+        ({ steps }) =>
+          steps.at(-1)?.toolResults.some((result) => isApprovalHold(result.output)) ??
+          false,
       ],
+      ...bedrockOutputCap(firstSpec),
       abortSignal: run.controller.signal,
       prepareStep: ({ messages: stepMessages, stepNumber }) => {
         // Long tool loops resend everything each step; keep it lean
@@ -606,7 +633,8 @@ export async function startTurn({
         // ends with what was found and what's left
         const lastStep = stepNumber === maxSteps - 1
         const delegated = current.id !== appliedAgentId
-        if (!delegated && !lastStep) return { messages: compacted }
+        const cap = bedrockOutputCap(delegated ? specFor(current) : activeSpec)
+        if (!delegated && !lastStep) return { messages: compacted, ...cap }
         appliedAgentId = current.id
         if (delegated) activeSpec = specFor(current)
         return {
@@ -617,6 +645,7 @@ export async function startTurn({
             buildInstructions(current, capabilities, squadContext(current)) +
             (lastStep ? LAST_STEP : ""),
           ...(lastStep && { toolChoice: "none" as const }),
+          ...cap,
         }
       },
       // Counted per model call, so a turn stopped mid-tool is still metered
@@ -694,12 +723,13 @@ export async function startTurn({
 
         // Tell the person, wherever they are. Stopping a turn yourself needs
         // no news, and a hand-off has already sent its own.
-        const handedOver = reply.parts.some((part) =>
-          [
-            "tool-request_takeover",
-            "tool-request_payment_approval",
-            "tool-request_secret",
-          ].includes(part.type)
+        const handedOver = reply.parts.some(
+          (part) =>
+            [
+              "tool-request_takeover",
+              "tool-request_payment_approval",
+              "tool-request_secret",
+            ].includes(part.type) || isApprovalHold("output" in part ? part.output : null)
         )
         if (!isAborted && !handedOver) {
           emit({

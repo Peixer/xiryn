@@ -8,7 +8,12 @@ const nextConfig: NextConfig = {
   // Xiryn ships its own contributor guide; don't let `next dev` write one
   agentRules: false,
   // Native or Node-only packages that must not be bundled
-  serverExternalPackages: ["better-sqlite3"],
+  serverExternalPackages: [
+    "better-sqlite3",
+    "ws",
+    "@aws-sdk/client-bedrock",
+    "@aws-sdk/credential-providers",
+  ],
 }
 
 export default nextConfig

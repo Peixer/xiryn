@@ -34,6 +34,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
+import { ActionApprovalCard } from "@/components/thread/action-approval"
 import { useTakeover } from "@/components/thread/takeover"
 import { PaymentApprovalCard, SecretRequestCard } from "@/components/vault/request-cards"
 import { Button } from "@/components/ui/button"
@@ -396,6 +397,12 @@ export function ToolCall({
   if (name === "request_payment_approval" && part.state === "output-available") {
     const output = part.output as { approvalId: string }
     return <PaymentApprovalCard approvalId={output.approvalId} awaiting={awaiting} />
+  }
+  if (part.state === "output-available") {
+    const output = part.output as { status?: string; approvalId?: string }
+    if (output?.status === "needs-approval" && output.approvalId) {
+      return <ActionApprovalCard approvalId={output.approvalId} awaiting={awaiting} />
+    }
   }
   if (name === "request_secret" && part.state === "output-available") {
     const output = part.output as {

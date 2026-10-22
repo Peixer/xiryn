@@ -3,6 +3,11 @@
 import { revalidatePath } from "next/cache"
 
 import { isWritableSetting, setSetting } from "@/lib/config"
+import {
+  parseExtraRegions,
+  parseMaxOutputOverrides,
+  parseModelRegionMap,
+} from "@/lib/providers/bedrock-routing"
 import { getProviderMeta, parseModelSpec, type ProviderId } from "@/lib/providers/catalog"
 import { discoverModels } from "@/lib/providers/discover"
 import { pingFirecrawl } from "@/lib/web"
@@ -55,6 +60,23 @@ export async function saveSettings(values: Record<string, string | null>) {
     }
     if (key === "agent.maxSteps" && value && !/^\d{1,3}$/.test(value.trim())) {
       throw new Error("Max steps must be a whole number.")
+    }
+    if (
+      key === "provider.bedrock.region" &&
+      value &&
+      !/^[a-z]{2}-[a-z]+-\d$/.test(value.trim())
+    ) {
+      throw new Error("The region looks like eu-west-3.")
+    }
+    if (key === "bedrock.extraRegions" && value) parseExtraRegions(value)
+    if (key === "bedrock.modelRegions" && value) parseModelRegionMap(value)
+    if (key === "bedrock.maxOutput" && value) parseMaxOutputOverrides(value)
+    if (
+      (key === "connectors.gmail" || key === "connectors.calendar") &&
+      value &&
+      !/^(on|off)$/.test(value.trim())
+    ) {
+      throw new Error("A connector is either on or off.")
     }
     setSetting(key, value)
   }

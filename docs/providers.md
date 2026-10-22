@@ -22,8 +22,59 @@ The model picker lists what your key can actually use, fetched live from the pro
 | Mistral | `MISTRAL_API_KEY` | pick from the live list | [console.mistral.ai](https://console.mistral.ai/api-keys) |
 | DeepSeek | `DEEPSEEK_API_KEY` | pick from the live list | [platform.deepseek.com](https://platform.deepseek.com/api_keys) |
 | OpenRouter | `OPENROUTER_API_KEY` | `openrouter/<vendor>/<model>` | [openrouter.ai](https://openrouter.ai/keys) |
+| Amazon Bedrock | instance role, or `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` | `bedrock/eu.anthropic.claude-sonnet-5-5` | [IAM for Bedrock](https://docs.aws.amazon.com/bedrock/latest/userguide/security-iam.html) |
 
-Each hosted provider also accepts a `<PROVIDER>_BASE_URL` (e.g. `OPENAI_BASE_URL`) for proxies or regional endpoints.
+Each hosted provider also accepts a `<PROVIDER>_BASE_URL` (e.g. `OPENAI_BASE_URL`) for proxies or regional endpoints. Bedrock's optional endpoint is `BEDROCK_BASE_URL` (a VPC endpoint). Its region is `AWS_REGION`, default `eu-west-3`.
+
+## Amazon Bedrock
+
+Bedrock is a normal provider: streaming and tool calling go through the same AI SDK path as the others. Pick a model as `bedrock/<inference-profile-id>`.
+
+**Credentials.** With no access key saved, calls use the [AWS SDK default chain](https://docs.aws.amazon.com/sdk-for-javascript/v3/developer-guide/setting-credentials-node.html): an EC2 instance role, `AWS_PROFILE`, ECS container credentials, or web identity. On the EC2 host in `docs/aws.md`, attach a role and set `AWS_REGION=eu-west-3` — no keys in `.env`. To use keys instead, set `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` (and `AWS_SESSION_TOKEN` when the keys are temporary), or paste them in **Settings → Providers → Amazon Bedrock**.
+
+Bedrock stays off until one of these is true: both keys are set, `AWS_REGION` is set in the environment, a region is saved in Settings, or another credential-chain variable is present (`AWS_PROFILE`, container credentials, web identity). The built-in region default does not turn it on, so an install that never mentions AWS is unchanged.
+
+**Models for eu-west-3.** These are EU geographic inference profile ids. Each model's AWS card lists Paris (`eu-west-3`) as a source region, checked 22 October 2026. Requests stay in EU destination regions. You still need to enable model access once in the Bedrock console (Anthropic's first-time use form).
+
+| Model | Id |
+| --- | --- |
+| Claude Sonnet 5.5 | `bedrock/eu.anthropic.claude-sonnet-5-5` |
+| Claude Haiku 5.5 | `bedrock/eu.anthropic.claude-haiku-5-5` |
+| Claude Sonnet 4.6 | `bedrock/eu.anthropic.claude-sonnet-4-6` |
+| Claude Haiku 4.5 | `bedrock/eu.anthropic.claude-haiku-4-5-20251001-v1:0` |
+| Amazon Nova Pro | `bedrock/eu.amazon.nova-pro-v1:0` |
+| Amazon Nova Lite | `bedrock/eu.amazon.nova-lite-v1:0` |
+| Amazon Nova Micro | `bedrock/eu.amazon.nova-micro-v1:0` |
+
+**Test connection** lists inference profiles in `AWS_REGION`, then profiles and on-demand models in each extra region. Output tokens are capped per model: 16,384 by default (Claude Sonnet 4.6 accepts that), 10,000 for Nova Pro, Lite and Micro, and 4,096 for Llama 3.3 70B Instruct. Override one id with `XIRYN_BEDROCK_MAX_OUTPUT=eu.amazon.nova-pro-v1:0=8000`.
+
+## Models in another region
+
+The default region stays `AWS_REGION`. To also call models that are not in that region, name the other regions:
+
+```bash
+XIRYN_BEDROCK_EXTRA_REGIONS=us-east-2
+```
+
+With `us-east-2` listed, the picker shows **Llama 3.3 70B (Ohio)**. Select:
+
+```text
+bedrock/meta.llama3-3-70b-instruct-v1:0
+```
+
+That id is the on-demand model in Ohio, so the call stays in `us-east-2`. The US profile `us.meta.llama3-3-70b-instruct-v1:0` also shows up once the live list returns; invoking it from Ohio is allowed, and Bedrock may serve it from us-east-1, us-east-2, or us-west-2. EU models such as `bedrock/eu.anthropic.claude-sonnet-4-6` keep using `eu-west-3`.
+
+Pin any other id yourself:
+
+```bash
+XIRYN_BEDROCK_MODEL_REGIONS=some.model-id=us-east-2
+```
+
+`BEDROCK_BASE_URL`, when set, is the endpoint for the default region only.
+
+Llama 3.3 70B Instruct's model card says tool use and streaming cannot be combined (`ConverseStream` plus tools returns "This model doesn't support tool use in streaming mode"). Chat still streams. A step that calls tools uses the non-streaming Converse API, then the reply is played into the transcript, so tools still run. The reply on that step arrives in one piece rather than token by token.
+
+The Usage page prices these ids. Nova rates are the public eu-west-3 on-demand prices from the Amazon Bedrock price list published 16 October 2026. Claude on Bedrock is billed through AWS Marketplace; the rows match Anthropic's published rates already used for the Anthropic provider. Confirm the bill if AWS applies a geographic premium.
 
 ## Local models
 

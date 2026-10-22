@@ -1,0 +1,25 @@
+{
+  "servers": [
+    {
+      "id": "docs",
+      "enabled": false,
+      "transport": "http",
+      "url": "https://mcp.example.com/mcp",
+      "headers": {
+        "Authorization": "Bearer ${ENV:DOCS_MCP_TOKEN}"
+      },
+      "approval": "writes"
+    },
+    {
+      "id": "notes",
+      "enabled": false,
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["-y", "some-mcp-server"],
+      "env": {
+        "NOTES_TOKEN": "${ENV:NOTES_TOKEN}"
+      },
+      "approval": "writes"
+    }
+  ]
+}

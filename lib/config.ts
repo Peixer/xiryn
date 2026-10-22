@@ -51,6 +51,29 @@ const integrationSettings = {
   "telegram.pairCode": { env: null, internal: true },
   // JSON: which agent/squad and thread Telegram messages go to
   "telegram.target": { env: null, internal: true },
+  // Google OAuth for the built-in Gmail and Calendar connectors
+  "google.clientId": { env: "GOOGLE_CLIENT_ID" },
+  "google.clientSecret": { env: "GOOGLE_CLIENT_SECRET", secret: true },
+  // Sealed refresh token written by the OAuth callback, or a raw token in env
+  "google.refreshToken": { env: "GOOGLE_REFRESH_TOKEN", secret: true, internal: true },
+  // "off" hides that connector's tools. Default on, once Google is connected.
+  "connectors.gmail": { env: "XIRYN_GMAIL", fallback: "on" },
+  "connectors.calendar": { env: "XIRYN_CALENDAR", fallback: "on" },
+} satisfies Record<string, SettingDef>
+
+// Bedrock does not use one API key. These sit beside the generic apiKey/baseUrl
+// rows the provider loop creates (base URL is an optional VPC endpoint).
+const bedrockSettings = {
+  "provider.bedrock.region": { env: "AWS_REGION", fallback: "eu-west-3" },
+  "provider.bedrock.accessKeyId": { env: "AWS_ACCESS_KEY_ID", secret: true },
+  "provider.bedrock.secretAccessKey": { env: "AWS_SECRET_ACCESS_KEY", secret: true },
+  "provider.bedrock.sessionToken": { env: "AWS_SESSION_TOKEN", secret: true },
+  // Comma-separated regions to list and call in addition to AWS_REGION.
+  "bedrock.extraRegions": { env: "XIRYN_BEDROCK_EXTRA_REGIONS" },
+  // model-id=region pairs. Overrides the extra-region catalog and discovery.
+  "bedrock.modelRegions": { env: "XIRYN_BEDROCK_MODEL_REGIONS" },
+  // model-id=tokens pairs. Overrides the built-in output ceilings.
+  "bedrock.maxOutput": { env: "XIRYN_BEDROCK_MAX_OUTPUT" },
 } satisfies Record<string, SettingDef>
 
 const providerSettings = Object.fromEntries(
@@ -66,9 +89,13 @@ const providerSettings = Object.fromEntries(
 const definitions: Record<string, SettingDef> = {
   ...integrationSettings,
   ...providerSettings,
+  ...bedrockSettings,
 }
 
-export type SettingKey = keyof typeof integrationSettings | keyof typeof providerSettings
+export type SettingKey =
+  | keyof typeof integrationSettings
+  | keyof typeof providerSettings
+  | keyof typeof bedrockSettings
 export type SettingSource = "local" | "env" | "default" | null
 
 export function isSettingKey(key: string): key is SettingKey {

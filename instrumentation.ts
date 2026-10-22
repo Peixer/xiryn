@@ -19,6 +19,10 @@ export async function register() {
   const { startRoutines } = await import("./lib/routines")
   startRoutines()
 
+  // Same-origin VNC for a public XIRYN_URL. Harmless when you only use loopback.
+  const { startDesktopProxy } = await import("./lib/desktop-proxy")
+  startDesktopProxy()
+
   // Workstations: see whether Docker is there, tidy up after deleted agents,
   // and get the workstation image ready so the first task doesn't wait for it
   const { probeEngine } = await import("./lib/docker")

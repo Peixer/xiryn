@@ -226,6 +226,30 @@ function seal(id: string, kind: VaultKind, fields: Fields) {
   return Buffer.concat([iv, cipher.getAuthTag(), body]).toString("base64")
 }
 
+// A short sealed string for connector secrets (a Google refresh token). The
+// same vault key, a different associated-data tag, so it cannot be swapped
+// onto a vault item. Values without the prefix are returned unchanged, which
+// is how a token supplied in the environment is read.
+export function sealText(aad: string, text: string) {
+  const iv = randomBytes(12)
+  const cipher = createCipheriv("aes-256-gcm", vaultKey().key, iv)
+  cipher.setAAD(Buffer.from(aad))
+  const body = Buffer.concat([cipher.update(text, "utf8"), cipher.final()])
+  return `seal1.${Buffer.concat([iv, cipher.getAuthTag(), body]).toString("base64url")}`
+}
+
+export function unsealText(aad: string, secret: string) {
+  if (!secret.startsWith("seal1.")) return secret
+  const raw = Buffer.from(secret.slice("seal1.".length), "base64url")
+  if (raw.length < 29) throw new VaultLockedError()
+  const decipher = createDecipheriv("aes-256-gcm", vaultKey().key, raw.subarray(0, 12))
+  decipher.setAAD(Buffer.from(aad))
+  decipher.setAuthTag(raw.subarray(12, 28))
+  return Buffer.concat([decipher.update(raw.subarray(28)), decipher.final()]).toString(
+    "utf8"
+  )
+}
+
 function unseal(id: string, kind: VaultKind, secret: string): Fields {
   const raw = Buffer.from(secret, "base64")
   const decipher = createDecipheriv("aes-256-gcm", vaultKey().key, raw.subarray(0, 12))
