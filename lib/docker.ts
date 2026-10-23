@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
+import { Readable } from "node:stream"
 
 // Xiryn drives Docker through the docker command itself, so whatever it is
 // pointed at (Docker Desktop, Docker Engine, Colima, OrbStack, a context)
@@ -50,7 +51,8 @@ const FALLBACK_BINARIES =
 type Result = { exitCode: number | null; stdout: Buffer; stderr: string }
 
 export type RunOptions = {
-  input?: string | Buffer
+  // A stream is piped, not buffered, so a large upload is not held in memory
+  input?: string | Buffer | Readable
   timeoutMs?: number
   // Called with each line of output as it arrives (builds)
   onLine?: (line: string) => void
@@ -98,7 +100,10 @@ function spawnOnce(binary: string, args: string[], options: RunOptions) {
     })
 
     const timer = options.timeoutMs
-      ? setTimeout(() => child.kill(), options.timeoutMs)
+      ? setTimeout(() => {
+          if (options.input instanceof Readable) options.input.destroy()
+          child.kill()
+        }, options.timeoutMs)
       : null
     child.on("error", (error) => {
       if (timer) clearTimeout(timer)
@@ -114,9 +119,30 @@ function spawnOnce(binary: string, args: string[], options: RunOptions) {
       })
     })
 
-    if (options.input !== undefined) child.stdin.end(options.input)
-    else child.stdin.end()
+    feedStdin(child, options.input)
   })
+}
+
+function feedStdin(
+  child: {
+    stdin: NodeJS.WritableStream | null
+    kill: (signal?: NodeJS.Signals) => boolean
+  },
+  input: RunOptions["input"]
+) {
+  const stdin = child.stdin
+  if (!stdin) return
+  if (input instanceof Readable) {
+    input.on("error", (error: NodeJS.ErrnoException) => {
+      // The child closed its stdin after reading the file, or it was killed
+      if (error.code === "EPIPE" || error.code === "ERR_STREAM_PREMATURE_CLOSE") return
+      child.kill()
+    })
+    input.pipe(stdin)
+    return
+  }
+  if (input !== undefined) stdin.end(input)
+  else stdin.end()
 }
 
 function isMissing(error: unknown) {
