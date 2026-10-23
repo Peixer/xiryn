@@ -145,6 +145,26 @@ test("a leading www stays on the host, so a public suffix does not swallow it", 
   assert.equal(step.summary.includes(secret), false)
 })
 
+test("a maximum-length host still shows its registrable domain after the summary cap", () => {
+  const prefix = ["a".repeat(49), "b".repeat(63), "c".repeat(63), "d".repeat(63)].join(
+    "."
+  )
+  const host = `${prefix}.example.com`
+  assert.equal(host.length, 253)
+  const step = assessLoginFill({
+    kind: "login",
+    label: "L".repeat(60),
+    site: "example.com",
+    field: "password",
+    pageHost: host,
+    approved: false,
+  })
+  assert.equal(step.action, "ask")
+  if (step.action !== "ask") return
+  assert.equal(step.summary.slice(0, 300).includes(host), true)
+  assert.equal(step.summary.includes(secret), false)
+})
+
 test("userinfo and an IDN lookalike do not become the saved host", () => {
   const userinfo = pageFromTargets([
     {

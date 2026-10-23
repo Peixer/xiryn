@@ -34,7 +34,9 @@ export function assessLoginFill(input: {
     return {
       action: "ask",
       host,
-      summary: `Fill the ${field} for “${input.label}” on ${host}`,
+      // Host first. The stored summary is cut at 300 characters, and a
+      // hostname can be 253 of those; the registrable domain sits at the end.
+      summary: `On ${host}, fill the ${field} for “${input.label}”`,
     }
   }
   return { action: "fill", host }
