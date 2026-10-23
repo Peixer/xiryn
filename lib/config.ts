@@ -95,6 +95,16 @@ const integrationSettings = {
   // Hostnames allowed for "Import Grok Bot" share links. Empty means any
   // public https host. Loopback and private addresses are never allowed.
   "grokbot.importHosts": { env: "XIRYN_GROKBOT_IMPORT_HOSTS" },
+  // Web Push for an installed app. Both keys are required before anything is
+  // sent. The private key stays on the server. Generate a pair with
+  // `npx web-push generate-vapid-keys`.
+  "push.vapidPublicKey": { env: "XIRYN_VAPID_PUBLIC_KEY", internal: true },
+  "push.vapidPrivateKey": {
+    env: "XIRYN_VAPID_PRIVATE_KEY",
+    secret: true,
+    internal: true,
+  },
+  "push.vapidSubject": { env: "XIRYN_VAPID_SUBJECT", internal: true },
 } satisfies Record<string, SettingDef>
 
 // Bedrock does not use one API key. These sit beside the generic apiKey/baseUrl

@@ -5,12 +5,15 @@ import "./globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
 import { Toaster } from "@/components/ui/toast"
 import { TooltipProvider } from "@/components/ui/tooltip"
+import { KeyboardInset } from "@/components/app/keyboard-inset"
+import { PwaClient } from "@/components/app/pwa-client"
 import {
   pwaAppleTouchIcon,
   pwaDescription,
   pwaIcons,
   pwaManifestPath,
   pwaName,
+  pwaStartupImages,
   pwaThemeColorDark,
   pwaThemeColorLight,
 } from "@/lib/pwa"
@@ -49,7 +52,11 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     title: pwaName,
-    statusBarStyle: "black",
+    statusBarStyle: "black-translucent",
+    startupImage: pwaStartupImages.map((image) => ({
+      url: image.href,
+      media: image.media,
+    })),
   },
   icons: {
     icon: [
@@ -70,6 +77,10 @@ export const metadata: Metadata = {
 }
 
 export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  interactiveWidget: "resizes-content",
   themeColor: [
     { media: "(prefers-color-scheme: dark)", color: pwaThemeColorDark },
     { media: "(prefers-color-scheme: light)", color: pwaThemeColorLight },
@@ -91,12 +102,20 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             attribute is set. Behind Caddy basic auth that is a 401, and the
             site is not installable. See docs/pwa.md. */}
         <link rel="manifest" href={pwaManifestPath} crossOrigin="use-credentials" />
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              '(function(){function apply(){var standalone=false;try{standalone=matchMedia("(display-mode: standalone)").matches||matchMedia("(display-mode: fullscreen)").matches||matchMedia("(display-mode: minimal-ui)").matches||navigator.standalone===true}catch(e){}var phone=matchMedia("(max-width: 767px)").matches;document.documentElement.dataset.xirynApp=(standalone||phone)?"1":"0"}apply();addEventListener("resize",apply)})()',
+          }}
+        />
       </head>
       {/* Browser extensions add attributes to <body> before React loads */}
       <body suppressHydrationWarning>
         <ThemeProvider>
           <TooltipProvider delay={300}>{children}</TooltipProvider>
           <Toaster />
+          <PwaClient />
+          <KeyboardInset />
         </ThemeProvider>
       </body>
     </html>

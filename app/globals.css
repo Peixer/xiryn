@@ -291,3 +291,120 @@
 nextjs-portal {
   display: none !important;
 }
+
+/* Phone and installed app. The desktop workbench stays in the tree and is
+   hidden here. A blocking script in the root layout sets data-xiryn-app
+   before first paint; the width query covers the same screens if it does not. */
+.xiryn-app,
+.xiryn-only-app,
+.xiryn-camera,
+.xiryn-share {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  .xiryn-app {
+    display: flex;
+  }
+  .xiryn-only-app {
+    display: flex !important;
+  }
+  .xiryn-only-desktop,
+  .xiryn-handle,
+  .xiryn-workbench {
+    display: none !important;
+  }
+  .xiryn-camera,
+  .xiryn-share {
+    display: grid;
+  }
+}
+
+html[data-xiryn-app="1"] .xiryn-app {
+  display: flex;
+}
+html[data-xiryn-app="1"] .xiryn-only-app {
+  display: flex !important;
+}
+html[data-xiryn-app="1"] .xiryn-only-desktop,
+html[data-xiryn-app="1"] .xiryn-handle,
+html[data-xiryn-app="1"] .xiryn-workbench {
+  display: none !important;
+}
+html[data-xiryn-app="1"] .xiryn-camera,
+html[data-xiryn-app="1"] .xiryn-share {
+  display: grid;
+}
+html[data-xiryn-app="1"] .xiryn-screen-open .xiryn-workbench {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  display: flex !important;
+  width: auto !important;
+  height: auto !important;
+  background: var(--background);
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+html[data-xiryn-app="1"],
+html[data-xiryn-app="1"] body {
+  height: 100%;
+  overscroll-behavior: none;
+  background: var(--background);
+}
+html[data-xiryn-app="1"] body {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  overflow: hidden;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+html[data-xiryn-app="1"] .xiryn-frame {
+  height: 100dvh !important;
+  max-height: 100dvh;
+}
+html[data-xiryn-app="1"] .xiryn-page {
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: calc(4.5rem + env(safe-area-inset-bottom));
+}
+html[data-xiryn-app="1"]:has(.xiryn-thread) .xiryn-page {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+html[data-xiryn-app="1"] .xiryn-composer {
+  padding-bottom: calc(env(safe-area-inset-bottom) + var(--xiryn-keyboard, 0px));
+  background: var(--background);
+}
+html[data-xiryn-app="1"] .xiryn-composer textarea,
+html[data-xiryn-app="1"] .xiryn-app input,
+html[data-xiryn-app="1"] .xiryn-app textarea {
+  font-size: 16px;
+}
+html[data-xiryn-app="1"] .xiryn-composer-actions button {
+  min-width: 44px;
+  min-height: 44px;
+}
+html[data-xiryn-app="1"] .xiryn-user-bubble {
+  border: 0;
+  border-radius: 1.15rem 1.15rem 0.35rem 1.15rem;
+  background: color-mix(in oklch, var(--rigel) 18%, transparent);
+  padding: 0.7rem 0.9rem;
+  font-size: 16px;
+}
+html[data-xiryn-app="1"] .xiryn-chat-panel {
+  flex: 1 1 auto !important;
+  width: 100% !important;
+}
+
+@keyframes xiryn-sheet-in {
+  from {
+    transform: translateY(18px);
+  }
+  to {
+    transform: none;
+  }
+}
+.xiryn-sheet {
+  animation: xiryn-sheet-in 240ms ease-out;
+}

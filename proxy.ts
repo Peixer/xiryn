@@ -90,9 +90,9 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  // /manifest.webmanifest and the home-screen PNGs are ordinary GETs. They
-  // stay on this matcher: a foreign Host is still refused, and an allowed
-  // Host can install the app. Do not exempt them. Do not add a service
-  // worker — it would cache authenticated pages.
+  // /manifest.webmanifest, /sw.js and the home-screen PNGs are ordinary GETs.
+  // They stay on this matcher: a foreign Host is still refused, and an
+  // allowed Host can install the app. Do not exempt them. The worker's cache
+  // allowlist is lib/pwa/cache-policy.ts.
   matcher: ["/((?!_next/static|_next/image|favicon.ico|icon.svg).*)"],
 }

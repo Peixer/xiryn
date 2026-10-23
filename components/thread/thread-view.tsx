@@ -32,6 +32,9 @@ import {
 import { Confirm } from "@/components/confirm"
 import { Glyph, SquadGlyph } from "@/components/glyph"
 import { ModelSpecLabel } from "@/components/model-picker"
+import { AppThreadHeader } from "@/components/app/thread-header"
+import { OutboxStrip } from "@/components/app/outbox-strip"
+import { useOffline } from "@/components/app/offline-provider"
 import { Composer } from "@/components/thread/composer"
 import { TakeoverContext } from "@/components/thread/takeover"
 import type { VaultMarker } from "@/lib/vault-requests"
@@ -64,6 +67,9 @@ import { useNotifications } from "@/components/workspace/notifier"
 import type { XirynMessage } from "@/lib/agent/tools"
 import type { Attachment } from "@/lib/attachments"
 import { exportFilename, threadToMarkdown } from "@/lib/export"
+import { saveStoredThread } from "@/lib/pwa/local-db"
+import { presence } from "@/lib/pwa/offline"
+import { messagesForOfflineStore } from "@/lib/pwa/sanitize"
 import { cn } from "@/lib/utils"
 
 export type ThreadSummary = { id: string; title: string | null; activeAt: string }
@@ -285,7 +291,7 @@ function ThreadHeader({
   }
 
   return (
-    <header className="hairline-b flex h-12 shrink-0 items-center gap-3 px-4">
+    <header className="xiryn-only-desktop hairline-b flex h-12 shrink-0 items-center gap-3 px-4">
       <button
         type="button"
         onClick={configure}
@@ -551,6 +557,8 @@ export function ThreadView(props: ThreadViewProps) {
   })
 
   const busy = chatStatus === "submitted" || chatStatus === "streaming"
+  const { online, enqueue } = useOffline()
+  const [screenOpen, setScreenOpen] = React.useState(false)
 
   // A turn that starts elsewhere (Telegram, an answer to a request) shows up
   // here live: catch up with what's saved, then follow the stream
@@ -578,6 +586,19 @@ export function ThreadView(props: ThreadViewProps) {
 
   const send = async (text: string, files: File[] = []) => {
     clearError()
+    const trimmedOffline = text.trim()
+    if (presence(navigator.onLine) === "offline") {
+      if (files.length > 0) {
+        toast.add({
+          type: "error",
+          title: "Photos and files wait until you're back online.",
+        })
+        throw new Error("offline")
+      }
+      if (!trimmedOffline) return
+      await enqueue({ threadId, agentId: addressee?.id, text: trimmedOffline })
+      return
+    }
     let attachments: Attachment[] = []
     if (files.length > 0) {
       if (!addressee) throw new Error("This thread has no agent to receive the file.")
@@ -707,6 +728,83 @@ export function ThreadView(props: ThreadViewProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  React.useEffect(() => {
+    if (!busy) return
+    if (document.documentElement.dataset.xirynApp !== "1") return
+    const lockNav = navigator as Navigator & {
+      wakeLock?: {
+        request: (type: "screen") => Promise<{ release: () => Promise<void> }>
+      }
+    }
+    if (!lockNav.wakeLock) return
+    let released = false
+    let sentinel: { release: () => Promise<void> } | null = null
+    const request = () => {
+      if (released || document.visibilityState !== "visible") return
+      void lockNav.wakeLock
+        ?.request("screen")
+        .then((next) => {
+          if (released) void next.release()
+          else sentinel = next
+        })
+        .catch(() => {})
+    }
+    request()
+    const onVisible = () => {
+      if (document.visibilityState === "visible") request()
+    }
+    document.addEventListener("visibilitychange", onVisible)
+    return () => {
+      released = true
+      document.removeEventListener("visibilitychange", onVisible)
+      void sentinel?.release().catch(() => {})
+    }
+  }, [busy])
+
+  React.useEffect(() => {
+    const stored = messagesForOfflineStore(messages)
+    const preview =
+      [...stored]
+        .reverse()
+        .find((message) => message.text.trim())
+        ?.text.slice(0, 160) ?? ""
+    const handle = window.setTimeout(() => {
+      void saveStoredThread({
+        threadId,
+        title: props.title,
+        href:
+          kind === "agent"
+            ? `/a/${props.owner.id}/${threadId}`
+            : `/s/${props.owner.id}/${threadId}`,
+        agentName: props.owner.name,
+        glyph: props.owner.glyphs[0] ?? "xiryn",
+        preview,
+        activeAt: new Date().toISOString(),
+        messages: stored,
+        savedAt: new Date().toISOString(),
+      })
+    }, 500)
+    return () => window.clearTimeout(handle)
+  }, [messages, threadId, kind, props.title, props.owner])
+
+  const shareThread = async () => {
+    const text = threadToMarkdown({
+      title: props.title,
+      owner: props.owner.name,
+      members,
+      messages,
+    })
+    try {
+      if (navigator.share) await navigator.share({ title: props.owner.name, text })
+      else {
+        await navigator.clipboard.writeText(text)
+        toast.add({ type: "success", title: "Copied" })
+      }
+    } catch {
+      // The share sheet was dismissed.
+    }
+  }
+
   const chat = (
     <div className="flex h-full min-h-0 flex-col">
       <Transcript
@@ -734,6 +832,7 @@ export function ThreadView(props: ThreadViewProps) {
           ) : null
         }
       />
+      <OutboxStrip threadId={threadId} />
       <Composer
         draftKey={threadId}
         placeholder={
@@ -754,7 +853,31 @@ export function ThreadView(props: ThreadViewProps) {
 
   return (
     <TakeoverContext value={takeoverControl}>
-      <div className="flex min-h-0 flex-1 flex-col">
+      <div
+        className={cn(
+          "xiryn-thread flex min-h-0 flex-1 flex-col",
+          screenOpen && "xiryn-screen-open"
+        )}
+      >
+        <AppThreadHeader
+          kind={kind}
+          name={props.owner.name}
+          subtitle={props.owner.subtitle}
+          glyphs={props.owner.glyphs}
+          busy={busy && online}
+          online={online}
+          screenOpen={screenOpen}
+          onShare={() => void shareThread()}
+          onCloseScreen={() => setScreenOpen(false)}
+          onScreen={
+            kind === "agent"
+              ? () => {
+                  if (!workbenchOpen) toggleWorkbench()
+                  setScreenOpen(true)
+                }
+              : undefined
+          }
+        />
         <ThreadHeader
           props={props}
           messages={messages}
@@ -763,11 +886,17 @@ export function ThreadView(props: ThreadViewProps) {
         />
         {kind === "agent" && workbenchOpen ? (
           <ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1">
-            <ResizablePanel id="chat" minSize="35%">
+            <ResizablePanel id="chat" className="xiryn-chat-panel" minSize="35%">
               {chat}
             </ResizablePanel>
-            <ResizableHandle />
-            <ResizablePanel id="workbench" defaultSize="38%" minSize="24%" maxSize="60%">
+            <ResizableHandle className="xiryn-handle" />
+            <ResizablePanel
+              id="workbench"
+              className="xiryn-workbench"
+              defaultSize="38%"
+              minSize="24%"
+              maxSize="60%"
+            >
               <Workbench
                 agentId={members[0].id}
                 agentName={members[0].name}

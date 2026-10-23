@@ -14,10 +14,12 @@ import {
   pwaManifestPath,
   pwaName,
   pwaShortName,
+  pwaStartupImages,
   pwaThemeColorDark,
   pwaThemeColorLight,
   webAppManifest,
 } from "./pwa"
+import { serviceWorkerSource } from "./pwa/cache-policy"
 
 function pngSize(file: string) {
   const buf = readFileSync(file)
@@ -92,7 +94,17 @@ test("the document asks the browser to send basic-auth on the manifest fetch", (
   assert.match(layout, /appleWebApp/)
   assert.match(layout, /themeColor/)
   assert.doesNotMatch(layout, /serviceWorker|service-worker|workbox|serwist/i)
+  assert.match(layout, /startupImage/)
+  assert.match(layout, /viewportFit:\s*"cover"/)
+  assert.match(layout, /black-translucent/)
   assert.equal(pwaManifestPath, "/manifest.webmanifest")
+  const worker = readFileSync(path.join(process.cwd(), "public/sw.js"), "utf8")
+  assert.equal(worker, serviceWorkerSource())
+  const register = readFileSync(
+    path.join(process.cwd(), "components/app/pwa-client.tsx"),
+    "utf8"
+  )
+  assert.match(register, /serviceWorker\.register\("\/sw\.js"/)
 
   // Next emits an uncredentialed manifest link first. Clearing it here leaves
   // the credentialed link in the root layout as the one browsers use.
@@ -118,11 +130,25 @@ function proxyRuns(pathname: string) {
   )
 }
 
-test("the host check still covers the manifest and icons", () => {
+test("startup images match the current iPhone sizes", () => {
+  assert.ok(pwaStartupImages.length >= 8)
+  for (const image of pwaStartupImages) {
+    const file = path.join(process.cwd(), "public", image.href.slice(1))
+    const { width, height } = pngSize(file)
+    assert.equal(width, image.width, image.href)
+    assert.equal(height, image.height, image.href)
+    assert.ok(readFileSync(file).byteLength < 80 * 1024, image.href)
+    assert.match(image.media, /orientation: portrait/)
+  }
+})
+
+test("the host check still covers the manifest, icons and worker", () => {
   const paths = [
     pwaManifestPath,
+    "/sw.js",
     ...pwaIcons.map((icon) => icon.src),
     pwaAppleTouchIcon.src,
+    ...pwaStartupImages.map((image) => image.href),
   ]
   for (const pathname of paths) {
     assert.equal(proxyRuns(pathname), true, pathname)
