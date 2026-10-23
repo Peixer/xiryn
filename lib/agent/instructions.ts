@@ -1,12 +1,8 @@
-import { asc, eq } from "drizzle-orm"
-
-import { db } from "@/db"
-import { memories, type Agent, type Squad } from "@/db/schema"
+import type { Agent, Squad } from "@/db/schema"
+import { memoryPrompt } from "@/lib/memory"
 
 // The system prompt is assembled fresh for every turn (and again when a
 // squad delegates), so edits to an agent and new memories apply at once.
-
-const MEMORY_BUDGET = 12_000
 
 export type Capabilities = {
   workstation: boolean
@@ -17,36 +13,6 @@ export type Capabilities = {
   routine?: string
   // Connected mail, calendar and MCP tools, when any are configured
   connectors?: string
-}
-
-function memoryBlock(agentId: string) {
-  const notes = db
-    .select({ id: memories.id, content: memories.content, createdAt: memories.createdAt })
-    .from(memories)
-    .where(eq(memories.agentId, agentId))
-    .orderBy(asc(memories.createdAt))
-    .all()
-
-  if (notes.length === 0) {
-    return "Your memory is empty. Nothing has been saved yet."
-  }
-
-  // Newest notes win when the budget runs out
-  const lines: string[] = []
-  let used = 0
-  for (const note of [...notes].reverse()) {
-    const line = `- [${note.id}] ${note.content}`
-    if (used + line.length > MEMORY_BUDGET) break
-    lines.unshift(line)
-    used += line.length
-  }
-  const dropped = notes.length - lines.length
-  return [
-    dropped > 0 ? `(${dropped} older notes are not shown.)` : null,
-    lines.join("\n"),
-  ]
-    .filter(Boolean)
-    .join("\n")
 }
 
 export function buildInstructions(
@@ -78,14 +44,14 @@ ${[
     : capabilities.workstation
       ? "- **Web through your browser.** There are no web search tools (Firecrawl isn't configured), so search and read pages with Chromium on your desktop, or `curl` from the shell for plain pages and APIs."
       : "- **No web access.** Firecrawl is not configured; work from what you know and say when something may be out of date.",
-  "- **Memory.** Notes you save with `memory_write` persist across every thread you are part of. Remove stale ones with `memory_forget`.",
+  "- **Memory.** Notes you save with `memory_write` persist across every thread you are part of. Remove stale ones of yours with `memory_forget`. Search older notes, including shared notes, with `memory_search`. Shared notes are written by the person; you cannot create, edit, or delete them.",
 ].join("\n")}`,
 
     `# Memory
-These are the notes you have saved. They are already loaded — no tool call needed to read them.
-${memoryBlock(agent.id)}
+These are the notes already loaded — no tool call needed to read the ones below. Older notes that do not fit stay in memory; find them with \`memory_search\`.
+${memoryPrompt(agent.id)}
 
-Save a note in the same turn you learn something worth knowing later (who the person is, what they are working on, preferences, decisions, standing instructions), and always when they ask you to remember something. Saying you will remember is not the same as saving. Skip small talk and details that only matter right now.`,
+Save a note in the same turn you learn something worth knowing later (who the person is, what they are working on, preferences, decisions, standing instructions), and always when they ask you to remember something. Saying you will remember is not the same as saving. Skip small talk and details that only matter right now. A note you save is yours alone. Shared notes apply to every agent, and only the person can add, edit, or delete those from the Memory panel.`,
 
     squad && squadBlock(agent, squad),
 

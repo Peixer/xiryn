@@ -98,6 +98,7 @@ const META: Record<string, Meta> = {
     label: "fetch",
     summary: (i) => str(i.url).replace(/^https?:\/\/(www\.)?/, ""),
   },
+  memory_search: { icon: SearchIcon, label: "recall", summary: (i) => str(i.query) },
   memory_write: { icon: BrainIcon, label: "remember", summary: (i) => str(i.note) },
   memory_forget: { icon: EraserIcon, label: "forget", summary: (i) => str(i.id) },
   routine_create: {
@@ -300,6 +301,38 @@ function Details({ part }: { part: ToolPart }) {
           <Pre>{str(output.markdown).slice(0, 4000)}</Pre>
         </div>
       ) : null
+    case "memory_search": {
+      const matches = (output?.matches ?? []) as {
+        id: string
+        scope: string
+        age: string
+        text: string
+      }[]
+      if (!output) return null
+      if (matches.length === 0) {
+        return <p className="text-[13px] text-muted-foreground">No matching notes.</p>
+      }
+      return (
+        <ul className="flex flex-col gap-2">
+          {matches.map((match) => (
+            <li key={match.id} className="flex flex-col gap-0.5">
+              <span className="font-mono text-[10.5px] text-faint">
+                <span
+                  className={match.scope === "shared" ? "text-betelgeuse" : "text-rigel"}
+                >
+                  {match.scope}
+                </span>
+                {" · "}
+                {match.age}
+                {" · "}
+                {match.id}
+              </span>
+              <p className="text-[13px] leading-snug">{match.text}</p>
+            </li>
+          ))}
+        </ul>
+      )
+    }
     case "memory_write":
       return <p className="text-[13px]">{str(input.note)}</p>
     case "routine_create":

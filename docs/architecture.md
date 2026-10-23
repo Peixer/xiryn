@@ -39,11 +39,17 @@ Because the run lives in the server process and not in the HTTP request, closing
 
 Defined in `lib/agent/tools.ts`. Every tool resolves "the agent holding the turn" at call time, so after a delegation the same tool acts on the new agent's workstation and memory.
 
+### Memory
+
+Each agent has its own notes (`memories.agent_id`). A note with a null `agent_id` is **shared**: it is injected into every agent's prompt under a **Shared notes** block, with its own 3,000-character budget, separate from the 12,000-character budget for that agent's own notes. Newest notes win inside each budget. Notes that do not fit stay in the database and are reachable with `memory_search` (a case-insensitive substring search over that agent's notes and the shared notes, up to 10 matches).
+
+Agents can write and delete only their own notes (`memory_write`, `memory_forget`). Shared notes are prompt text for every agent, so only the person can create, edit, or delete them, from the Memory panel. `memory_write` refuses `scope: "shared"`. Clearing one agent's memory does not delete shared notes, and deleting an agent does not either.
+
 | Group | Tools | Backed by |
 | --- | --- | --- |
 | Workstation | `shell`, `fs_read`, `fs_write`, `fs_list` | `docker exec` into the agent's container |
 | Desktop | `screen_capture`, `screen_share`, `pointer_*`, `key_*` | `scrot` and `xdotool` on the container's X display |
-| Memory | `memory_write`, `memory_forget` | Local SQLite |
+| Memory | `memory_write`, `memory_forget`, `memory_search` | Local SQLite |
 | Routines | `routine_create`, `routine_list`, `routine_delete` | Local SQLite; run by the scheduler (not offered during a routine's own runs) |
 | Web | `web_search`, `web_fetch` | Firecrawl v2 |
 | Squad | `delegate` | Runtime (swaps agent, instructions and model) |
