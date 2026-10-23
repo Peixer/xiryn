@@ -67,6 +67,10 @@ export async function runRoutine(
   // Scheduled runs move on first, so a slow or failed run never repeats; a
   // one-off routine switches itself off
   if (!manual) {
+    if (!routine.schedule) {
+      update(routine.id, { enabled: false, nextRunAt: null })
+      return null
+    }
     const next = nextRun(routine.schedule, now)
     update(routine.id, { nextRunAt: next, ...(!next && { enabled: false }) })
   }
@@ -139,6 +143,15 @@ async function tick() {
   for (const routine of due) {
     if (state.running.has(routine.id)) continue
     const late = now.getTime() - (routine.nextRunAt?.getTime() ?? now.getTime())
+    if (!routine.schedule) {
+      update(routine.id, {
+        enabled: false,
+        nextRunAt: null,
+        lastStatus: "skipped",
+        lastError: "This routine has no schedule.",
+      })
+      continue
+    }
     if (late > CATCH_UP) {
       const next = nextRun(routine.schedule, now)
       update(routine.id, {

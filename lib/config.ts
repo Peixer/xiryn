@@ -82,6 +82,9 @@ const integrationSettings = {
   "mcp.allowedCommands": { env: "XIRYN_MCP_ALLOWED_COMMANDS" },
   // Bearer token for POST /api/hooks/routines/<id>. Unset, that route is 404.
   "hooks.token": { env: "XIRYN_HOOKS_TOKEN", secret: true },
+  // Hostnames allowed for "Import Grok Bot" share links. Empty means any
+  // public https host. Loopback and private addresses are never allowed.
+  "grokbot.importHosts": { env: "XIRYN_GROKBOT_IMPORT_HOSTS" },
 } satisfies Record<string, SettingDef>
 
 // Bedrock does not use one API key. These sit beside the generic apiKey/baseUrl

@@ -320,6 +320,7 @@ export function getSettingsView() {
       connected: googleConnected(),
       redirectUri: googleRedirectUri(),
       allowedCommands: describeSetting("mcp.allowedCommands"),
+      importHosts: describeSetting("grokbot.importHosts"),
       mcpPath: MCP_CONFIG_PATH,
       mcpText: fs.existsSync(MCP_CONFIG_PATH)
         ? fs.readFileSync(MCP_CONFIG_PATH, "utf8")

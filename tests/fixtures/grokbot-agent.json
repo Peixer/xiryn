@@ -1,0 +1,73 @@
+{
+  "profile": {
+    "name": "Mira Example",
+    "description": "A fictional assistant used only as sample import data. She files pretend library slips and never sends a real message.",
+    "avatarColor": "#336699",
+    "avatarShape": "orb",
+    "ignored": true
+  },
+  "memory": [
+    {
+      "kind": "profile",
+      "createdAt": "2024-04-02",
+      "content": "The sample owner prefers the fictional shelf code MX-42."
+    },
+    {
+      "kind": "log",
+      "createdAt": "2024-05-01",
+      "content": "Sample log: looked up a pretend title and did not contact anyone."
+    }
+  ],
+  "skills": [
+    {
+      "name": "Sample filing",
+      "description": "How the sample assistant files a pretend slip.",
+      "content": "Write a one-line pretend filing slip. Do not send it anywhere."
+    },
+    {
+      "name": "Sample welcome",
+      "description": "First-run sample text.",
+      "content": "Say hello and stop. This is sample onboarding text, not a task to run."
+    }
+  ],
+  "routines": [
+    {
+      "slug": "weekday-slips",
+      "name": "Weekday slips",
+      "description": "Pretend weekday filing.",
+      "content": "Draft one fictional library slip. Do not send it.",
+      "schedule": "CRON_TZ=Europe/Lisbon 15 8 * * 1-5",
+      "timezone": "Europe/Lisbon",
+      "enabled": true
+    },
+    {
+      "slug": "daily-sample",
+      "name": "Daily sample",
+      "description": "Once a day in the sample.",
+      "content": "Note that this is a sample daily routine.",
+      "schedule": "@daily",
+      "enabled": false
+    },
+    {
+      "slug": "unscheduled-sample",
+      "name": "Unscheduled sample",
+      "description": "No usable clock.",
+      "content": "This sample routine has a cron Xiryn cannot run.",
+      "schedule": "0 9 1 * *"
+    }
+  ],
+  "plugins": [
+    {
+      "pluginId": "gmail",
+      "name": "Gmail",
+      "description": "Sample mail connector. Not a real account."
+    },
+    {
+      "pluginId": "slack-sample",
+      "name": "Slack sample",
+      "description": "A made-up connector with no Xiryn equivalent."
+    }
+  ],
+  "gettingStarted": { "skill": "Sample welcome" },
+  "extra": { "keep": "ignored" }
+}

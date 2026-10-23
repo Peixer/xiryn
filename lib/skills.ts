@@ -26,6 +26,10 @@ export type Skill = {
   name: string
   description: string
   body: string
+  // Set when the skill was imported from a Grok Bot export. The agent then
+  // reads the body as untrusted data. Saving the skill from the Skills page
+  // drops this, which means the person has adopted the text.
+  source?: "grokbot-import"
 }
 
 export type SkillWarning = {
@@ -242,6 +246,7 @@ export function parseSkillMarkdown(raw: string): {
   name: string
   description: string
   body: string
+  source?: "grokbot-import"
 } {
   if (typeof raw !== "string") throw new SkillError("A skill file must be text.")
   if (raw.includes("\0")) throw new SkillError("A skill file cannot contain null bytes.")
@@ -259,11 +264,13 @@ export function parseSkillMarkdown(raw: string): {
     "description",
     SKILL_DESCRIPTION_MAX
   )
+  const imported =
+    fields.source === "grokbot-import" ? ("grokbot-import" as const) : undefined
   let body = match[2] ?? ""
   if (body.startsWith("\r\n")) body = body.slice(2)
   else if (body.startsWith("\n")) body = body.slice(1)
   body = body.replace(/\s+$/, "")
-  return { name, description, body }
+  return { name, description, body, ...(imported && { source: imported }) }
 }
 
 function yamlScalar(value: string) {
@@ -290,12 +297,14 @@ export function serializeSkill(skill: {
   name: string
   description: string
   body: string
+  source?: "grokbot-import"
 }): string {
   const body = skill.body.replace(/\s+$/, "")
   const lines = [
     "---",
     `name: ${yamlScalar(skill.name)}`,
     `description: ${yamlScalar(skill.description)}`,
+    ...(skill.source === "grokbot-import" ? [`source: ${skill.source}`] : []),
     "---",
     "",
   ]
@@ -468,7 +477,13 @@ export function readSkill(slug: string, options?: RootOptions): Skill | null {
 }
 
 export function writeSkill(
-  draft: { name: string; description: string; body: string; slug?: string },
+  draft: {
+    name: string
+    description: string
+    body: string
+    slug?: string
+    source?: "grokbot-import"
+  },
   options?: RootOptions & { replace?: boolean }
 ): Skill & { replaced: boolean } {
   if (
@@ -489,7 +504,12 @@ export function writeSkill(
   const description = requireText(draft.description, "description", SKILL_DESCRIPTION_MAX)
   const body = draft.body.replace(/\s+$/, "")
   const slug = draft.slug ? assertSkillSlug(draft.slug) : normalizeSlug(name)
-  const markdown = serializeSkill({ name, description, body })
+  const markdown = serializeSkill({
+    name,
+    description,
+    body,
+    ...(draft.source === "grokbot-import" && { source: draft.source }),
+  })
   if (Buffer.byteLength(markdown, "utf8") > SKILL_MAX_BYTES) {
     throw new SkillError("A skill must be 16 KB or smaller.")
   }
@@ -554,7 +574,14 @@ export function writeSkill(
     const reason = error instanceof Error ? error.message : "unknown error"
     throw new SkillError(`Could not save that skill (${reason}).`)
   }
-  return { slug, name, description, body, replaced }
+  return {
+    slug,
+    name,
+    description,
+    body,
+    replaced,
+    ...(draft.source === "grokbot-import" && { source: draft.source }),
+  }
 }
 
 export function deleteSkill(slug: string, options?: RootOptions) {

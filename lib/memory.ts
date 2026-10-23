@@ -2,6 +2,7 @@ import { and, asc, eq, isNull, or, sql } from "drizzle-orm"
 
 import { db } from "@/db"
 import { memories, memoryInputSchema, type MemoryScope } from "@/db/schema"
+import { importedMemoryForPrompt } from "@/lib/grokbot-import"
 
 // Per-agent notes and shared notes have separate prompt budgets. Newest notes
 // win inside each budget; anything past it stays in the database and is
@@ -88,6 +89,13 @@ export function searchMemories(agentId: string, query: string, now = new Date())
     }))
 }
 
+function presentNotes(notes: Note[]) {
+  return notes.map((note) => ({
+    ...note,
+    content: importedMemoryForPrompt(note.content) ?? note.content,
+  }))
+}
+
 function fitNotes(notes: Note[], budget: number, empty: string) {
   if (notes.length === 0) return empty
 
@@ -134,14 +142,14 @@ export function memoryPrompt(agentId: string) {
   return [
     "## Your notes",
     fitNotes(
-      ownNotes(agentId),
+      presentNotes(ownNotes(agentId)),
       AGENT_MEMORY_BUDGET,
       "Your memory is empty. Nothing has been saved yet."
     ),
     "",
     "## Shared notes",
     "The person wrote these for every agent. You can read and search them. You cannot create, edit, or delete them; only the person can, from the Memory panel.",
-    fitNotes(sharedNotes(), SHARED_MEMORY_BUDGET, "No shared notes yet."),
+    fitNotes(presentNotes(sharedNotes()), SHARED_MEMORY_BUDGET, "No shared notes yet."),
   ].join("\n")
 }
 
