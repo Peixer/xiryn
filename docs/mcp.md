@@ -92,7 +92,8 @@ Anything else is a server you list in `data/mcp.json` (next to the database, mod
 ```
 
 - `http` is streamable HTTP. `sse` is the older HTTP transport. `stdio` runs `command` plus `args` on the **Xiryn host**, as the user the service runs as — not inside an agent's container, and not on your laptop. Only the servers in this file exist. An agent cannot add one or change the command.
-- `command` is the executable (`npx`, `uvx`, `node`). Arguments go in `args`, not in a shell string.
+- `command` is the executable. Arguments go in `args`, not in a shell string. By default the program must be `npx`, `uvx`, `node`, `python3`, `python`, `docker`, or `bunx` (a full path is accepted when its file name is one of those). `sh`, `bash`, and `zsh` are refused. Add other program names, not paths, under **Settings → Connectors** (`mcp.allowedCommands`) or with `XIRYN_MCP_ALLOWED_COMMANDS`. If you add a shell, its arguments still cannot contain shell metacharacters.
+- Saving a new stdio server, or changing its `command` or `args`, asks you to confirm that exact command and those arguments. The server issues a one-time confirmation for them, so a request that skips the dialog is refused. The process runs on the Xiryn host, as the user the service runs as. Changing only `env`, `headers`, `approval`, or `enabled` does not ask again.
 - `${ENV:NAME}` is replaced from the environment when the server starts. Prefer that to pasting a token into `mcp.json`.
 - `approval` is `writes` (the default), `all`, or `none`. A tool also waits when its MCP description says it is destructive, and it skips the wait when the server marks it read-only. `approve` and `readOnly` are lists of tool names that override that.
 

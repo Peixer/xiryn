@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache"
 
 import { isWritableSetting, setSetting } from "@/lib/config"
+import { extensionNames } from "@/lib/mcp/stdio-policy"
 import {
   parseExtraRegions,
   parseMaxOutputOverrides,
@@ -77,6 +78,10 @@ export async function saveSettings(values: Record<string, string | null>) {
       !/^(on|off)$/.test(value.trim())
     ) {
       throw new Error("A connector is either on or off.")
+    }
+    if (key === "mcp.allowedCommands" && value) {
+      const names = extensionNames(value)
+      if (!names.ok) throw new Error(names.error)
     }
     setSetting(key, value)
   }

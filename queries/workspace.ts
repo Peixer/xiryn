@@ -315,6 +315,7 @@ export function getSettingsView() {
       clientSecret: describeSetting("google.clientSecret"),
       connected: googleConnected(),
       redirectUri: googleRedirectUri(),
+      allowedCommands: describeSetting("mcp.allowedCommands"),
       mcpPath: MCP_CONFIG_PATH,
       mcpText: fs.existsSync(MCP_CONFIG_PATH)
         ? fs.readFileSync(MCP_CONFIG_PATH, "utf8")

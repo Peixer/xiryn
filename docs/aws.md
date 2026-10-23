@@ -137,6 +137,8 @@ Basic auth covers the whole site, including:
 - the desktop websocket (`/desktop/.../websockify` → port 6797)
 - the Google OAuth callback
 
+Xiryn still has no accounts of its own. Caddy basic auth (or a similar authenticating proxy) is the login when the app is not only on localhost. The app checks `Host`, and for anything other than GET or HEAD it requires an `Origin` on an allowed host. That stops a browser on another site from posting server actions. It is not a session, and a full in-app login is a separate future item.
+
 Phone takeover links that Xiryn opens through a Cloudflare quick tunnel still go straight to the container's noVNC page. They are not on this hostname. Turn them off with `XIRYN_PHONE_TAKEOVER=off` if you only want the Caddy path.
 
 Point DNS at the instance and wait until `https://<host>` asks for the basic-auth user.
