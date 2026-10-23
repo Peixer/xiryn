@@ -1,7 +1,9 @@
 import { randomBytes } from "node:crypto"
 
+import { stdioPathRefusal } from "@/lib/mcp/stdio-path"
 import {
   mcpCommandRefusal,
+  mcpEnvRefusal,
   stdioLaunchesNeedingConfirmation,
   type McpServerShape,
   type StdioLaunch,
@@ -72,11 +74,14 @@ export function reviewStdioSave(input: {
 }): { ok: true; confirm: StdioLaunch[] } | { ok: false; error: string } {
   for (const server of input.next) {
     if (server.transport !== "stdio") continue
-    const refusal = mcpCommandRefusal(
-      server.command ?? "",
-      server.args ?? [],
-      input.allowedExtension
-    )
+    const refusal =
+      mcpCommandRefusal(
+        server.command ?? "",
+        server.args ?? [],
+        input.allowedExtension
+      ) ??
+      stdioPathRefusal(server.command ?? "") ??
+      mcpEnvRefusal(server.env)
     if (refusal) return { ok: false, error: `${server.id}: ${refusal}` }
   }
   return {

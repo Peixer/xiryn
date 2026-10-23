@@ -3,6 +3,7 @@ import { test } from "node:test"
 
 import {
   mcpCommandRefusal,
+  mcpEnvRefusal,
   stdioLaunchesNeedingConfirmation,
   type McpServerShape,
 } from "./stdio-policy"
@@ -28,6 +29,8 @@ test("default launchers are accepted, including an absolute path with that basen
   )
   assert.equal(mcpCommandRefusal("node.exe", ["server.js"]), null)
   assert.equal(mcpCommandRefusal("NPX", ["-y", "pkg"]), null)
+  assert.equal(mcpCommandRefusal("/opt/homebrew/bin/node", ["server.js"]), null)
+  assert.equal(mcpCommandRefusal("/usr/bin/../local/bin/uvx", ["notes-mcp"]), null)
 })
 
 test("shells and other programs are refused, including absolute paths", () => {
@@ -39,6 +42,13 @@ test("shells and other programs are refused, including absolute paths", () => {
   }
   assert.match(mcpCommandRefusal("npx -y pkg", []) ?? "", /one executable|args/i)
   assert.equal(typeof mcpCommandRefusal("/tmp/npx;id", []), "string")
+  for (const command of ["/tmp/npx", "./npx", "../npx", "/usr/bin/../tmp/npx"]) {
+    const refusal = mcpCommandRefusal(command, ["-y", "pkg"])
+    assert.equal(typeof refusal, "string", command)
+    assert.match(refusal ?? "", /standard install|not allowed|Refused/i)
+  }
+  assert.match(mcpCommandRefusal("${ENV:PATH}", []) ?? "", /Refused/)
+  assert.match(mcpCommandRefusal("n\u0440x", []) ?? "", /Refused/)
 })
 
 test("mcp.allowedCommands extends the list and does not drop the defaults", () => {
@@ -47,6 +57,35 @@ test("mcp.allowedCommands extends the list and does not drop the defaults", () =
   assert.equal(mcpCommandRefusal("npx", ["-y", "pkg"], "my-mcp"), null)
   const invalid = mcpCommandRefusal("npx", [], "/tmp/evil, my-mcp")
   assert.match(invalid ?? "", /program name/i)
+})
+
+test("stdio env cannot redirect the binary, the interpreter, or the package index", () => {
+  assert.equal(mcpEnvRefusal(undefined), null)
+  assert.equal(mcpEnvRefusal({ NOTES_TOKEN: "${ENV:NOTES_TOKEN}" }), null)
+  assert.equal(mcpEnvRefusal({ PYTHONUNBUFFERED: "1" }), null)
+
+  const cases: Record<string, string>[] = [
+    { PATH: "/tmp/evil" },
+    { Path: "/tmp/evil" },
+    { NODE_OPTIONS: "--require /tmp/evil.js" },
+    { LD_PRELOAD: "/tmp/evil.so" },
+    { DYLD_INSERT_LIBRARIES: "/tmp/evil.dylib" },
+    { UV_INDEX_URL: "https://evil.example/simple" },
+    { UV_PYTHON: "/tmp/python" },
+    { npm_config_registry: "https://evil.example" },
+    { NPM_CONFIG_SCRIPT_SHELL: "/bin/bash" },
+    { PYTHONSTARTUP: "/tmp/evil.py" },
+    { HOME: "/tmp/evilhome" },
+    { SHELL: "/tmp/evil-shell" },
+  ]
+  for (const env of cases) {
+    const [name] = Object.keys(env)
+    const value = Object.values(env)[0] ?? ""
+    const refusal = mcpEnvRefusal(env)
+    assert.equal(typeof refusal, "string", name)
+    assert.match(refusal ?? "", new RegExp(name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")))
+    assert.equal(refusal?.includes(value), false)
+  }
 })
 
 test("shell metacharacters in args are refused only when the command is a shell", () => {

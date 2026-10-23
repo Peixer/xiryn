@@ -5,7 +5,8 @@ import { tool, type ToolSet } from "ai"
 import type { ToolEnv } from "@/lib/agent/tools"
 import { getSetting } from "@/lib/config"
 import { expandEnv, readMcpConfig, type McpServerConfig } from "@/lib/mcp/config"
-import { mcpCommandRefusal } from "@/lib/mcp/stdio-policy"
+import { stdioPathRefusal } from "@/lib/mcp/stdio-path"
+import { mcpCommandRefusal, mcpEnvRefusal } from "@/lib/mcp/stdio-policy"
 import { createGoogleTools } from "@/lib/mcp/google-tools"
 import { holdOrRun } from "@/lib/mcp/guard"
 import { connectorEnabled } from "@/lib/mcp/google"
@@ -46,11 +47,14 @@ function childEnv(server: McpServerConfig) {
 
 async function openClient(server: McpServerConfig) {
   if (server.transport === "stdio") {
-    const refusal = mcpCommandRefusal(
-      server.command ?? "",
-      server.args ?? [],
-      getSetting("mcp.allowedCommands")
-    )
+    const refusal =
+      mcpCommandRefusal(
+        server.command ?? "",
+        server.args ?? [],
+        getSetting("mcp.allowedCommands")
+      ) ??
+      stdioPathRefusal(server.command ?? "") ??
+      mcpEnvRefusal(server.env)
     if (refusal) throw new Error(refusal)
     return createMCPClient({
       name: "xiryn",

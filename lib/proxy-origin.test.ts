@@ -63,10 +63,39 @@ test("state-changing requests need an Origin on an allowed host", async () => {
   const localhostOrigin = call("http://127.0.0.1:6796/", "POST", {
     origin: "http://localhost:6796",
   })
-  assert.notEqual(localhostOrigin.status, 403)
+  assert.equal(localhostOrigin.status, 403)
+  assert.match(await textOf(localhostOrigin), /Cross-origin/)
+
+  const otherPort = call("http://127.0.0.1:6796/api/threads/t/turn", "POST", {
+    origin: "http://127.0.0.1:3000",
+  })
+  assert.equal(otherPort.status, 403)
+
+  const decimal = call("http://127.0.0.1:6796/", "POST", {
+    origin: "http://2130706433:6796",
+  })
+  assert.equal(decimal.status, 403)
+
+  const shortIp = call("http://127.0.0.1:6796/", "POST", {
+    origin: "http://127.1:6796",
+  })
+  assert.equal(shortIp.status, 403)
+
+  const userinfo = call("http://127.0.0.1:6796/", "POST", {
+    origin: "http://evil.com@127.0.0.1:6796",
+  })
+  assert.equal(userinfo.status, 403)
 
   const remove = call("http://127.0.0.1:6796/api/threads/t/turn", "DELETE")
   assert.equal(remove.status, 403)
+
+  const removeSame = call("http://127.0.0.1:6796/api/threads/t/turn", "DELETE", {
+    origin: "http://127.0.0.1:6796",
+  })
+  assert.notEqual(removeSame.status, 403)
+
+  const ipv6 = call("http://[::1]:6796/", "POST", { origin: "http://[::1]:6796" })
+  assert.notEqual(ipv6.status, 403)
 
   const nullOrigin = call("http://localhost:6796/", "POST", { origin: "null" })
   assert.equal(nullOrigin.status, 403)

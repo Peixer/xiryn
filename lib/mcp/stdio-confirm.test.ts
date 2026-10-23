@@ -105,8 +105,25 @@ test("stdio confirmation tokens", async (t) => {
     const server = stdio("notes", "npx", ["-y", "notes-mcp"])
     const saved = authorizeStdioSave({
       previous: [{ ...server, enabled: true }],
-      next: [{ ...server, enabled: false }],
+      next: [{ ...server, enabled: false, env: { NOTES_TOKEN: "${ENV:NOTES_TOKEN}" } }],
     })
     assert.equal(saved.ok, true)
   })
+
+  await t.test(
+    "dangerous env is refused without a token, and the value is not echoed",
+    () => {
+      resetStdioConfirmations()
+      const server = stdio("notes", "npx", ["-y", "notes-mcp"])
+      const refused = authorizeStdioSave({
+        previous: [server],
+        next: [{ ...server, env: { NODE_OPTIONS: "--require /tmp/secret-evil.js" } }],
+      })
+      assert.equal(refused.ok, false)
+      if (refused.ok) return
+      assert.match(refused.error, /NODE_OPTIONS/)
+      assert.equal(refused.error.includes("secret-evil"), false)
+      assert.equal(refused.confirm, undefined)
+    }
+  )
 })

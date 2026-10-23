@@ -421,7 +421,7 @@ Every setting can come from `.env` **or** from **Settings** in the app. Values s
 
 Xiryn has no user accounts, so it's built never to be reachable by anyone but you:
 
-- Binds to **127.0.0.1** only, and refuses any request whose `Host` isn't loopback — which also blocks DNS-rebinding attacks from web pages you visit. State-changing requests must also send an `Origin` on that host. Exposed servers still rely on Caddy basic auth (or a similar proxy); Xiryn has no in-app accounts.
+- Binds to **127.0.0.1** only, and refuses any request whose `Host` isn't loopback — which also blocks DNS-rebinding attacks from web pages you visit. State-changing requests must also send an `Origin` for that same host and port. Exposed servers still rely on Caddy basic auth (or a similar proxy); Xiryn has no in-app accounts.
 - API keys never reach the browser; the UI only sees masked values, and keys are kept out of logs.
 - Telegram answers exactly **one** paired account; pairing codes are single-use and rotate after wrong guesses.
 - Agents execute only inside their own containers — never on your desktop or in your files. Their browsers have password saving and card autofill switched off. MCP stdio servers are the exception: they run on the Xiryn host, only for an allowlisted launcher you confirmed while saving `data/mcp.json`.
