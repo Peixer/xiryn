@@ -61,10 +61,10 @@ type UseTag = "desktop" | "shell" | "web" | "vault" | "memory"
 
 const useConfig: Record<UseTag, { label: string; icon: React.ElementType }> = {
   desktop: { label: "Desktop", icon: MonitorIcon },
-  shell:   { label: "Shell",   icon: TerminalIcon },
-  web:     { label: "Web",     icon: GlobeIcon },
-  vault:   { label: "Vault",   icon: KeyRoundIcon },
-  memory:  { label: "Memory",  icon: BrainIcon },
+  shell: { label: "Shell", icon: TerminalIcon },
+  web: { label: "Web", icon: GlobeIcon },
+  vault: { label: "Vault", icon: KeyRoundIcon },
+  memory: { label: "Memory", icon: BrainIcon },
 }
 
 function CapabilityChip({ tag }: { tag: UseTag }) {
@@ -100,7 +100,7 @@ function TemplateCard({
       )}
     >
       <div className="flex w-full items-center justify-between gap-1">
-        <span className="truncate text-[12px] font-semibold leading-tight">
+        <span className="truncate text-[12px] leading-tight font-semibold">
           {preset.name}
         </span>
         {active && (
@@ -123,21 +123,14 @@ function TemplateCard({
 
 // ─── Main form ────────────────────────────────────────────────────────────────
 
-function AgentForm({
-  agent,
-  template,
-}: {
-  agent?: NavAgent
-  template?: AgentTemplate
-}) {
+function AgentForm({ agent, template }: { agent?: NavAgent; template?: AgentTemplate }) {
   const router = useRouter()
   const { status, closeDialog } = useWorkspace()
 
   const [initialGlyph] = React.useState(
     () => agent?.glyph ?? template?.glyph ?? nanoid(10)
   )
-  const [activeCategory, setActiveCategory] =
-    React.useState<TemplateCategory>("everyday")
+  const [activeCategory, setActiveCategory] = React.useState<TemplateCategory>("everyday")
   const [selectedPresetId, setSelectedPresetId] = React.useState<string | null>(
     template?.id ?? null
   )
@@ -185,13 +178,10 @@ function AgentForm({
     }
   })
 
-  const instructions =
-    useWatch({ control: form.control, name: "instructions" }) ?? ""
+  const instructions = useWatch({ control: form.control, name: "instructions" }) ?? ""
   const glyphValue = useWatch({ control: form.control, name: "glyph" }) ?? initialGlyph
 
-  const filteredTemplates = agentTemplates.filter(
-    (t) => t.category === activeCategory
-  )
+  const filteredTemplates = agentTemplates.filter((t) => t.category === activeCategory)
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -222,7 +212,7 @@ function AgentForm({
           <aside className="flex w-52 shrink-0 flex-col border-r">
             {/* Category tabs */}
             <div className="flex flex-col gap-0.5 border-b px-2.5 py-2.5">
-              <span className="mb-1 px-1 font-mono text-[9.5px] uppercase tracking-widest text-muted-foreground/70">
+              <span className="mb-1 px-1 font-mono text-[9.5px] tracking-widest text-muted-foreground/70 uppercase">
                 Start from a template
               </span>
               {templateCategories.map((cat) => (
@@ -267,11 +257,8 @@ function AgentForm({
                 control={form.control}
                 render={({ field }) => (
                   <div className="flex flex-col items-center gap-1.5">
-                    <div className="rounded-xl ring-1 ring-border/60 overflow-hidden">
-                      <Glyph
-                        seed={field.value ?? initialGlyph}
-                        className="size-[60px]"
-                      />
+                    <div className="overflow-hidden rounded-xl ring-1 ring-border/60">
+                      <Glyph seed={field.value ?? initialGlyph} className="size-[60px]" />
                     </div>
                     <button
                       type="button"
@@ -304,9 +291,7 @@ function AgentForm({
                         autoComplete="off"
                         aria-invalid={fieldState.invalid}
                       />
-                      {fieldState.invalid && (
-                        <FieldError errors={[fieldState.error]} />
-                      )}
+                      {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
                     </Field>
                   )}
                 />
@@ -323,9 +308,7 @@ function AgentForm({
                         autoComplete="off"
                         aria-invalid={fieldState.invalid}
                       />
-                      {fieldState.invalid && (
-                        <FieldError errors={[fieldState.error]} />
-                      )}
+                      {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
                     </Field>
                   )}
                 />
@@ -351,9 +334,7 @@ function AgentForm({
                   <FieldDescription>
                     Workstation tasks need a model that supports tools and images.
                   </FieldDescription>
-                  {fieldState.invalid && (
-                    <FieldError errors={[fieldState.error]} />
-                  )}
+                  {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
                 </Field>
               )}
             />
@@ -365,9 +346,7 @@ function AgentForm({
               render={({ field, fieldState }) => (
                 <Field data-invalid={fieldState.invalid}>
                   <div className="flex items-baseline justify-between">
-                    <FieldLabel htmlFor="agent-instructions">
-                      Standing orders
-                    </FieldLabel>
+                    <FieldLabel htmlFor="agent-instructions">Standing orders</FieldLabel>
                     <div className="flex items-center gap-2">
                       {/* Rough token estimate (~4 chars/token) */}
                       <span className="font-mono text-[10px] text-faint tabular-nums">
@@ -391,13 +370,11 @@ function AgentForm({
                   <div className="flex items-center gap-1.5 pt-0.5">
                     <SparklesIcon className="size-3 text-muted-foreground/50" />
                     <p className="text-[11px] text-muted-foreground/60">
-                      Describe its personality, what tools to prefer, what it must
-                      never do, and how to handle ambiguity.
+                      Describe its personality, what tools to prefer, what it must never
+                      do, and how to handle ambiguity.
                     </p>
                   </div>
-                  {fieldState.invalid && (
-                    <FieldError errors={[fieldState.error]} />
-                  )}
+                  {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
                 </Field>
               )}
             />
@@ -424,13 +401,12 @@ function AgentForm({
               <>
                 {agent.busy && (
                   <span className="mb-2 block font-medium text-destructive">
-                    {agent.name} is working right now. Its current task will be
-                    stopped.
+                    {agent.name} is working right now. Its current task will be stopped.
                   </span>
                 )}
-                Its threads and messages, its memory, its routines and its
-                workstation (the Docker container and every file on it) are
-                deleted. This can&apos;t be undone.
+                Its threads and messages, its memory, its routines and its workstation
+                (the Docker container and every file on it) are deleted. This can&apos;t
+                be undone.
               </>
             }
             action={agent.busy ? "Stop and delete" : "Delete agent"}
