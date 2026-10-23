@@ -352,6 +352,7 @@ Tasks your agents do on their own, on a schedule — while you sleep, with the b
 Playbooks you want an agent to follow the same way every time — how invoices get filed, how a weekly brief is shaped.
 
 - **On the Skills page.** Create, edit, delete, import and export them. Each one is a `SKILL.md` file in `data/skills` on this computer.
+- **From GitHub.** Paste a public link to a folder of `SKILL.md` files, such as `https://github.com/cursor/plugins/tree/main/pstack/skills`, or a link to one file. Xiryn lists the name, description and playbook. You choose which to save. The request goes only to GitHub, and the text is not run. An imported playbook stays untrusted until you edit and save it.
 - **The agent reads them.** The next message sees a short catalog (the name and description, up to 40). It loads the full text with `skill_read` when the task needs it. It cannot create or change skills.
 - **They are instructions, not programs.** A skill is prompt text. Read it on the Skills page before you rely on it. Xiryn does not run a script because a skill mentions one.
 
