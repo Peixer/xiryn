@@ -15,6 +15,20 @@ xiryn.example.com {
 		reverse_proxy 127.0.0.1:6797
 	}
 
+	# Webhooks authenticate with XIRYN_HOOKS_TOKEN, not this password, and the
+	# route answers 404 until that token is set. basic_auth on the site covers
+	# /api/hooks/* as well. To let GitHub or Zapier call them without the site
+	# password, move basic_auth into a handle that does not match that path
+	# and proxy the path on its own (Host must still be in XIRYN_ALLOWED_HOSTS):
+	#
+	# handle /api/hooks/* {
+	# 	reverse_proxy 127.0.0.1:6796 {
+	# 		header_up Host {host}
+	# 		header_up X-Forwarded-Host {host}
+	# 		header_up X-Forwarded-Proto {scheme}
+	# 	}
+	# }
+
 	# Pages, server actions, the chat stream and the SSE event stream.
 	reverse_proxy 127.0.0.1:6796 {
 		flush_interval -1
