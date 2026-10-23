@@ -3,6 +3,7 @@ import { Experimental_StdioMCPTransport } from "@ai-sdk/mcp/mcp-stdio"
 import { tool, type ToolSet } from "ai"
 
 import type { ToolEnv } from "@/lib/agent/tools"
+import { renderApprovalPreview } from "@/lib/mcp/approval-preview"
 import { expandEnv, readMcpConfig, type McpServerConfig } from "@/lib/mcp/config"
 import { createGoogleTools } from "@/lib/mcp/google-tools"
 import { holdOrRun } from "@/lib/mcp/guard"
@@ -119,7 +120,7 @@ async function toolsForServer(server: McpServerConfig, env: ToolEnv) {
         ) {
           const hold = await holdOrRun(env, {
             tool: exposed,
-            summary: `${server.id}: ${name}`,
+            summary: renderApprovalPreview(exposed, input),
             args: input,
           })
           if (hold) return hold

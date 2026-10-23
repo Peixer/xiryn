@@ -14,6 +14,9 @@ export async function holdOrRun(
     args: spec.args,
     summary: spec.summary,
   })
+  if (gate.kind === "rejected") {
+    return { status: "rejected" as const, reason: gate.reason }
+  }
   if (gate.kind === "run") return null
   await env.onActionRequested?.(env.current(), gate.approval)
   return {
