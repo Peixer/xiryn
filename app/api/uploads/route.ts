@@ -12,7 +12,7 @@ import {
   parseMultipart,
   type Attachment,
 } from "@/lib/attachments"
-import { DockerMissingError } from "@/lib/docker"
+import { DockerMissingError, ensureEngine } from "@/lib/docker"
 import { removeUploadsFile, writeUploadsFile } from "@/lib/workstation"
 
 export const runtime = "nodejs"
@@ -48,6 +48,13 @@ export async function POST(request: Request) {
     return fail("Upload is not multipart.")
   }
 
+  // Fail before reading the body when the workstation can't be started.
+  try {
+    await ensureEngine()
+  } catch (error) {
+    return failure(error)
+  }
+
   const started: string[] = []
   const files: Attachment[] = []
   const active: { abort: (() => Promise<void>) | null } = { abort: null }
@@ -66,20 +73,30 @@ export async function POST(request: Request) {
         const stream = new TransformStream<Uint8Array, Uint8Array>()
         const writer = stream.writable.getWriter()
         let size = 0
+        let failed: unknown = null
         started.push(described.path)
-        const done = writeUploadsFile(agentId, described.path, stream.readable)
+        // Handle the rejection immediately so a missing workstation can't
+        // leave the upload stream waiting on a reader that never starts.
+        const done = writeUploadsFile(agentId, described.path, stream.readable).catch(
+          (error: unknown) => {
+            failed = error
+            return writer.abort(error).catch(() => {})
+          }
+        )
         active.abort = async () => {
           await writer.abort().catch(() => {})
-          await done.catch(() => {})
+          await done
         }
         return {
           async write(chunk) {
+            if (failed) throw failed
             size += chunk.byteLength
             await writer.write(chunk)
           },
           async close() {
-            await writer.close()
-            await done
+            if (failed) throw failed
+            await Promise.all([writer.close().catch(() => {}), done])
+            if (failed) throw failed
             active.abort = null
             files.push({ ...described, size, agentId })
           },
