@@ -414,6 +414,7 @@ Every setting can come from `.env` **or** from **Settings** in the app. Values s
 | `XIRYN_DESKTOP_PROXY_PORT`, `XIRYN_DESKTOP_PROXY` | Loopback websocket proxy for desktops behind Caddy |
 | `XIRYN_UPDATE_CHECK` | `off` stops the update check and star count |
 | `XIRYN_DESKTOP_NOTIFY` | `off` stops operating-system notifications when no Xiryn tab is open |
+| `XIRYN_NOTIFY_WEBHOOK_URL`, `XIRYN_NOTIFY_WEBHOOK_FORMAT`, `XIRYN_NOTIFY_WEBHOOK_TRIGGERS`, `XIRYN_NOTIFY_WEBHOOK_PREVIEW` | POST a short notice when a task finishes or needs you. Format is `ntfy`, `slack`, or `json`. Preview is off unless set to `on`, and then capped at 140 characters. The URL is http(s) only and is never logged |
 
 ## Security & privacy
 
@@ -421,6 +422,7 @@ Xiryn has no user accounts, so it's built never to be reachable by anyone but yo
 
 - Binds to **127.0.0.1** only, and refuses any request whose `Host` or `Origin` isn't loopback — which also blocks DNS-rebinding attacks from web pages you visit.
 - API keys never reach the browser; the UI only sees masked values, and keys are kept out of logs.
+- A notification webhook, if you set one, receives a short message when a task finishes or needs you. The URL is masked in Settings and is never logged. A reply preview is sent only when you turn that on, and then only the first 140 characters.
 - Telegram answers exactly **one** paired account; pairing codes are single-use and rotate after wrong guesses.
 - Agents execute only inside their own containers — never on your desktop or in your files. Their browsers have password saving and card autofill switched off. MCP stdio servers are the exception: they run on the Xiryn host, and only for commands you listed in `data/mcp.json`.
 - Sending mail or changing a calendar waits for your approval, the same way a payment does.
