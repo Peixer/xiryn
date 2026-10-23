@@ -223,6 +223,66 @@ test("the CLI accepts one file or link and a dry-run flag", () => {
   assert.match(help.error, /Usage/)
 })
 
+test("a public x.ai share card maps to the persona and warns that the rest is missing", () => {
+  const result = parse({
+    id: "SxqbG1NT5qEw7ggmHqQu_",
+    ownerType: "USER",
+    sharerName: null,
+    botName: "Lingxi's Engineer Bot",
+    description:
+      'A hands-off engineering supervisor. Boards work, then says "watch } the PRs".',
+    addHref: "grokbot://app/v1/bot-template?id=SxqbG1NT5qEw7ggmHqQu_",
+    color: "#00BCA6",
+    shape: "wedge",
+  })
+  assert.equal(result.ok, true)
+  if (!result.ok) return
+  assert.equal(result.plan.agent.name, "Lingxi's Engineer Bot")
+  assert.match(result.plan.agent.instructions, /watch \} the PRs/)
+  assert.equal(result.plan.skills.length, 0)
+  assert.equal(result.plan.memories.length, 0)
+  assert.equal(result.plan.routines.length, 0)
+  assert.equal(result.plan.connectors.length, 0)
+  assert.match(
+    result.plan.warnings.join("\n"),
+    /share page only includes the name and description/
+  )
+})
+
+test("a bot name without a grokbot add link is not a template", () => {
+  const result = parse({
+    botName: "Not a share card",
+    description: "A page that happens to have a bot name.",
+    addHref: "https://x.ai/bot/not-a-template",
+  })
+  assert.equal(result.ok, false)
+})
+
+test("a full template wins when a share card is nested in the same document", () => {
+  const result = parse({
+    queries: [
+      {
+        state: {
+          data: {
+            botName: "Card Bot",
+            description: "Only the public card.",
+            addHref: "grokbot://app/v1/bot-template?id=card",
+          },
+        },
+      },
+    ],
+    elsewhere: sample,
+  })
+  assert.equal(result.ok, true)
+  if (!result.ok) return
+  assert.equal(result.plan.agent.name, "Mira Example")
+  assert.equal(result.plan.skills.length, 1)
+  assert.doesNotMatch(
+    result.plan.warnings.join("\n"),
+    /share page only includes the name and description/
+  )
+})
+
 test("a grokbot scheme link is not fetched", () => {
   assert.equal(
     classifyGrokbotInput("grokbot://app/v1/bot-template?id=sample").kind,

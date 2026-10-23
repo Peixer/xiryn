@@ -411,11 +411,17 @@ function interpret(hop: Hop): FetchFailure | { ok: true; value: unknown } {
 export function templateFromHtml(
   html: string
 ): FetchFailure | { ok: true; value: unknown } {
+  // A full template wins over a public share card when the page has both.
+  let share: unknown = null
   for (const value of htmlCandidates(html)) {
     const screened = screenGrokbotDocument(value)
     if (!screened.ok) return screenFailure(screened)
-    if (findGrokbotTemplate(value)) return { ok: true, value }
+    const found = findGrokbotTemplate(value)
+    if (!found) continue
+    if (found.sharePage !== true) return { ok: true, value }
+    if (share === null) share = value
   }
+  if (share !== null) return { ok: true, value: share }
   return {
     ok: false,
     code: "invalid",
@@ -441,18 +447,26 @@ function htmlCandidates(html: string) {
     }
   }
   for (const pushed of flightPayloads(html)) found.push(pushed)
-  const marker = '"profile"'
-  let from = 0
-  let tries = 0
-  while (tries < 8) {
-    const at = html.indexOf(marker, from)
-    if (at < 0) break
-    tries += 1
-    const object = objectAround(html, at)
-    if (object !== null) found.push(object)
-    from = at + marker.length
-  }
+  harvestObjects(html, found)
   return found
+}
+
+// "profile" is a pasted or embedded template. "botName" is the public card
+// inside an x.ai share page. The flight text is scanned after it is unescaped.
+function harvestObjects(text: string, found: unknown[]) {
+  for (const marker of ['"profile"', '"botName"']) {
+    if (!text.includes(marker)) continue
+    let from = 0
+    let tries = 0
+    while (tries < 8) {
+      const at = text.indexOf(marker, from)
+      if (at < 0) break
+      tries += 1
+      const object = objectAround(text, at)
+      if (object !== null) found.push(object)
+      from = at + marker.length
+    }
+  }
 }
 
 function flightPayloads(source: string) {
@@ -495,15 +509,18 @@ function pushParsed(found: unknown[], text: string) {
 function walkStrings(value: unknown, found: unknown[], depth: number) {
   if (depth > 6) return
   if (typeof value === "string") {
+    if (!value.includes("profile") && !value.includes("botName")) return
     const start = value.indexOf("{")
-    if (start < 0 || !value.includes("profile")) return
-    try {
-      const parsed = JSON.parse(value.slice(start)) as unknown
-      found.push(parsed)
-      walkStrings(parsed, found, depth + 1)
-    } catch {
-      // A flight string is often a prefix plus JSON. Ignore the miss.
+    if (start >= 0) {
+      try {
+        const parsed = JSON.parse(value.slice(start)) as unknown
+        found.push(parsed)
+        walkStrings(parsed, found, depth + 1)
+      } catch {
+        // A flight string is often a prefix plus JSON. The brace scan covers it.
+      }
     }
+    harvestObjects(value, found)
     return
   }
   if (Array.isArray(value)) {

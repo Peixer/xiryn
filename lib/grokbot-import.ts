@@ -117,8 +117,21 @@ const templateSchema = z
       })
       .strip()
       .optional(),
+    // Set only when this object was built from a public share card.
+    // A pasted value other than true is ignored with the other unknown keys.
+    sharePage: z.preprocess(
+      (value) => (value === true ? true : undefined),
+      z.literal(true).optional()
+    ),
   })
   .strip()
+
+// x.ai/bot/<id> embeds this. It is not a template: skills, memories and
+// routines stay in the Grok Bot app behind grokbot://.
+const SHARE_ADD_HREF = /^grokbot:\/\/app\/v1\/bot-template\?id=[A-Za-z0-9_-]{1,128}$/
+
+const SHARE_PAGE_WARNING =
+  "This public share page only includes the name and description. Skills, memories, routines and plugins are not on it. Paste the template JSON to import those."
 
 export function formatImportedMemory(kind: GrokbotMemoryKind, text: string) {
   return `${memoryMark}${kind}]]\n${text}`
@@ -259,10 +272,23 @@ function mapTemplate(
   template: z.infer<typeof templateSchema>,
   context: MapContext
 ): GrokbotImportPlan {
-  const warnings: string[] = [
-    "Importing this again creates another agent. It does not update the first one.",
-    "Every imported routine is created turned off. One runs only after you turn it on.",
+  const warnings: string[] = []
+  const shareLists = [
+    template.memory,
+    template.skills,
+    template.routines,
+    template.plugins,
   ]
+  if (
+    template.sharePage === true &&
+    shareLists.every((list) => !list || list.length === 0)
+  ) {
+    warnings.push(SHARE_PAGE_WARNING)
+  }
+  warnings.push(
+    "Importing this again creates another agent. It does not update the first one.",
+    "Every imported routine is created turned off. One runs only after you turn it on."
+  )
   const nameRaw = template.profile?.name?.trim() ?? ""
   const description = (template.profile?.description ?? "").trim()
   let name = nameRaw || "Imported agent"
@@ -819,6 +845,8 @@ function unwrapTemplate(data: unknown): Record<string, unknown> | null {
   if (looksLikeTemplate(data)) return data
   const found = findTemplate(data, 0)
   if (found) return found
+  const card = findShareCard(data, 0)
+  if (card) return card
   // A pasted template may be only a profile. A page search stays stricter
   // (findTemplate) so a random profile object on a share page is not enough.
   if (
@@ -880,6 +908,47 @@ function findTemplate(value: unknown, depth: number): Record<string, unknown> | 
     if (found) return found
   }
   return null
+}
+
+function findShareCard(value: unknown, depth: number): Record<string, unknown> | null {
+  if (depth > 8) return null
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const found = findShareCard(item, depth + 1)
+      if (found) return found
+    }
+    return null
+  }
+  if (!isRecord(value)) return null
+  const card = shareCardTemplate(value)
+  if (card) return card
+  for (const nested of Object.values(value)) {
+    const found = findShareCard(nested, depth + 1)
+    if (found) return found
+  }
+  return null
+}
+
+// The public card on https://x.ai/bot/<id>. addHref is the grokbot:// deep
+// link, which is specific enough that a page mentioning a bot name is not enough.
+function shareCardTemplate(
+  value: Record<string, unknown>
+): Record<string, unknown> | null {
+  if (typeof value.botName !== "string" || !value.botName.trim()) return null
+  if (typeof value.addHref !== "string" || !SHARE_ADD_HREF.test(value.addHref))
+    return null
+  if (value.description != null && typeof value.description !== "string") return null
+  return {
+    profile: {
+      name: value.botName.trim(),
+      description: typeof value.description === "string" ? value.description : "",
+    },
+    memory: [],
+    skills: [],
+    routines: [],
+    plugins: [],
+    sharePage: true,
+  }
 }
 
 function looksLikeTemplate(value: unknown): value is Record<string, unknown> {

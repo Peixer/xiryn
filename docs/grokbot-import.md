@@ -67,15 +67,16 @@ Xiryn fetches the link itself. The request is HTTPS, has no cookies and no Autho
 
 `XIRYN_GROKBOT_IMPORT_HOSTS` (Settings → Connectors, or the environment) lists the only hostnames a link may use. Empty, the default, allows any public https host. A listed host does not include its subdomains. The preview always shows the host so you can confirm it.
 
-The page extractor is a heuristic. It has not been checked against a live Grok Bot share page, because that page's HTML is not part of this repository. It tries, in order:
+The page extractor tries, in order:
 
 1. JSON, including wrappers (`template`, `bot`, `data`, `props.pageProps`).
 2. HTML: `<script type="application/json">`, `__NEXT_DATA__`, `self.__next_f.push` flight payloads, JSON-LD, and a JSON object in the page that has `profile` plus memories, skills, routines, plugins or `gettingStarted`.
-3. The same URL again with `Accept: application/json`.
-4. The same path with `.json` added.
-5. `<link rel="alternate" type="application/json">` when that target passes the same checks.
+3. The public card on an `https://x.ai/bot/…` page. That page does not embed the template. It embeds the name, the description, and a `grokbot://app/v1/bot-template?id=…` link. Preview imports the name and description and says that skills, memories, routines and plugins are not on the page. Paste the template JSON to bring those over. A full template on the same page is used instead of the card.
+4. The same URL again with `Accept: application/json`.
+5. The same path with `.json` added.
+6. `<link rel="alternate" type="application/json">` when that target passes the same checks.
 
-If none of those contain a template, paste the JSON. That path does not depend on the share page.
+If none of those contain a template or a public card, paste the JSON. That path does not depend on the share page.
 
 ## Safety
 
