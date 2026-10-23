@@ -13,6 +13,7 @@ import {
   ensureEngine,
   type RunOptions,
 } from "@/lib/docker"
+import { pageFromTargets, type PageTarget } from "@/lib/page-origin"
 import { ensureImage, imageTag } from "@/lib/workstation-image"
 
 // Each agent owns a workstation: a Docker container on this computer with a
@@ -484,35 +485,17 @@ export async function maskFocusedField(agentId: string) {
   await execIn(agentId, ["xiryn-mask"], { timeoutMs: 15_000 }).catch(() => null)
 }
 
-// The page in front of the person: the browser tab whose title is in the
-// focused window, read from Chromium's debugging port inside the container
+// The focused page's origin. xiryn-cdp asks Chromium which document has
+// focus and returns that page's origin; the window title is not used, and
+// there is no fallback to some other tab.
 export async function currentPage(agentId: string) {
-  const [targets, focused] = await Promise.all([
-    execIn(agentId, ["curl", "-s", "-m", "4", "http://127.0.0.1:9222/json/list"], {
-      timeoutMs: 15_000,
-    }),
-    execIn(agentId, ["xdotool", "getactivewindow", "getwindowname"], {
-      timeoutMs: 15_000,
-    }),
-  ])
-  let pages: { type: string; url: string; title: string }[] = []
+  const result = await execIn(agentId, ["xiryn-cdp", "pages"], { timeoutMs: 15_000 })
+  if (result.exitCode !== 0) return null
   try {
-    pages = (JSON.parse(targets.stdout.toString()) as typeof pages).filter(
-      (target) => target.type === "page" && /^https?:/.test(target.url)
-    )
+    const report = JSON.parse(result.stdout.toString()) as { pages?: PageTarget[] }
+    return pageFromTargets(report.pages ?? [])
   } catch {
     return null
-  }
-  const title = focused.stdout
-    .toString()
-    .trim()
-    .replace(/ - Chromium$/, "")
-  const page = pages.find((candidate) => candidate.title === title) ?? pages[0]
-  if (!page) return null
-  return {
-    url: page.url,
-    host: new URL(page.url).hostname.replace(/^www\./, ""),
-    title: page.title,
   }
 }
 

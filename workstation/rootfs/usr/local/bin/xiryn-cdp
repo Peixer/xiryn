@@ -1,0 +1,261 @@
+#!/usr/bin/env node
+// Owns Chromium's remote-debugging pipe and exposes two operations on a
+// unix socket: the focused page's origin, and masking the focused field.
+// There is no TCP debugging port and no way to evaluate a caller-supplied
+// expression, so a shell in this container cannot read a filled password
+// by curling a well-known port.
+//
+// What this does not stop: the workstation user has passwordless sudo, so
+// it can kill this process and start Chromium itself with a debugging port.
+
+import { spawn } from "node:child_process"
+import fs from "node:fs"
+import net from "node:net"
+import path from "node:path"
+
+const SOCK = process.env.XIRYN_CDP_SOCK || "/tmp/xiryn/cdp.sock"
+const FOCUS = `({focus:document.hasFocus(),visible:document.visibilityState==="visible"})`
+const MASK = `(() => {
+  const field = document.activeElement
+  if (!field || !("value" in field)) return false
+  field.style.setProperty("-webkit-text-security", "disc", "important")
+  return true
+})()`
+
+const mode = process.argv[2] || "serve"
+if (mode === "pages" || mode === "mask") {
+  client(mode)
+} else if (mode === "serve") {
+  serve()
+} else {
+  process.exit(1)
+}
+
+function client(op) {
+  const conn = net.createConnection(SOCK)
+  let buf = ""
+  const timer = setTimeout(() => process.exit(1), 8000)
+  conn.setEncoding("utf8")
+  // Keep the socket open until the reply arrives. Ending it with the request
+  // makes the server close before it can write the origin.
+  conn.on("connect", () => conn.write(JSON.stringify({ op }) + "\n"))
+  conn.on("data", (chunk) => {
+    buf += chunk
+    if (!buf.includes("\n")) return
+    clearTimeout(timer)
+    process.stdout.write(buf.trim() + "\n")
+    conn.end()
+    process.exit(0)
+  })
+  conn.on("error", () => process.exit(1))
+}
+
+function serve() {
+  const bin = process.env.XIRYN_CDP_CHROMIUM || "/usr/bin/chromium"
+  const args = []
+  if (process.env.XIRYN_CDP_NO_PIPE !== "1") args.push("--remote-debugging-pipe")
+  for (const part of (process.env.XIRYN_CDP_ARGS || "").split(" ")) {
+    if (part) args.push(part)
+  }
+  const chrome = spawn(bin, args, {
+    stdio: ["ignore", "ignore", "inherit", "pipe", "pipe"],
+    env: process.env,
+  })
+  const write = chrome.stdio[3]
+  const read = chrome.stdio[4]
+  const pending = new Map()
+  let nextId = 1
+  let buf = Buffer.alloc(0)
+  let tail = Promise.resolve()
+
+  read.on("data", (chunk) => {
+    buf = Buffer.concat([buf, chunk])
+    while (true) {
+      const end = buf.indexOf(0)
+      if (end < 0) break
+      const raw = buf.subarray(0, end).toString("utf8")
+      buf = buf.subarray(end + 1)
+      if (!raw) continue
+      let message
+      try {
+        message = JSON.parse(raw)
+      } catch {
+        continue
+      }
+      const waiter = pending.get(message.id)
+      if (!waiter) continue
+      pending.delete(message.id)
+      waiter(message)
+    }
+  })
+
+  function call(method, params, sessionId, timeoutMs = 4000) {
+    const id = nextId++
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        pending.delete(id)
+        reject(new Error("timeout"))
+      }, timeoutMs)
+      pending.set(id, (message) => {
+        clearTimeout(timer)
+        if (message.error) reject(new Error("cdp error"))
+        else resolve(message.result ?? {})
+      })
+      const payload = { id, method }
+      if (params) payload.params = params
+      if (sessionId) payload.sessionId = sessionId
+      write.write(JSON.stringify(payload) + "\0")
+    })
+  }
+
+  function exclusive(fn) {
+    const run = tail.then(fn, fn)
+    tail = run.then(
+      () => {},
+      () => {}
+    )
+    return run
+  }
+
+  async function withSession(targetId, fn) {
+    const attached = await call("Target.attachToTarget", {
+      targetId,
+      flatten: true,
+    })
+    const sessionId = attached.sessionId
+    try {
+      return await fn(sessionId)
+    } finally {
+      await call("Target.detachFromTarget", { sessionId }).catch(() => {})
+    }
+  }
+
+  function originOf(raw) {
+    try {
+      const url = new URL(raw)
+      if (url.protocol !== "http:" && url.protocol !== "https:") return null
+      return url.origin
+    } catch {
+      return null
+    }
+  }
+
+  async function listPages() {
+    const result = await call("Target.getTargets")
+    const infos = (result.targetInfos || []).filter((target) => target.type === "page")
+    const pages = []
+    for (const info of infos) {
+      const url = originOf(info.url)
+      if (!url) continue
+      let focused = false
+      let visible = false
+      try {
+        const evaluated = await withSession(info.targetId, (sessionId) =>
+          call("Runtime.evaluate", { expression: FOCUS, returnByValue: true }, sessionId)
+        )
+        const value = evaluated?.result?.value
+        focused = value?.focus === true
+        visible = value?.visible === true
+      } catch {
+        focused = false
+        visible = false
+      }
+      pages.push({
+        url,
+        title: String(info.title || "").slice(0, 200),
+        focused,
+        visible,
+      })
+    }
+    return { pages }
+  }
+
+  async function maskFields() {
+    const result = await call("Target.getTargets")
+    const infos = (result.targetInfos || []).filter(
+      (target) => target.type === "page" || target.type === "iframe"
+    )
+    let masked = 0
+    for (const info of infos) {
+      try {
+        const evaluated = await withSession(info.targetId, (sessionId) =>
+          call("Runtime.evaluate", { expression: MASK, returnByValue: true }, sessionId)
+        )
+        if (evaluated?.result?.value === true) masked++
+      } catch {
+        // A frame that closed mid-mask is skipped.
+      }
+    }
+    return { masked }
+  }
+
+  async function dispatch(line) {
+    let request
+    try {
+      request = JSON.parse(line)
+    } catch {
+      return { error: "bad request" }
+    }
+    if (!request || typeof request !== "object") return { error: "bad request" }
+    if (request.op === "pages") return listPages()
+    if (request.op === "mask") return maskFields()
+    return { error: "unsupported" }
+  }
+
+  let stopping = false
+  function stop(code) {
+    if (stopping) return
+    stopping = true
+    try {
+      fs.unlinkSync(SOCK)
+    } catch {
+      // Already gone.
+    }
+    chrome.kill("SIGTERM")
+    process.exit(code)
+  }
+
+  chrome.on("exit", () => stop(1))
+  process.on("SIGTERM", () => stop(0))
+  process.on("SIGINT", () => stop(0))
+
+  call("Browser.getVersion", undefined, undefined, 8000)
+    .then(() => {
+      fs.mkdirSync(path.dirname(SOCK), { recursive: true })
+      try {
+        fs.unlinkSync(SOCK)
+      } catch {
+        // No previous socket.
+      }
+      const previous = process.umask(0o077)
+      const server = net.createServer({ allowHalfOpen: true }, (conn) => {
+        let text = ""
+        conn.setEncoding("utf8")
+        conn.on("data", (chunk) => {
+          text += chunk
+          if (text.length > 4096) {
+            conn.end(JSON.stringify({ error: "bad request" }) + "\n")
+            return
+          }
+          const nl = text.indexOf("\n")
+          if (nl < 0) return
+          const line = text.slice(0, nl)
+          text = ""
+          exclusive(() => dispatch(line))
+            .then((body) => conn.end(JSON.stringify(body) + "\n"))
+            .catch(() =>
+              conn.end(JSON.stringify({ error: "Couldn't read the page." }) + "\n")
+            )
+        })
+      })
+      server.listen(SOCK, () => {
+        process.umask(previous)
+        try {
+          fs.chmodSync(SOCK, 0o600)
+        } catch {
+          // The umask already keeps it private to this user.
+        }
+      })
+    })
+    .catch(() => stop(1))
+}

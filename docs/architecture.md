@@ -65,7 +65,7 @@ Either side can hand the desktop over.
 | Tool | Does |
 | --- | --- |
 | `vault_list` | Labels and masked hints, never values |
-| `vault_fill` | Types one field into the focused input: from stdin through `xdotool`, then `xiryn-mask` shows it as dots. Checks the page's site through Chromium's debugging port first: a login only on its own site, a card or UPI ID only with an approval for this thread and site |
+| `vault_fill` | Types one field into the focused input: from stdin through `xdotool`, then `xiryn-mask` shows it as dots. The focused page's origin comes from `xiryn-cdp` (a debugging pipe, not a TCP port). A login fills only when that origin's registrable domain matches the saved site, and only after the person approves the label and host. A card or UPI ID still needs `request_payment_approval` for this thread and site |
 | `request_payment_approval` | Records a pending payment (merchant, amount, site) and ends the turn. The person approves with a saved method, takes over, or declines — in the transcript card or with Telegram buttons |
 | `request_secret` | Ends the turn with a secure form for a login, card, UPI ID, personal details or a code. What's entered goes straight into the vault; the agent receives the new item's id. On Telegram, a requested code can be replied with; the message is deleted and the code stored once |
 

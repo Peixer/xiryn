@@ -176,7 +176,7 @@ Agents ask when they need a decision, confirm before anything irreversible, and 
 - **An encrypted vault** for logins, cards, UPI IDs and personal details. Add them in **Settings → Vault**, or when an agent asks, through a secure form in the chat. They're encrypted with AES-256-GCM, and the key is held by your operating system (macOS Keychain, Windows DPAPI, the Linux Secret Service) — never next to the data.
 - **Agents never see the values.** An agent gets "Visa ···· 4242"; Xiryn types the card into the page itself and shows the field as dots.
 - **Every payment needs your yes.** At checkout the agent asks — *"Atlas wants to pay ₹19,062 to MakeMyTrip"* — and you choose **Approve** (it pays with the card you pick), **I'll pay myself** (you take over its screen) or **Decline**, in the app or with one tap on Telegram.
-- **Phishing-proof by design.** A saved login only fills on its own site; an approved card only on the site you approved.
+- **Phishing-proof by design.** A saved login fills only on its own site, and only after you approve that fill. An approved card fills only on the site you approved.
 - **Stays signed in.** Each agent's browser keeps your sessions between tasks until the site signs you out. One-time codes you reply to the Telegram bot go straight into the vault, not the chat.
 
 > **Real browsing, from your own connection.** Agents' machines run on your computer, so sites see an ordinary home connection rather than a data center — no blocked sites, far fewer CAPTCHAs.
@@ -425,7 +425,7 @@ Xiryn has no user accounts, so it's built never to be reachable by anyone but yo
 - Telegram answers exactly **one** paired account; pairing codes are single-use and rotate after wrong guesses.
 - Agents execute only inside their own containers — never on your desktop or in your files. Their browsers have password saving and card autofill switched off. MCP stdio servers are the exception: they run on the Xiryn host, and only for commands you listed in `data/mcp.json`.
 - Sending mail or changing a calendar waits for your approval, the same way a payment does.
-- Saved logins, cards and personal details are encrypted (AES-256-GCM) with a key your operating system's keychain holds. Agents get masked hints only; Xiryn types values into pages itself, logins only on their own site, payment details only after you approve that payment.
+- Saved logins, cards and personal details are encrypted (AES-256-GCM) with a key your operating system's keychain holds. Agents get masked hints only; Xiryn types values into pages itself, logins only on their own site after you approve that fill, payment details only after you approve that payment.
 - Each live desktop is published on 127.0.0.1 only and asks for its own random password.
 - No telemetry. No analytics. The only request Xiryn makes on its own is an update check against GitHub's public API when you open Xiryn, sending nothing about you. Switch it off in **Settings → System** or with `XIRYN_UPDATE_CHECK=off`.
 
