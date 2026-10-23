@@ -44,22 +44,22 @@ This year every major lab shipped a personal agent that works on a cloud machine
 
 ```bash
 # macOS / Linux
-curl -fsSL https://raw.githubusercontent.com/SouravBeraAkaSpeed/xiryn/main/setup.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Peixer/xiryn/main/setup.sh | bash
 ```
 
 ```powershell
 # Windows (PowerShell)
-irm https://raw.githubusercontent.com/SouravBeraAkaSpeed/xiryn/main/setup.ps1 | iex
+irm https://raw.githubusercontent.com/Peixer/xiryn/main/setup.ps1 | iex
 ```
 
 **No API key? Run it free.** Add `--local` and the same command also installs [Ollama](https://ollama.com), downloads a model that fits your computer's memory and makes it every agent's default — nothing leaves your machine, nothing is billed:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/SouravBeraAkaSpeed/xiryn/main/setup.sh | bash -s -- --local
+curl -fsSL https://raw.githubusercontent.com/Peixer/xiryn/main/setup.sh | bash -s -- --local
 ```
 
 ```powershell
-$env:XIRYN_LOCAL="1"; irm https://raw.githubusercontent.com/SouravBeraAkaSpeed/xiryn/main/setup.ps1 | iex
+$env:XIRYN_LOCAL="1"; irm https://raw.githubusercontent.com/Peixer/xiryn/main/setup.ps1 | iex
 ```
 
 **Have a coding agent?** Paste [one prompt](#set-up-with-your-coding-agent) into Claude Code, Codex or Cursor — it installs everything, asks you for your keys and starts Xiryn.
@@ -192,8 +192,8 @@ Agents ask when they need a decision, confirm before anything irreversible, and 
 
 | Your system | Run this in a terminal |
 | --- | --- |
-| **macOS / Linux** | `curl -fsSL https://raw.githubusercontent.com/SouravBeraAkaSpeed/xiryn/main/setup.sh \| bash` |
-| **Windows** (PowerShell) | `irm https://raw.githubusercontent.com/SouravBeraAkaSpeed/xiryn/main/setup.ps1 \| iex` |
+| **macOS / Linux** | `curl -fsSL https://raw.githubusercontent.com/Peixer/xiryn/main/setup.sh \| bash` |
+| **Windows** (PowerShell) | `irm https://raw.githubusercontent.com/Peixer/xiryn/main/setup.ps1 \| iex` |
 
 Already cloned the repo? Run `./setup.sh` on macOS/Linux, or double-click **`setup.cmd`** on Windows.
 
@@ -211,11 +211,11 @@ The setup asks once, then does the rest:
 Using Claude Code, Codex, Cursor or another coding agent? Paste this prompt into it. It installs everything, asks you for your keys and starts Xiryn:
 
 ```text
-Install and start Xiryn for me — the open-source personal agent that runs on my own computer: https://github.com/SouravBeraAkaSpeed/xiryn
+Install and start Xiryn for me — the open-source personal agent that runs on my own computer: https://github.com/Peixer/xiryn
 
 1. From my home folder, run Xiryn's setup without prompts. It clones Xiryn into ./xiryn (or reuses it), installs Git, Node.js and Docker if they're missing, installs the packages and builds the agents' desktop image, which takes several minutes the first time — let it finish:
-   - macOS / Linux:  curl -fsSL https://raw.githubusercontent.com/SouravBeraAkaSpeed/xiryn/main/setup.sh | XIRYN_YES=1 XIRYN_NO_START=1 bash
-   - Windows (PowerShell):  $env:XIRYN_YES="1"; $env:XIRYN_NO_START="1"; irm https://raw.githubusercontent.com/SouravBeraAkaSpeed/xiryn/main/setup.ps1 | iex
+   - macOS / Linux:  curl -fsSL https://raw.githubusercontent.com/Peixer/xiryn/main/setup.sh | XIRYN_YES=1 XIRYN_NO_START=1 bash
+   - Windows (PowerShell):  $env:XIRYN_YES="1"; $env:XIRYN_NO_START="1"; irm https://raw.githubusercontent.com/Peixer/xiryn/main/setup.ps1 | iex
    (If you'd rather not pipe a script, clone the repo and run ./setup.sh or .\setup.ps1 inside it with the same two variables.)
    - If it stops and shows a command that needs my password, show me that command, wait for me to run it in my own terminal, then run the setup again.
    - If Docker Desktop was just installed or isn't running, ask me to open it and accept its terms (Windows may also ask for a restart). Wait until `docker info` works, then run the setup again.
@@ -238,7 +238,7 @@ Install and start Xiryn for me — the open-source personal agent that runs on m
 Install [Node.js 20.9+](https://nodejs.org) and [Docker](https://docs.docker.com/get-started/get-docker/), then:
 
 ```bash
-git clone https://github.com/SouravBeraAkaSpeed/xiryn.git
+git clone https://github.com/Peixer/xiryn.git
 cd xiryn
 npm install
 npm run setup     # checks Docker, builds the agents' desktop image, creates .env
