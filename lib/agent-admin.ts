@@ -79,9 +79,11 @@ export function agentFootprints(ids?: string[]) {
   for (const row of db
     .select({ agentId: memories.agentId, memories: count() })
     .from(memories)
-    .where(scope(memories.agentId))
+    .where(and(sql`${memories.agentId} is not null`, scope(memories.agentId)))
     .groupBy(memories.agentId)
     .all()) {
+    // Shared notes (null agent id) are not part of any agent's footprint.
+    if (!row.agentId) continue
     of(row.agentId).memories = row.memories
   }
 

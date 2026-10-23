@@ -1,5 +1,5 @@
 import { format } from "date-fns"
-import { and, asc, desc, eq, gte, isNotNull, sql } from "drizzle-orm"
+import { and, asc, desc, eq, gte, isNotNull, isNull, or, sql } from "drizzle-orm"
 import type { SQLiteTable } from "drizzle-orm/sqlite-core"
 
 import { db, DB_PATH } from "@/db"
@@ -233,7 +233,7 @@ export function getMemories(agentId: string) {
   return db
     .select()
     .from(memories)
-    .where(eq(memories.agentId, agentId))
+    .where(or(eq(memories.agentId, agentId), isNull(memories.agentId)))
     .orderBy(desc(memories.createdAt))
     .all()
 }
@@ -315,6 +315,7 @@ export function getSettingsView() {
       clientSecret: describeSetting("google.clientSecret"),
       connected: googleConnected(),
       redirectUri: googleRedirectUri(),
+      allowedCommands: describeSetting("mcp.allowedCommands"),
       mcpPath: MCP_CONFIG_PATH,
       mcpText: fs.existsSync(MCP_CONFIG_PATH)
         ? fs.readFileSync(MCP_CONFIG_PATH, "utf8")
@@ -338,6 +339,12 @@ export function getSettingsView() {
     maxStepsValue: getSetting("agent.maxSteps"),
     updateChecks: updateChecksEnabled(),
     desktopNotify: desktopNotificationsEnabled(),
+    notifyWebhook: {
+      url: describeSetting("notify.webhookUrl"),
+      format: describeSetting("notify.webhookFormat"),
+      triggers: describeSetting("notify.webhookTriggers"),
+      preview: describeSetting("notify.webhookPreview"),
+    },
   }
 }
 

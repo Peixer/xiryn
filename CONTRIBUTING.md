@@ -14,7 +14,7 @@ Thanks for wanting to make Xiryn better. This guide gets you from clone to merge
 **Requirements:** Node.js 20.9+ (22 recommended — see `.nvmrc`), npm, and a key for at least one model provider.
 
 ```bash
-git clone https://github.com/SouravBeraAkaSpeed/xiryn.git
+git clone https://github.com/Peixer/xiryn.git
 cd xiryn
 npm install
 npm run setup        # creates .env from .env.example

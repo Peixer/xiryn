@@ -1,6 +1,6 @@
 # Xiryn - one-step setup for Windows.
 #
-#   irm https://raw.githubusercontent.com/SouravBeraAkaSpeed/xiryn/main/setup.ps1 | iex
+#   irm https://raw.githubusercontent.com/Peixer/xiryn/main/setup.ps1 | iex
 #
 # or, inside a clone: double-click setup.cmd (or run .\setup.cmd)
 #
@@ -11,14 +11,14 @@
 # -Local (or $env:XIRYN_LOCAL = "1") also sets up free local models with
 # Ollama, so no API key is needed; -Model qwen3.5:9b picks the model yourself:
 #
-#   $env:XIRYN_LOCAL = "1"; irm https://raw.githubusercontent.com/SouravBeraAkaSpeed/xiryn/main/setup.ps1 | iex
+#   $env:XIRYN_LOCAL = "1"; irm https://raw.githubusercontent.com/Peixer/xiryn/main/setup.ps1 | iex
 
 param([switch]$NoStart, [switch]$Local, [string]$Model)
 if ($env:XIRYN_NO_START -eq "1") { $NoStart = $true }
 if ($env:XIRYN_LOCAL -eq "1") { $Local = $true }
 
 $ErrorActionPreference = "Stop"
-$Repo = "https://github.com/SouravBeraAkaSpeed/xiryn.git"
+$Repo = "https://github.com/Peixer/xiryn.git"
 
 function Ok($text) { Write-Host "  [ok] $text" -ForegroundColor Green }
 function Note($text) { Write-Host "  [!] $text" -ForegroundColor Yellow }

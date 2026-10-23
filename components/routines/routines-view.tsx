@@ -431,6 +431,9 @@ function RoutineCard({ routine }: { routine: RoutineView }) {
       <p className="line-clamp-2 text-[12.5px] leading-relaxed text-muted-foreground">
         {routine.prompt}
       </p>
+      <p className="font-mono text-[10.5px] break-all text-muted-foreground">
+        <span className="label-mono">webhook</span> POST /api/hooks/routines/{routine.id}
+      </p>
       {routine.lastStatus === "failed" && routine.lastError && (
         <p className="font-mono text-[11px] break-words text-destructive">
           {routine.lastError}

@@ -2,6 +2,13 @@ import { tool } from "ai"
 import { z } from "zod"
 
 import type { ToolEnv } from "@/lib/agent/tools"
+import {
+  calendarWriteBody,
+  eventApprovalArgs,
+  mailApprovalArgs,
+  renderApprovalPreview,
+  replyApprovalArgs,
+} from "@/lib/mcp/approval-preview"
 import { connectorEnabled, googleFetch } from "@/lib/mcp/google"
 import { holdOrRun } from "@/lib/mcp/guard"
 
@@ -71,6 +78,23 @@ async function gmailGet(id: string) {
   ) as Promise<GmailMessage>
 }
 
+type GoogleEvent = {
+  summary?: string
+  description?: string
+  location?: string
+  start?: { dateTime?: string; date?: string; timeZone?: string }
+  end?: { dateTime?: string; date?: string; timeZone?: string }
+  attendees?: { email?: string }[]
+}
+
+async function calendarEvent(id: string) {
+  const json = await googleFetch(
+    `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(id)}`
+  )
+  if (!json || typeof json !== "object") throw new Error("Calendar event was not found.")
+  return json as GoogleEvent
+}
+
 export function createGoogleTools(env: ToolEnv) {
   const tools: Record<string, unknown> = {}
 
@@ -112,22 +136,25 @@ export function createGoogleTools(env: ToolEnv) {
         subject: z.string().min(1).max(200),
         body: z.string().min(1).max(20_000),
         cc: z.string().optional(),
+        bcc: z.string().optional(),
       }),
       execute: async (input) => {
+        const payload = mailApprovalArgs(input)
         const hold = await holdOrRun(env, {
           tool: "gmail_draft",
-          summary: `Draft to ${input.to}: ${input.subject}`,
-          args: input,
+          summary: renderApprovalPreview("gmail_draft", payload),
+          args: payload,
         })
         if (hold) return hold
         const raw = rawMessage(
           {
-            To: input.to,
-            Subject: input.subject,
-            ...(input.cc ? { Cc: input.cc } : {}),
+            To: payload.to,
+            Subject: payload.subject,
+            ...(payload.cc ? { Cc: payload.cc } : {}),
+            ...(payload.bcc ? { Bcc: payload.bcc } : {}),
             "Content-Type": "text/plain; charset=utf-8",
           },
-          input.body
+          payload.body
         )
         const draft = (await googleFetch(
           "https://gmail.googleapis.com/gmail/v1/users/me/drafts",
@@ -145,22 +172,25 @@ export function createGoogleTools(env: ToolEnv) {
         subject: z.string().min(1).max(200),
         body: z.string().min(1).max(20_000),
         cc: z.string().optional(),
+        bcc: z.string().optional(),
       }),
       execute: async (input) => {
+        const payload = mailApprovalArgs(input)
         const hold = await holdOrRun(env, {
           tool: "gmail_send",
-          summary: `Send to ${input.to}: ${input.subject}`,
-          args: input,
+          summary: renderApprovalPreview("gmail_send", payload),
+          args: payload,
         })
         if (hold) return hold
         const raw = rawMessage(
           {
-            To: input.to,
-            Subject: input.subject,
-            ...(input.cc ? { Cc: input.cc } : {}),
+            To: payload.to,
+            Subject: payload.subject,
+            ...(payload.cc ? { Cc: payload.cc } : {}),
+            ...(payload.bcc ? { Bcc: payload.bcc } : {}),
             "Content-Type": "text/plain; charset=utf-8",
           },
-          input.body
+          payload.body
         )
         const sent = (await googleFetch(
           "https://gmail.googleapis.com/gmail/v1/users/me/messages/send",
@@ -179,31 +209,32 @@ export function createGoogleTools(env: ToolEnv) {
       }),
       execute: async (input) => {
         const original = describeMessage(await gmailGet(input.id))
+        const payload = replyApprovalArgs(original, input.body)
         const hold = await holdOrRun(env, {
           tool: "gmail_reply",
-          summary: `Reply to ${original.from || original.id}: ${original.subject}`,
-          args: input,
+          summary: renderApprovalPreview("gmail_reply", payload),
+          args: payload,
         })
         if (hold) return hold
-        const subject = original.subject?.toLowerCase().startsWith("re:")
-          ? original.subject
-          : `Re: ${original.subject || ""}`
         const raw = rawMessage(
           {
-            To: original.from,
-            Subject: subject,
-            ...(original.messageId
-              ? { "In-Reply-To": original.messageId, References: original.messageId }
+            To: payload.to,
+            Subject: payload.subject,
+            ...(payload.inReplyTo
+              ? { "In-Reply-To": payload.inReplyTo, References: payload.inReplyTo }
               : {}),
             "Content-Type": "text/plain; charset=utf-8",
           },
-          input.body
+          payload.body
         )
         const sent = (await googleFetch(
           "https://gmail.googleapis.com/gmail/v1/users/me/messages/send",
           {
             method: "POST",
-            body: JSON.stringify({ raw, threadId: original.threadId }),
+            body: JSON.stringify({
+              raw,
+              ...(payload.threadId ? { threadId: payload.threadId } : {}),
+            }),
           }
         )) as { id?: string }
         return { sent: true, id: sent.id }
@@ -268,17 +299,25 @@ export function createGoogleTools(env: ToolEnv) {
         location: z.string().max(300).optional(),
         start: when,
         end: when,
+        attendees: z.array(z.string().min(3).max(320)).max(50).optional(),
       }),
       execute: async (input) => {
+        const payload = {
+          ...eventApprovalArgs(input),
+          writeAttendees: (input.attendees?.length ?? 0) > 0,
+        }
         const hold = await holdOrRun(env, {
           tool: "calendar_create_event",
-          summary: `Create “${input.summary}” ${input.start.dateTime}`,
-          args: input,
+          summary: renderApprovalPreview("calendar_create_event", payload),
+          args: payload,
         })
         if (hold) return hold
         const created = (await googleFetch(
           "https://www.googleapis.com/calendar/v3/calendars/primary/events",
-          { method: "POST", body: JSON.stringify(input) }
+          {
+            method: "POST",
+            body: JSON.stringify(calendarWriteBody(payload, payload.writeAttendees)),
+          }
         )) as { id?: string; htmlLink?: string }
         return { created: true, id: created.id, link: created.htmlLink }
       },
@@ -293,18 +332,35 @@ export function createGoogleTools(env: ToolEnv) {
         location: z.string().max(300).optional(),
         start: when.optional(),
         end: when.optional(),
+        attendees: z.array(z.string().min(3).max(320)).max(50).optional(),
       }),
       execute: async (input) => {
+        const current = await calendarEvent(input.id)
+        const patch = calendarWriteBody(
+          {
+            summary: input.summary,
+            description: input.description,
+            location: input.location,
+            start: input.start,
+            end: input.end,
+            attendees: input.attendees,
+          },
+          input.attendees !== undefined
+        )
+        const payload = {
+          ...eventApprovalArgs(input, current),
+          writeAttendees: input.attendees !== undefined,
+          patch,
+        }
         const hold = await holdOrRun(env, {
           tool: "calendar_update_event",
-          summary: `Update event ${input.id}${input.summary ? `: ${input.summary}` : ""}`,
-          args: input,
+          summary: renderApprovalPreview("calendar_update_event", payload),
+          args: payload,
         })
         if (hold) return hold
-        const { id, ...patch } = input
         const updated = (await googleFetch(
-          `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(id)}`,
-          { method: "PATCH", body: JSON.stringify(patch) }
+          `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(input.id)}`,
+          { method: "PATCH", body: JSON.stringify(payload.patch) }
         )) as { id?: string; htmlLink?: string }
         return { updated: true, id: updated.id, link: updated.htmlLink }
       },
@@ -320,10 +376,14 @@ export function createGoogleTools(env: ToolEnv) {
           .describe("The event title, so the person knows which one"),
       }),
       execute: async (input) => {
+        const current = await calendarEvent(input.id)
+        const payload = eventApprovalArgs({ id: input.id }, current, {
+          preferCurrent: true,
+        })
         const hold = await holdOrRun(env, {
           tool: "calendar_delete_event",
-          summary: `Delete event ${input.summary || input.id}`,
-          args: input,
+          summary: renderApprovalPreview("calendar_delete_event", payload),
+          args: payload,
         })
         if (hold) return hold
         await googleFetch(
