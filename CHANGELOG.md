@@ -22,6 +22,7 @@ All notable changes to Xiryn are documented here. The format follows [Keep a Cha
 
 ### Changed
 
+- **A login fill waits for approval.** `vault_fill` of a saved login asks every time. The card is the same hash-bound approval as a connector write: it shows the item's label and the focused page's host, never the secret, and a later call with different arguments is refused. The page's registrable domain must match the saved site. Chromium's remote debugging is a pipe held by `xiryn-cdp`, not a TCP port. An existing workstation image picks that up after `npm run workstation:build`.
 - **Workstation containers drop every capability.** A new machine is created with `--cap-drop ALL`, `no-new-privileges`, and a pid limit. `sudo` inside that container does not work. A container that is already running keeps its old flags until it is recreated.
 
 ### Fixed

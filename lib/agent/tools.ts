@@ -15,9 +15,10 @@ import {
 import type { Attachment } from "@/lib/attachments"
 import { describeSchedule, nextRun } from "@/lib/schedule"
 import { listSkills, readSkill, SkillError } from "@/lib/skills"
-import type { ActionApproval } from "@/lib/mcp/approval"
-import { holdOrRun } from "@/lib/mcp/guard"
 import { getSetting } from "@/lib/config"
+import type { ActionApproval } from "@/lib/mcp/approval"
+import { renderApprovalPreview } from "@/lib/mcp/approval-preview"
+import { holdOrRun } from "@/lib/mcp/guard"
 import {
   decideWebApproval,
   fetchTarget,
@@ -39,6 +40,12 @@ import {
   type VaultItemView,
   type VaultKind,
 } from "@/lib/vault"
+import {
+  assessLoginFill,
+  loginApprovalArgs,
+  vaultFillForModel,
+  vaultFillOutput,
+} from "@/lib/vault-fill"
 import { forgetAgentNote, saveAgentNote, searchMemories } from "@/lib/memory"
 import { webFetch, webSearch } from "@/lib/web"
 import {
@@ -401,7 +408,7 @@ export function createVaultTools(env: ToolEnv) {
 
     vault_fill: tool({
       description:
-        "Type a value from the person's vault into a field on your desktop, without you ever seeing it. Click the field first, or pass x and y to have it clicked. A login only fills on its own site; a card or UPI ID only after the person approved the payment with request_payment_approval, and only on the site they approved. The field then shows dots. Returns no screenshot: take one with screen_capture to check the form.",
+        "Type a value from the person's vault into a field on your desktop, without you ever seeing it. Click the field first, or pass x and y to have it clicked. A login fills only on the site it was saved for (the page's real origin, same registrable domain), and only after the person approves that fill: the call waits, they see the item's label and the page's host, never the secret, and you call vault_fill again with the same arguments once they approve. A card or UPI ID still needs request_payment_approval, and only fills on the site they approved. The field then shows dots. Returns no screenshot and never the value: take one with screen_capture to check the form.",
       inputSchema: z.object({
         id: z
           .string()
@@ -419,10 +426,41 @@ export function createVaultTools(env: ToolEnv) {
         if (!item)
           throw new Error("There's no vault item with that id. Check vault_list.")
         const where = await page()
-        if (item.kind === "login" && !hostMatches(where?.host ?? null, item.site)) {
-          throw new Error(
-            `"${item.label}" is a login for ${item.site}, but the browser is on ${where?.host ?? "no website"}. Logins only fill on their own site.`
-          )
+        const step = assessLoginFill({
+          kind: item.kind,
+          label: item.label,
+          site: item.site,
+          field,
+          pageHost: where?.host ?? null,
+          approved: false,
+        })
+        if (step.action === "refuse") throw new Error(step.message)
+        if (step.action === "ask") {
+          const args = loginApprovalArgs({
+            id,
+            field,
+            host: step.host,
+            label: item.label,
+            x,
+            y,
+          })
+          // The card and the hash come from these arguments. requestOrTake
+          // stores renderApprovalPreview, not a separate summary.
+          const hold = await holdOrRun(env, {
+            tool: "vault_fill",
+            summary: renderApprovalPreview("vault_fill", args),
+            args,
+          })
+          if (hold) return hold
+          const allowed = assessLoginFill({
+            kind: item.kind,
+            label: item.label,
+            site: item.site,
+            field,
+            pageHost: where?.host ?? null,
+            approved: true,
+          })
+          if (allowed.action === "refuse") throw new Error(allowed.message)
         }
         if (item.kind === "card" || item.kind === "upi") {
           const approval = activeApproval(env.threadId, item.id)
@@ -445,12 +483,9 @@ export function createVaultTools(env: ToolEnv) {
         await typeSecret(agentId(), value)
         await maskFocusedField(agentId())
         markVaultUsed(item.id)
-        return {
-          filled: field.replace(/_/g, " "),
-          item: item.hint,
-          site: where?.host ?? null,
-        }
+        return vaultFillOutput(field, item.hint, where?.host ?? null)
       },
+      toModelOutput: ({ output }) => vaultFillForModel(output),
     }),
 
     request_payment_approval: tool({

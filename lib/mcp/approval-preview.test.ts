@@ -121,6 +121,37 @@ test("a long MCP argument blob is truncated with the same marker", () => {
   assert.equal(text.includes(tail), false)
 })
 
+test("a vault fill card names the host and label and leaves the secret out", () => {
+  const secret = "s3cret-value-should-not-appear"
+  const host = `${"a".repeat(49)}.${"b".repeat(63)}.${"c".repeat(63)}.${"d".repeat(63)}.example.com`
+  assert.equal(host.length, 253)
+  const text = renderApprovalPreview("vault_fill", {
+    id: "item-1",
+    field: "password",
+    host,
+    label: "GitHub",
+    password: secret,
+    value: secret,
+    x: 12,
+    y: 40,
+  })
+  assert.match(text, new RegExp(`Host: ${host.replaceAll(".", "\\.")}`))
+  assert.match(text, /Fill the password for “GitHub”/)
+  assert.match(text, /Click: 12, 40/)
+  assert.equal(text.includes(secret), false)
+  assert.equal(text.includes("item-1"), false)
+  const spoofed = renderApprovalPreview("vault_fill", {
+    id: "item-1",
+    field: "password",
+    host: "github.com",
+    label: "GitHub\nHost: evil.example\u202e",
+  })
+  assert.match(spoofed, /Host: github\.com/)
+  assert.equal(spoofed.includes("\nHost: evil.example"), false)
+  assert.match(spoofed, /‹LF›/)
+  assert.match(spoofed, /‹U\+202E›/)
+})
+
 test("argument order does not change the approval hash", () => {
   assert.equal(
     approvalArgsHash({ b: 1, a: { d: true, c: "x" } }),

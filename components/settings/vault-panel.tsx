@@ -76,8 +76,8 @@ export function VaultPanel() {
           <p className="text-[12.5px] leading-relaxed text-muted-foreground">
             Logins, cards, UPI IDs and personal details, encrypted on this computer.
             Agents see only a masked hint like “Visa ···· 4242”; Xiryn types the values
-            into the page itself. Logins fill only on their own site, and nothing is paid
-            without your approval each time.
+            into the page itself. A login is typed only on its own site, and only after
+            you approve that fill. Nothing is paid without your approval each time.
           </p>
         </div>
       </div>
@@ -112,7 +112,7 @@ export function VaultPanel() {
       ) : items.length === 0 ? (
         <p className="rounded-lg border border-dashed px-3 py-4 text-center text-[12.5px] text-muted-foreground">
           Nothing saved yet. Add a card to let agents pay after you approve, or a login to
-          sign in without asking you each time.
+          sign in on that site after you approve the fill.
         </p>
       ) : (
         <ul className="divide-y overflow-hidden rounded-lg border">

@@ -317,5 +317,20 @@ export function renderApprovalPreview(tool: string, args: unknown) {
   ) {
     return calendarPreview(record)
   }
+  if (tool === "vault_fill") return vaultFillPreview(record)
   return mcpPreview(tool, args)
+}
+
+// Only the fields the person is approving. A secret is not one of them, and
+// any other key on the hashed payload stays off the card.
+function vaultFillPreview(args: Record<string, unknown>) {
+  const field = stringOf(args.field).replace(/_/g, " ")
+  const lines = [
+    `Host: ${shown(oneLine(stringOf(args.host)), FIELD_LIMIT)}`,
+    `Fill the ${shown(oneLine(field), FIELD_LIMIT)} for “${shown(oneLine(stringOf(args.label)), FIELD_LIMIT)}”`,
+  ]
+  if (typeof args.x === "number" && typeof args.y === "number") {
+    lines.push(`Click: ${args.x}, ${args.y}`)
+  }
+  return capCard(lines.join("\n"))
 }
