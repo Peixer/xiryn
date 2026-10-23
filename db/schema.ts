@@ -69,6 +69,9 @@ export const threads = sqliteTable(
     id: id(),
     agentId: text().references(() => agents.id, { onDelete: "cascade" }),
     squadId: text().references(() => squads.id, { onDelete: "cascade" }),
+    // Subturn threads: not shown in the sidebar, cleaned up after the turn
+    parentThreadId: text(),
+    ephemeral: integer({ mode: "boolean" }).notNull().default(false),
     title: text(),
     preview: text(),
     activeAt: timestamp(),
