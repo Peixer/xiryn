@@ -1,6 +1,6 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto"
 
-import { getSetting, setSetting } from "@/lib/config"
+import { getSetting, getSettingSource, setSetting } from "@/lib/config"
 import { sealText, unsealText } from "@/lib/vault"
 
 // Built-in Gmail and Calendar. The refresh token is sealed with the vault key.
@@ -185,9 +185,23 @@ export async function exchangeGoogleCode(code: string, verifier: string) {
       "Google did not return a refresh token. Disconnect the app in your Google account and connect again."
     )
   }
+  // Only a token this server saved is replaced. A refresh token that exists
+  // only in the environment is left for Disconnect to deal with.
+  const previous =
+    getSettingSource("google.refreshToken") === "local"
+      ? getSetting("google.refreshToken")
+      : undefined
   setSetting("google.refreshToken", sealText(AAD, json.refresh_token))
   setSetting("google.disconnected", null)
-  accessCache = null
+  invalidateAccess()
+  if (!previous) return
+  try {
+    const old = unsealText(AAD, previous)
+    if (old !== json.refresh_token) await revokeRefreshToken(old)
+  } catch {
+    // The new grant is already stored. Failing to revoke the old one must
+    // not undo the connection.
+  }
 }
 
 async function revokeRefreshToken(token: string) {
@@ -209,34 +223,51 @@ async function revokeRefreshToken(token: string) {
 
 export async function disconnectGoogle() {
   const stored = getSetting("google.refreshToken")
-  accessCache = null
-  let revoked = !stored
+  let token: string | null = null
   if (stored) {
     try {
-      revoked = await revokeRefreshToken(unsealText(AAD, stored))
+      token = unsealText(AAD, stored)
     } catch {
-      revoked = false
+      token = null
     }
   }
-  setSetting("google.refreshToken", null)
+  // Drop the local grant before the network call. The flag is written first
+  // so a failure of the second write cannot fall back to an env token, and a
+  // refresh already in flight cannot cache a new access token afterwards.
+  invalidateAccess()
   setSetting("google.disconnected", DISCONNECTED)
+  setSetting("google.refreshToken", null)
+  let revoked = !stored
+  if (token) revoked = await revokeRefreshToken(token)
+  else if (stored) revoked = false
+  invalidateAccess()
   return { revoked }
 }
 
 let accessCache: { token: string; expiresAt: number } | null = null
+let accessEpoch = 0
+
+function invalidateAccess() {
+  accessEpoch += 1
+  accessCache = null
+}
+
+const notConnected =
+  "Google is not connected. Open Settings → Connectors and connect Gmail and Calendar."
 
 async function refreshToken() {
   const stored = storedRefreshToken()
-  if (!stored) {
-    throw new Error(
-      "Google is not connected. Open Settings → Connectors and connect Gmail and Calendar."
-    )
-  }
+  if (!stored) throw new Error(notConnected)
   return unsealText(AAD, stored)
 }
 
 export async function googleAccessToken() {
+  if (!storedRefreshToken()) {
+    accessCache = null
+    throw new Error(notConnected)
+  }
   if (accessCache && accessCache.expiresAt > Date.now() + 60_000) return accessCache.token
+  const epoch = accessEpoch
   const { clientId, clientSecret } = clientCredentials()
   const json = await tokenRequest(
     new URLSearchParams({
@@ -246,6 +277,10 @@ export async function googleAccessToken() {
       grant_type: "refresh_token",
     })
   )
+  if (epoch !== accessEpoch || !storedRefreshToken()) {
+    accessCache = null
+    throw new Error(notConnected)
+  }
   accessCache = {
     token: json.access_token!,
     expiresAt: Date.now() + (json.expires_in ?? 3600) * 1000,
