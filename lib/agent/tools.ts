@@ -969,7 +969,7 @@ export function createSubagentTools(env: ToolEnv) {
           .max(5)
           .describe(
             "List of self-contained task briefs to run in parallel. Each brief must be " +
-              "fully self-contained — subagents share no conversation history with the parent."
+            "fully self-contained — subagents share no conversation history with the parent."
           ),
         timeoutSeconds: z
           .number()
@@ -981,7 +981,11 @@ export function createSubagentTools(env: ToolEnv) {
           .describe("Wall-clock timeout per task in seconds. Default: 120."),
       }),
       execute: async ({ tasks, timeoutSeconds = 120 }): Promise<SpawnSubagentOutput> => {
-        const { runSubturn, isSubturnThread } = await import("@/lib/agent/subturn")
+        const {
+          runSubturn,
+          isSubturnThread,
+          MAX_CONCURRENT_PER_AGENT,
+        } = await import("@/lib/agent/subturn")
 
         if (isSubturnThread(env.threadId)) {
           return {
@@ -990,8 +994,7 @@ export function createSubagentTools(env: ToolEnv) {
                 task: tasks[0] ?? "",
                 result: "",
                 ok: false,
-                error:
-                  "spawn_subagent cannot be called from inside a subturn (max depth = 1).",
+                error: "spawn_subagent cannot be called from inside a subturn (max depth = 1).",
                 steps: 0,
                 durationMs: 0,
                 costUsd: null,
@@ -1002,12 +1005,14 @@ export function createSubagentTools(env: ToolEnv) {
         }
 
         const agent = env.current()
-        const timeoutMs = (timeoutSeconds ?? 120) * 1000
+        // Clamp to MAX_CONCURRENT_PER_AGENT so the tool can't exceed the per-agent limit
+        const cappedTasks = tasks.slice(0, MAX_CONCURRENT_PER_AGENT)
+        const timeoutMs = Math.min((timeoutSeconds ?? 120) * 1000, 300_000)
 
         const results = await Promise.all(
-          tasks.map((task) =>
-            runSubturn({ task, agent, parentThreadId: env.threadId, timeoutMs })
-              .then((r): SubagentTaskResult => ({
+          cappedTasks.map((task) =>
+            runSubturn({ task, agent, parentThreadId: env.threadId, timeoutMs }).then(
+              (r): SubagentTaskResult => ({
                 task: r.task,
                 result: r.text,
                 ok: r.ok,
@@ -1015,16 +1020,22 @@ export function createSubagentTools(env: ToolEnv) {
                 steps: r.steps,
                 durationMs: r.durationMs,
                 costUsd: r.costUsd,
-              }))
-              .catch((err: unknown): SubagentTaskResult => ({
+              })
+            ).catch(
+              (err: unknown): SubagentTaskResult => ({
                 task,
                 result: "",
                 ok: false,
-                error: err instanceof Error ? err.message : String(err),
+                // Sanitize: only first line, no paths — keep model output safe
+                error: (err instanceof Error ? err.message : String(err))
+                  .split("\n")[0]
+                  .replace(/\/[^\s]+/g, "[path]")
+                  .slice(0, 200),
                 steps: 0,
                 durationMs: 0,
                 costUsd: null,
-              }))
+              })
+            )
           )
         )
 
