@@ -25,6 +25,16 @@ const integrationSettings = {
   "usage.agentBudgets": { env: null, internal: true },
   // Operating-system notifications when no Xiryn tab is open: "on" or "off"
   "notify.desktop": { env: "XIRYN_DESKTOP_NOTIFY", fallback: "on" },
+  // POST a short notice when a task finishes or needs you. The URL is a secret.
+  // Format: ntfy, slack, or json. Triggers: finished, failed, approval,
+  // takeover, secret — or "none". Preview text is off unless set to "on".
+  "notify.webhookUrl": { env: "XIRYN_NOTIFY_WEBHOOK_URL", secret: true },
+  "notify.webhookFormat": { env: "XIRYN_NOTIFY_WEBHOOK_FORMAT", fallback: "json" },
+  "notify.webhookTriggers": {
+    env: "XIRYN_NOTIFY_WEBHOOK_TRIGGERS",
+    fallback: "finished,failed,approval,takeover,secret",
+  },
+  "notify.webhookPreview": { env: "XIRYN_NOTIFY_WEBHOOK_PREVIEW", fallback: "off" },
   // JSON: prices the person set for models Xiryn doesn't know, by model spec
   "pricing.custom": { env: null, internal: true },
   // Limits for each agent's workstation container

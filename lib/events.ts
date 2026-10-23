@@ -38,8 +38,21 @@ export type XirynEvent =
 
 type Listener = (event: XirynEvent) => void
 
-const globalForEvents = globalThis as unknown as { __xirynEvents?: Set<Listener> }
+const globalForEvents = globalThis as unknown as {
+  __xirynEvents?: Set<Listener>
+  // Server listeners (the notification webhook) are not an open browser tab
+  __xirynEventBackground?: Set<Listener>
+}
 const listeners = (globalForEvents.__xirynEvents ??= new Set())
+const background = (globalForEvents.__xirynEventBackground ??= new Set())
+
+export function foregroundListenerCount() {
+  let count = 0
+  for (const listener of listeners) {
+    if (!background.has(listener)) count += 1
+  }
+  return count
+}
 
 export function emit(event: XirynEvent) {
   for (const listener of listeners) {
@@ -50,8 +63,9 @@ export function emit(event: XirynEvent) {
     }
   }
   // Every open Xiryn tab listens; with none open, the operating system
-  // shows it instead (Telegram turns are already on the person's phone)
-  if (listeners.size === 0 && event.via !== "telegram") desktopNotice(event)
+  // shows it instead (Telegram turns are already on the person's phone).
+  // A background listener is not a tab, so it must not suppress that.
+  if (foregroundListenerCount() === 0 && event.via !== "telegram") desktopNotice(event)
 }
 
 function desktopNotice(event: XirynEvent) {
@@ -75,10 +89,12 @@ function desktopNotice(event: XirynEvent) {
   }
 }
 
-export function subscribe(listener: Listener) {
+export function subscribe(listener: Listener, options?: { background?: boolean }) {
   listeners.add(listener)
+  if (options?.background) background.add(listener)
   return () => {
     listeners.delete(listener)
+    background.delete(listener)
   }
 }
 
