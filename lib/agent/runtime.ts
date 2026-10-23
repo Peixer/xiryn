@@ -5,7 +5,6 @@ import {
   streamText,
   toUIMessageStream,
   type LanguageModelUsage,
-  type ModelMessage,
   type ToolSet,
   type UIMessageChunk,
 } from "ai"
@@ -21,6 +20,7 @@ import {
   type Agent,
   type Squad,
 } from "@/db/schema"
+import { compactContext } from "@/lib/agent/compact"
 import { buildInstructions, type Capabilities } from "@/lib/agent/instructions"
 import {
   createDelegateTool,
@@ -299,69 +299,6 @@ function trimActionScreens(reply: XirynMessage): XirynMessage {
     })
     .reverse()
   return { ...reply, parts }
-}
-
-/* ─────────────────────── context compaction ─────────────────────
- * Every step of a tool loop resends the whole conversation. A desktop
- * task can take dozens of steps, each adding a screenshot or a fetched
- * page, so without care the input grows quadratically. Before each step
- * only the newest screenshots stay as images and only the newest tool
- * outputs stay whole; older ones shrink to a short stub.
- * ────────────────────────────────────────────────────────────────── */
-
-const IMAGES_KEPT = 2
-const OUTPUTS_KEPT = 6
-const STUB_CHARS = 600
-
-type ToolOutput = { type: string; value?: unknown }
-
-function shrink(output: ToolOutput, keepImage: boolean, keepFull: boolean): ToolOutput {
-  if (output.type === "content" && Array.isArray(output.value)) {
-    if (keepImage) return output
-    const text = (output.value as { type: string; text?: string }[])
-      .filter((part) => part.type === "text")
-      .map((part) => part.text)
-      .join(" ")
-    return { type: "text", value: `${text} [earlier screenshot omitted]`.trim() }
-  }
-  if (keepFull) return output
-  const raw =
-    typeof output.value === "string" ? output.value : JSON.stringify(output.value ?? "")
-  if (raw.length <= STUB_CHARS) return output
-  return {
-    type: "text",
-    value: `${raw.slice(0, STUB_CHARS)}… [${raw.length - STUB_CHARS} more characters of an earlier result trimmed]`,
-  }
-}
-
-function compactContext(input: ModelMessage[]): ModelMessage[] {
-  let images = 0
-  let outputs = 0
-  return input
-    .slice()
-    .reverse()
-    .map((message) => {
-      if (message.role !== "tool") return message
-      const content = message.content
-        .slice()
-        .reverse()
-        .map((part) => {
-          if (part.type !== "tool-result") return part
-          const output = part.output as ToolOutput
-          const isImage = output.type === "content"
-          const keepImage = isImage && images < IMAGES_KEPT
-          const keepFull = outputs < OUTPUTS_KEPT
-          if (isImage) images++
-          outputs++
-          return {
-            ...part,
-            output: shrink(output, keepImage, keepFull) as typeof part.output,
-          }
-        })
-        .reverse()
-      return { ...message, content }
-    })
-    .reverse()
 }
 
 /* ───────────────────────────── turns ───────────────────────────── */
