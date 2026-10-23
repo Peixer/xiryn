@@ -14,6 +14,7 @@ import {
   PlusIcon,
   SettingsIcon,
   UsersIcon,
+  BotIcon,
 } from "lucide-react"
 import { useTheme } from "next-themes"
 
@@ -136,6 +137,13 @@ export function CommandPalette() {
             <CommandItem value="new agent create" onSelect={() => openAgentDialog()}>
               <PlusIcon />
               New agent
+            </CommandItem>
+            <CommandItem
+              value="manage agents list delete remove"
+              onSelect={() => go("/agents")}
+            >
+              <BotIcon />
+              Manage agents
             </CommandItem>
             <CommandItem
               value="new squad create group"

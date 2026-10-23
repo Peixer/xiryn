@@ -1,20 +1,45 @@
 "use server"
 
-import { eq, notExists } from "drizzle-orm"
+import { eq } from "drizzle-orm"
+import { z } from "zod"
 import { revalidatePath } from "next/cache"
 
 import { db } from "@/db"
+import { agentInputSchema, agents, threads, type AgentInput } from "@/db/schema"
 import {
-  agentInputSchema,
-  agents,
-  squadMembers,
-  squads,
-  threads,
-  type AgentInput,
-} from "@/db/schema"
-import { stopRun } from "@/lib/agent/runtime"
+  DeleteAgentError,
+  deleteAgentSafely,
+  type DeleteAgentDeps,
+} from "@/lib/agent-admin"
+import { activeThreadIds, stopRun } from "@/lib/agent/runtime"
 import { engineSnapshot } from "@/lib/docker"
-import { deleteWorkstation } from "@/lib/workstation"
+import { deleteWorkstation, workstationLeftovers } from "@/lib/workstation"
+
+const deleteAgentSchema = z.object({
+  agentId: z.string().min(1).max(64),
+  stopRunning: z.boolean().optional(),
+})
+
+const realDeps: DeleteAgentDeps = {
+  activeThreadIds,
+  stopRun,
+  engineReady: () => engineSnapshot()?.state === "ready",
+  destroyWorkstation: async (agentId) => {
+    try {
+      await deleteWorkstation(agentId)
+    } catch (error) {
+      // The background janitor retries: it removes machines with no agent
+      console.error("[xiryn] couldn't remove the workstation yet:", error)
+    }
+  },
+  workstationRemains: async (agentId) => {
+    try {
+      return await workstationLeftovers(agentId)
+    } catch {
+      return true
+    }
+  },
+}
 
 function normalize(values: AgentInput) {
   const data = agentInputSchema.parse(values)
@@ -54,27 +79,35 @@ export async function updateAgent(agentId: string, values: AgentInput) {
   return agent
 }
 
-// Deletes the agent, its threads, its memory — and its workstation
-export async function deleteAgent(agentId: string) {
-  const agent = db.select().from(agents).where(eq(agents.id, agentId)).get()
-  if (!agent) throw new Error("Agent not found")
-
-  const owned = db
-    .select({ id: threads.id })
-    .from(threads)
-    .where(eq(threads.agentId, agentId))
-    .all()
-  for (const thread of owned) stopRun(thread.id)
-
-  // The machine and its files go too. With Docker stopped, the cleanup that
-  // runs in the background removes them once it's back.
-  if (engineSnapshot()?.state === "ready") await deleteWorkstation(agentId)
-  db.delete(agents).where(eq(agents.id, agentId)).run()
-  // A squad left with nobody in it has nothing to show
-  db.delete(squads)
-    .where(
-      notExists(db.select().from(squadMembers).where(eq(squadMembers.squadId, squads.id)))
-    )
-    .run()
-  revalidatePath("/", "layout")
+// Deletes the agent, its threads, its memory, its routines — and its
+// workstation. Refuses while the agent is mid-turn unless told to stop it.
+// Failures come back as values: in a production build Next replaces the
+// message of an error thrown from a server action with a generic one.
+export async function deleteAgent(agentId: string, options?: { stopRunning?: boolean }) {
+  // Read the flag off `options` explicitly. Spreading it would let a second
+  // `agentId` field replace the one this function was called with.
+  const input = deleteAgentSchema.safeParse({
+    agentId,
+    stopRunning: options?.stopRunning,
+  })
+  if (!input.success) {
+    return { ok: false as const, code: "invalid" as const, error: "Invalid request." }
+  }
+  try {
+    const result = await deleteAgentSafely(input.data.agentId, realDeps, {
+      stopRunning: input.data.stopRunning,
+    })
+    revalidatePath("/", "layout")
+    return { ok: true as const, ...result }
+  } catch (error) {
+    if (error instanceof DeleteAgentError) {
+      return { ok: false as const, code: error.code, error: error.message }
+    }
+    console.error("[xiryn] couldn't delete the agent:", error)
+    return {
+      ok: false as const,
+      code: "failed" as const,
+      error: error instanceof Error ? error.message : "Couldn't delete the agent.",
+    }
+  }
 }
