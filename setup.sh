@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Xiryn — one-step setup for macOS and Linux.
 #
-#   curl -fsSL https://raw.githubusercontent.com/SouravBeraAkaSpeed/xiryn/main/setup.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/Peixer/xiryn/main/setup.sh | bash
 #
 # or, inside a clone:  ./setup.sh
 #
@@ -12,13 +12,13 @@
 # --local (or XIRYN_LOCAL=1) also sets up free local models with Ollama, so
 # no API key is needed:
 #
-#   curl -fsSL https://raw.githubusercontent.com/SouravBeraAkaSpeed/xiryn/main/setup.sh | bash -s -- --local
+#   curl -fsSL https://raw.githubusercontent.com/Peixer/xiryn/main/setup.sh | bash -s -- --local
 #
 # --model=qwen3.5:9b picks the local model yourself.
 
 set -euo pipefail
 
-REPO="https://github.com/SouravBeraAkaSpeed/xiryn.git"
+REPO="https://github.com/Peixer/xiryn.git"
 NODE_MAJOR=22
 
 bold=$'\033[1m'; dim=$'\033[2m'; green=$'\033[32m'; yellow=$'\033[33m'; red=$'\033[31m'; reset=$'\033[0m'

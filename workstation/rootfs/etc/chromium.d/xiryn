@@ -5,6 +5,9 @@
 # --remote-debugging-pipe and is the only process that speaks the protocol.
 # It answers two questions: which page is focused, and please mask that
 # field. A TCP port would let any process in the container read input values.
-# The workstation user still has passwordless sudo and can launch Chromium
-# on its own; this file only removes the default open port.
+# New containers drop every capability, so sudo cannot start a debugging
+# port. The workstation user still owns this process and can launch Chromium
+# on its own; this file only removes the default open port. Chromium is
+# started through /usr/bin/chromium, which reads this file, including
+# --no-sandbox, so the browser does not need a capability or setuid.
 export CHROMIUM_FLAGS="$CHROMIUM_FLAGS --no-sandbox --test-type --disable-dev-shm-usage --no-first-run --no-default-browser-check --password-store=basic --start-maximized --hide-crash-restore-bubble --user-data-dir=/home/xiryn/.config/xiryn-browser"

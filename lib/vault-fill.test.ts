@@ -3,6 +3,8 @@ import { test } from "node:test"
 
 import { pageFromTargets } from "./page-origin"
 import { sameSite } from "./etld"
+import { ARGS_DIFFER_REASON } from "@/lib/mcp/approval"
+import { renderApprovalPreview } from "@/lib/mcp/approval-preview"
 import {
   assessLoginFill,
   loginApprovalArgs,
@@ -30,8 +32,17 @@ test("a login fill asks for approval and the card names the label and host", () 
     id: "item-1",
     field: "password",
     host: step.host,
+    label: "GitHub",
   })
   assert.equal(JSON.stringify({ step, args }).includes(secret), false)
+  const card = renderApprovalPreview("vault_fill", {
+    ...args,
+    password: secret,
+    value: secret,
+  })
+  assert.match(card, /Host: github\.com/)
+  assert.match(card, /GitHub/)
+  assert.equal(card.includes(secret), false)
 })
 
 test("a matching login still asks every time until this call is approved", () => {
@@ -65,6 +76,15 @@ test("an approved login fills only a public result with no secret", () => {
   assert.equal(JSON.stringify(result).includes(secret), false)
   const told = vaultFillForModel({ ...result, value: secret, password: secret })
   assert.equal(told.value.includes(secret), false)
+  const refused = vaultFillForModel({
+    status: "rejected",
+    reason: ARGS_DIFFER_REASON,
+    value: secret,
+    password: secret,
+  })
+  assert.equal(refused.value.includes(secret), false)
+  assert.equal(refused.value.includes(ARGS_DIFFER_REASON), true)
+  assert.equal(refused.value.includes("filled"), false)
 })
 
 test("an origin that is not the saved site is refused, approval or not", () => {

@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation"
 import { formatDistanceToNowStrict } from "date-fns"
 import {
   ArrowUpRightIcon,
+  DownloadIcon,
   PencilIcon,
   PlusIcon,
   PowerIcon,
@@ -21,18 +22,42 @@ import {
   workstationStatus,
 } from "@/actions/workstation"
 import { reportDeletion } from "@/components/agents/delete-feedback"
+import { ImportAgentButton } from "@/components/agents/import-agent-dialog"
 import { Confirm } from "@/components/confirm"
 import { Glyph } from "@/components/glyph"
 import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
 import { toast } from "@/components/ui/toast"
 import { useWorkspace } from "@/components/workspace/context"
+import {
+  agentExportFilename,
+  exportAgentDocument,
+  serializePortableAgent,
+} from "@/lib/agent-portable"
 import type { WorkstationStatus } from "@/lib/workstation"
 import { cn } from "@/lib/utils"
 import type { AgentOverview } from "@/queries/workspace"
 
 type Machine =
   { state: "loading" } | { state: "error"; error: string } | WorkstationStatus
+
+function downloadAgent(agent: AgentOverview) {
+  const json = serializePortableAgent(
+    exportAgentDocument({
+      name: agent.name,
+      role: agent.role,
+      instructions: agent.instructions,
+      model: agent.model,
+      glyph: agent.glyph,
+    })
+  )
+  const url = URL.createObjectURL(new Blob([json], { type: "application/json" }))
+  const link = document.createElement("a")
+  link.href = url
+  link.download = agentExportFilename(agent.name)
+  link.click()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
 
 function plural(n: number, one: string, many = `${one}s`) {
   return `${n} ${n === 1 ? one : many}`
@@ -249,6 +274,10 @@ function AgentCard({
           <PencilIcon data-icon="inline-start" />
           Edit
         </Button>
+        <Button size="sm" variant="ghost" onClick={() => downloadAgent(agent)}>
+          <DownloadIcon data-icon="inline-start" />
+          Export
+        </Button>
         {(machine.state === "running" || machine.state === "starting") && (
           <Button size="sm" variant="ghost" disabled={busy === "stop"} onClick={stop}>
             {busy === "stop" ? (
@@ -356,10 +385,13 @@ export function AgentsView({ agents }: { agents: AgentOverview[] }) {
     return (
       <div className="flex flex-col items-start gap-3 rounded-xl border border-dashed px-5 py-6 text-[13px] text-muted-foreground">
         You have no agents yet.
-        <Button size="sm" onClick={() => openAgentDialog()}>
-          <PlusIcon data-icon="inline-start" />
-          Create your first agent
-        </Button>
+        <span className="flex flex-wrap gap-2">
+          <Button size="sm" onClick={() => openAgentDialog()}>
+            <PlusIcon data-icon="inline-start" />
+            Create your first agent
+          </Button>
+          <ImportAgentButton takenNames={[]} />
+        </span>
       </div>
     )
   }
@@ -371,6 +403,7 @@ export function AgentsView({ agents }: { agents: AgentOverview[] }) {
           <PlusIcon data-icon="inline-start" />
           New agent
         </Button>
+        <ImportAgentButton takenNames={agents.map((agent) => agent.name)} />
         <Button
           size="sm"
           variant="ghost"

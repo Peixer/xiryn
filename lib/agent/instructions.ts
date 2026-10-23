@@ -1,12 +1,10 @@
-import { asc, eq } from "drizzle-orm"
-
-import { db } from "@/db"
-import { memories, type Agent, type Squad } from "@/db/schema"
+import type { Agent, Squad } from "@/db/schema"
+import { UNTRUSTED_CONTENT_RULE } from "@/lib/agent/untrusted"
+import { memoryPrompt } from "@/lib/memory"
+import { formatSkillCatalog, loadSkillCatalog } from "@/lib/skills"
 
 // The system prompt is assembled fresh for every turn (and again when a
 // squad delegates), so edits to an agent and new memories apply at once.
-
-const MEMORY_BUDGET = 12_000
 
 export type Capabilities = {
   workstation: boolean
@@ -17,36 +15,6 @@ export type Capabilities = {
   routine?: string
   // Connected mail, calendar and MCP tools, when any are configured
   connectors?: string
-}
-
-function memoryBlock(agentId: string) {
-  const notes = db
-    .select({ id: memories.id, content: memories.content, createdAt: memories.createdAt })
-    .from(memories)
-    .where(eq(memories.agentId, agentId))
-    .orderBy(asc(memories.createdAt))
-    .all()
-
-  if (notes.length === 0) {
-    return "Your memory is empty. Nothing has been saved yet."
-  }
-
-  // Newest notes win when the budget runs out
-  const lines: string[] = []
-  let used = 0
-  for (const note of [...notes].reverse()) {
-    const line = `- [${note.id}] ${note.content}`
-    if (used + line.length > MEMORY_BUDGET) break
-    lines.unshift(line)
-    used += line.length
-  }
-  const dropped = notes.length - lines.length
-  return [
-    dropped > 0 ? `(${dropped} older notes are not shown.)` : null,
-    lines.join("\n"),
-  ]
-    .filter(Boolean)
-    .join("\n")
 }
 
 export function buildInstructions(
@@ -71,21 +39,24 @@ ${agent.instructions.trim()}`,
     `# What you can do
 ${[
   capabilities.workstation
-    ? "- **Workstation.** You own a persistent Linux machine (a Debian container on the person's computer, fully separate from their own desktop and files) with a shell, passwordless `sudo`, a home folder that persists, and a 1280×800 graphical desktop with Chromium. It has normal internet access through the person's own connection. Nobody else uses it, and what you leave there stays. Prefer `shell` and the `fs_*` tools; reach for the desktop (`screen_capture`, `pointer_*`, `key_*`) only for work that needs a screen. Look with `screen_capture` before your first action; after that, every desktop action returns a screenshot of its result, so you rarely need to look separately. Chromium is usually already open; if not, run `browser` (it returns immediately) or click the browser icon in the top bar. Use `screen_share` only when the person asks to see the screen."
+    ? "- **Workstation.** You own a persistent Linux machine (a Debian container on the person's computer, fully separate from their own desktop and files) with a shell, a home folder that persists, and a 1280×800 graphical desktop with Chromium. New containers drop every capability, so `sudo` does not work and you cannot install packages that need root. It has normal internet access through the person's own connection. Nobody else uses it, and what you leave there stays. Prefer `shell` and the `fs_*` tools; reach for the desktop (`screen_capture`, `pointer_*`, `key_*`) only for work that needs a screen. Look with `screen_capture` before your first action; after that, every desktop action returns a screenshot of its result, so you rarely need to look separately. Chromium is usually already open; if not, run `browser` (it returns immediately) or click the browser icon in the top bar. Use `screen_share` only when the person asks to see the screen."
     : "- **No workstation.** Docker isn't available on this computer, so you cannot run commands or use a desktop. If a task needs one, say so and suggest installing Docker (Settings → Workstations shows how).",
   capabilities.web
     ? "- **Web.** `web_search` finds pages; `web_fetch` reads one as markdown. Cite the URLs you rely on."
     : capabilities.workstation
       ? "- **Web through your browser.** There are no web search tools (Firecrawl isn't configured), so search and read pages with Chromium on your desktop, or `curl` from the shell for plain pages and APIs."
       : "- **No web access.** Firecrawl is not configured; work from what you know and say when something may be out of date.",
-  "- **Memory.** Notes you save with `memory_write` persist across every thread you are part of. Remove stale ones with `memory_forget`.",
+  "- **Memory.** Notes you save with `memory_write` persist across every thread you are part of. Remove stale ones of yours with `memory_forget`. Search older notes, including shared notes, with `memory_search`. Shared notes are written by the person; you cannot create, edit, or delete them.",
+  "- **Skills.** Reusable playbooks from the Skills page are catalogued below. `skill_read` loads one in full. You cannot create or edit them.",
 ].join("\n")}`,
 
     `# Memory
-These are the notes you have saved. They are already loaded — no tool call needed to read them.
-${memoryBlock(agent.id)}
+These are the notes already loaded — no tool call needed to read the ones below. Older notes that do not fit stay in memory; find them with \`memory_search\`.
+${memoryPrompt(agent.id)}
 
-Save a note in the same turn you learn something worth knowing later (who the person is, what they are working on, preferences, decisions, standing instructions), and always when they ask you to remember something. Saying you will remember is not the same as saving. Skip small talk and details that only matter right now.`,
+Save a note in the same turn you learn something worth knowing later (who the person is, what they are working on, preferences, decisions, standing instructions), and always when they ask you to remember something. Saying you will remember is not the same as saving. Skip small talk and details that only matter right now. A note you save is yours alone. Shared notes apply to every agent, and only the person can add, edit, or delete those from the Memory panel.`,
+
+    skillsBlock(),
 
     squad && squadBlock(agent, squad),
 
@@ -115,6 +86,9 @@ Your browser keeps sign-ins between tasks, so check whether you're already signe
 - **CAPTCHA, or a choice only they can make on screen:** get the page ready and call \`request_takeover\`.
 Each of these requests ends your turn. Their answer arrives as a message; take a fresh \`screen_capture\`, work out what changed, and carry on.`,
 
+    `# Untrusted content
+${UNTRUSTED_CONTENT_RULE}`,
+
     `# How you work
 - Do the task instead of describing how it could be done. When you need more than one step, keep going until it is finished or you are truly blocked.
 - Your reply is the result. The person may be reading on their phone or not watching your screen at all, so never answer with "see the screen" or "the results are open": write what you found into your message — every option with its details (for flights: airline, flight number, departure and arrival times, duration, stops, price), plus where it came from. Only point at the screen when the request is about the screen itself.
@@ -135,6 +109,18 @@ export type SquadContext = {
   delegatedFrom: string[]
   // What the last of them asked for when handing over
   brief?: string
+}
+
+function skillsBlock() {
+  try {
+    return formatSkillCatalog(loadSkillCatalog())
+  } catch (error) {
+    console.error(
+      "[xiryn] skills: catalog skipped:",
+      error instanceof Error ? error.message : "unknown error"
+    )
+    return "# Skills\nThe skills library could not be read this turn. Use the Skills page to check it."
+  }
 }
 
 function squadBlock(

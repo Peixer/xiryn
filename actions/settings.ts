@@ -2,7 +2,15 @@
 
 import { revalidatePath } from "next/cache"
 
+import { normalizeAllowlistInput } from "@/lib/agent/untrusted"
 import { isWritableSetting, setSetting } from "@/lib/config"
+import { extensionNames } from "@/lib/mcp/stdio-policy"
+import {
+  assertWebhookFormat,
+  assertWebhookPreview,
+  assertWebhookTriggers,
+  assertWebhookUrl,
+} from "@/lib/notify-webhook"
 import {
   parseExtraRegions,
   parseMaxOutputOverrides,
@@ -19,8 +27,9 @@ function reason(error: unknown) {
 // Values are only ever written here and read on the server; the browser
 // only ever sees masked versions of secrets
 export async function saveSettings(values: Record<string, string | null>) {
-  for (const [key, value] of Object.entries(values)) {
+  for (const [key, raw] of Object.entries(values)) {
     if (!isWritableSetting(key)) throw new Error(`Unknown setting: ${key}`)
+    let value = raw
     if (key === "model.default" && value && !parseModelSpec(value.trim())) {
       throw new Error(
         "The default model must look like provider/model, e.g. openai/gpt-6-luna."
@@ -48,6 +57,10 @@ export async function saveSettings(values: Record<string, string | null>) {
     if (key === "notify.desktop" && value && !/^(on|off)$/.test(value.trim())) {
       throw new Error("Desktop notifications are either on or off.")
     }
+    if (key === "notify.webhookUrl" && value?.trim()) assertWebhookUrl(value)
+    if (key === "notify.webhookFormat" && value?.trim()) assertWebhookFormat(value)
+    if (key === "notify.webhookTriggers" && value?.trim()) assertWebhookTriggers(value)
+    if (key === "notify.webhookPreview" && value?.trim()) assertWebhookPreview(value)
     if (key === "updates.check" && value && !/^(on|off)$/.test(value.trim())) {
       throw new Error("The update check is either on or off.")
     }
@@ -77,6 +90,20 @@ export async function saveSettings(values: Record<string, string | null>) {
       !/^(on|off)$/.test(value.trim())
     ) {
       throw new Error("A connector is either on or off.")
+    }
+    if (
+      key === "security.webApproval" &&
+      value &&
+      !/^(off|new-domains|always)$/.test(value.trim())
+    ) {
+      throw new Error("Web approval is off, new-domains or always.")
+    }
+    if (key === "security.webAllowlist" && value?.trim()) {
+      value = normalizeAllowlistInput(value)
+    }
+    if (key === "mcp.allowedCommands" && value) {
+      const names = extensionNames(value)
+      if (!names.ok) throw new Error(names.error)
     }
     setSetting(key, value)
   }

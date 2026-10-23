@@ -39,8 +39,9 @@ RUN arch="$(dpkg --print-architecture)" \
  && chmod +x /usr/local/bin/cloudflared \
  && node --version && cloudflared --version
 
-# The agent works as an ordinary user with passwordless sudo: it can install
-# what a task needs, and none of it touches your computer
+# The agent works as an ordinary user. This image still has a sudoers file,
+# but new containers drop every capability, so sudo does not work.
+# None of the agent's files touch your computer.
 RUN useradd --create-home --uid 1000 --shell /bin/bash xiryn \
  && mkdir -p /tmp/.X11-unix && chmod 1777 /tmp/.X11-unix \
  && echo 'xiryn ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/xiryn \

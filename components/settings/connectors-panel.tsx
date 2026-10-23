@@ -3,13 +3,24 @@
 import * as React from "react"
 import { useRouter } from "next/navigation"
 
-import { disconnectGoogleAccount, saveMcpConfig } from "@/actions/connectors"
+import {
+  disconnectGoogleAccount,
+  issueMcpStdioConfirmation,
+  saveMcpConfig,
+} from "@/actions/connectors"
 import { saveSettings } from "@/actions/settings"
+import { Confirm } from "@/components/confirm"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Spinner } from "@/components/ui/spinner"
 import { toast } from "@/components/ui/toast"
+import { DEFAULT_MCP_LAUNCHERS } from "@/lib/mcp/stdio-policy"
 import type { SettingsData } from "@/queries/workspace"
+
+type StdioReview = {
+  text: string
+  launches: { id: string; command: string; args: string[] }[]
+}
 
 const EXAMPLE = `{
   "servers": [
@@ -31,7 +42,9 @@ export function ConnectorsPanel({
 }) {
   const router = useRouter()
   const [text, setText] = React.useState(connectors.mcpText)
+  const [allowed, setAllowed] = React.useState(connectors.allowedCommands.value ?? "")
   const [pending, setPending] = React.useState<string | null>(null)
+  const [review, setReview] = React.useState<StdioReview | null>(null)
   const [clientId, setClientId] = React.useState("")
   const [clientSecret, setClientSecret] = React.useState("")
 
@@ -56,6 +69,64 @@ export function ConnectorsPanel({
     } finally {
       setPending(null)
     }
+  }
+
+  const saveAllowed = async () => {
+    setPending("allow")
+    try {
+      await saveSettings({
+        "mcp.allowedCommands": allowed.trim() ? allowed.trim() : null,
+      })
+      toast.add({ type: "success", title: "Extra programs saved" })
+      router.refresh()
+    } catch (error) {
+      toast.add({
+        type: "error",
+        title: "Couldn't save",
+        description: error instanceof Error ? error.message : String(error),
+      })
+    } finally {
+      setPending(null)
+    }
+  }
+
+  const saveMcp = async () => {
+    setPending("mcp")
+    try {
+      const result = await saveMcpConfig(text)
+      if (!result.ok) {
+        if (result.confirm?.length) {
+          setReview({ text, launches: result.confirm })
+          return
+        }
+        toast.add({ type: "error", title: "Couldn't save", description: result.error })
+        return
+      }
+      toast.add({ type: "success", title: "MCP servers saved" })
+      router.refresh()
+    } finally {
+      setPending(null)
+    }
+  }
+
+  const confirmMcp = async () => {
+    if (!review) return
+    const issued = await issueMcpStdioConfirmation(review.text)
+    if (!issued.ok) {
+      toast.add({ type: "error", title: "Couldn't save", description: issued.error })
+      return
+    }
+    const result = await saveMcpConfig(review.text, issued.token)
+    if (!result.ok) {
+      if (result.confirm?.length) {
+        setReview({ text: review.text, launches: result.confirm })
+      }
+      toast.add({ type: "error", title: "Couldn't save", description: result.error })
+      return
+    }
+    setText(review.text)
+    toast.add({ type: "success", title: "MCP servers saved" })
+    router.refresh()
   }
 
   const toggle = async (key: "connectors.gmail" | "connectors.calendar", on: boolean) => {
@@ -183,8 +254,33 @@ export function ConnectorsPanel({
             Put secrets in the environment and refer to them as{" "}
             <span className="font-mono">{"${ENV:NAME}"}</span>. Write and send tools wait
             for approval unless a server sets <span className="font-mono">approval</span>{" "}
-            to <span className="font-mono">none</span>.
+            to <span className="font-mono">none</span>. A new or changed stdio command
+            runs on this computer and must be confirmed. Launchers:{" "}
+            {DEFAULT_MCP_LAUNCHERS.join(", ")}.
           </p>
+        </div>
+        <label className="flex flex-col gap-1.5">
+          <span className="label-mono">
+            Extra stdio programs · XIRYN_MCP_ALLOWED_COMMANDS
+          </span>
+          <input
+            value={allowed}
+            onChange={(event) => setAllowed(event.target.value)}
+            placeholder="optional names, comma-separated — defaults stay allowed"
+            spellCheck={false}
+            className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 font-mono text-[12px] outline-none placeholder:text-faint focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/40"
+          />
+        </label>
+        <div>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={pending === "allow"}
+            onClick={saveAllowed}
+          >
+            {pending === "allow" && <Spinner data-icon="inline-start" />}
+            Save extra programs
+          </Button>
         </div>
         {connectors.servers.length > 0 && (
           <ul className="flex flex-col gap-1 font-mono text-[11px] text-muted-foreground">
@@ -207,29 +303,41 @@ export function ConnectorsPanel({
           className="w-full rounded-lg border border-input bg-transparent px-3 py-2 font-mono text-[12px] leading-relaxed outline-none placeholder:text-faint focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/40"
         />
         <div>
-          <Button
-            size="sm"
-            disabled={pending === "mcp"}
-            onClick={async () => {
-              setPending("mcp")
-              const result = await saveMcpConfig(text)
-              setPending(null)
-              if (!result.ok) {
-                toast.add({
-                  type: "error",
-                  title: "Couldn't save",
-                  description: result.error,
-                })
-                return
-              }
-              toast.add({ type: "success", title: "MCP servers saved" })
-              router.refresh()
-            }}
-          >
+          <Button size="sm" disabled={pending === "mcp"} onClick={saveMcp}>
             {pending === "mcp" && <Spinner data-icon="inline-start" />}
             Save MCP servers
           </Button>
         </div>
+        <Confirm
+          open={review !== null}
+          onOpenChange={(open) => {
+            if (!open) setReview(null)
+          }}
+          title="Run this command on the host?"
+          description={
+            <div className="flex flex-col gap-3 text-left">
+              <p>
+                This starts a process on the computer running Xiryn, as the user Xiryn
+                runs as. It is not inside an agent container. Confirm only the command and
+                arguments shown here.
+              </p>
+              <ul className="flex flex-col gap-2">
+                {(review?.launches ?? []).map((launch) => (
+                  <li
+                    key={launch.id}
+                    className="rounded-lg border bg-muted/40 p-2 font-mono text-[11px] break-all"
+                  >
+                    <span className="label-mono">{launch.id}</span>
+                    <div>command: {launch.command}</div>
+                    <div>args: {JSON.stringify(launch.args)}</div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          }
+          action="Run on host"
+          onConfirm={confirmMcp}
+        />
       </div>
     </div>
   )

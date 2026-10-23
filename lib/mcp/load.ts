@@ -2,8 +2,13 @@ import { createMCPClient, type MCPClient } from "@ai-sdk/mcp"
 import { Experimental_StdioMCPTransport } from "@ai-sdk/mcp/mcp-stdio"
 import { tool, type ToolSet } from "ai"
 
+import { toUntrustedModelOutput } from "@/lib/agent/untrusted"
 import type { ToolEnv } from "@/lib/agent/tools"
+import { getSetting } from "@/lib/config"
+import { renderApprovalPreview } from "@/lib/mcp/approval-preview"
 import { expandEnv, readMcpConfig, type McpServerConfig } from "@/lib/mcp/config"
+import { stdioPathRefusal } from "@/lib/mcp/stdio-path"
+import { mcpCommandRefusal, mcpEnvRefusal } from "@/lib/mcp/stdio-policy"
 import { createGoogleTools } from "@/lib/mcp/google-tools"
 import { holdOrRun } from "@/lib/mcp/guard"
 import { connectorEnabled } from "@/lib/mcp/google"
@@ -11,8 +16,8 @@ import { toolNeedsApproval } from "@/lib/mcp/policy"
 
 // External MCP clients stay open for the life of the process. Wrappers are
 // built per turn so an approval is tied to that thread. stdio servers run on
-// the Xiryn host, as the user who runs Xiryn, and only for commands written
-// in mcp.json — an agent cannot choose the command.
+// the Xiryn host, as the user who runs Xiryn, and only for an allowlisted
+// command written in mcp.json. An agent cannot choose the command.
 
 const globalForMcp = globalThis as unknown as {
   __xirynMcp?: Map<string, Promise<MCPClient>>
@@ -44,6 +49,15 @@ function childEnv(server: McpServerConfig) {
 
 async function openClient(server: McpServerConfig) {
   if (server.transport === "stdio") {
+    const refusal =
+      mcpCommandRefusal(
+        server.command ?? "",
+        server.args ?? [],
+        getSetting("mcp.allowedCommands")
+      ) ??
+      stdioPathRefusal(server.command ?? "") ??
+      mcpEnvRefusal(server.env)
+    if (refusal) throw new Error(refusal)
     return createMCPClient({
       name: "xiryn",
       transport: new Experimental_StdioMCPTransport({
@@ -119,13 +133,20 @@ async function toolsForServer(server: McpServerConfig, env: ToolEnv) {
         ) {
           const hold = await holdOrRun(env, {
             tool: exposed,
-            summary: `${server.id}: ${name}`,
+            summary: renderApprovalPreview(exposed, input),
             args: input,
           })
           if (hold) return hold
         }
-        return mcpTool.execute(input)
+        // A thrown message skips toModelOutput, so a server can put the
+        // injection in the error instead of the result. Return it as data.
+        try {
+          return await mcpTool.execute(input)
+        } catch (error) {
+          return { error: error instanceof Error ? error.message : String(error) }
+        }
       },
+      toModelOutput: ({ output }) => toUntrustedModelOutput(`mcp:${server.id}`, output),
     })
   }
   return { tools, names }

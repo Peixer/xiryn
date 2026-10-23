@@ -1,4 +1,5 @@
 import { sameSite } from "@/lib/etld"
+import { ARGS_DIFFER_REASON } from "@/lib/mcp/approval"
 
 // Whether vault_fill may type a login. Cards and UPI IDs are unchanged:
 // they still go through request_payment_approval. There is no per-item
@@ -47,13 +48,22 @@ export function loginApprovalArgs(input: {
   id: string
   field: string
   host: string
+  label: string
   x?: number
   y?: number
 }) {
-  const args: { id: string; field: string; host: string; x?: number; y?: number } = {
+  const args: {
+    id: string
+    field: string
+    host: string
+    label: string
+    x?: number
+    y?: number
+  } = {
     id: input.id,
     field: input.field,
     host: input.host,
+    label: input.label,
   }
   if (input.x !== undefined && input.y !== undefined) {
     args.x = input.x
@@ -88,6 +98,15 @@ export function vaultFillForModel(output: {
         status: "needs-approval",
         approvalId: typeof output.approvalId === "string" ? output.approvalId : "",
         summary: typeof output.summary === "string" ? output.summary : "",
+      }),
+    }
+  }
+  if (output.status === "rejected") {
+    return {
+      type: "text" as const,
+      value: JSON.stringify({
+        status: "rejected",
+        reason: output.reason === ARGS_DIFFER_REASON ? ARGS_DIFFER_REASON : "Refused.",
       }),
     }
   }

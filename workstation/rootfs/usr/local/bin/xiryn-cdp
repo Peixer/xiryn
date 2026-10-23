@@ -5,8 +5,9 @@
 // expression, so a shell in this container cannot read a filled password
 // by curling a well-known port.
 //
-// What this does not stop: the workstation user has passwordless sudo, so
-// it can kill this process and start Chromium itself with a debugging port.
+// What this does not stop: the workstation user owns this process. New
+// containers drop every capability, so sudo does not work, but that user can
+// still kill this process and start Chromium itself with a debugging port.
 
 import { spawn } from "node:child_process"
 import fs from "node:fs"

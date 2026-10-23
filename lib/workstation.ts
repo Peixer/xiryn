@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm"
 
 import { db } from "@/db"
 import { agents } from "@/db/schema"
+import { isInsideUploads, MAX_FILE_BYTES, UPLOADS_DIR } from "@/lib/attachments"
 import { getSetting, setSetting } from "@/lib/config"
 import {
   docker,
@@ -11,6 +12,7 @@ import {
   dockerReason,
   engineSnapshot,
   ensureEngine,
+  isStreamInput,
   type RunOptions,
 } from "@/lib/docker"
 import { pageFromTargets, type PageTarget } from "@/lib/page-origin"
@@ -265,7 +267,12 @@ async function execIn(
   ]
   let name = await ensureWorkstation(agentId)
   let result = await dockerRaw(["exec", ...flags, name, ...command], options)
-  if (result.exitCode !== 0 && GONE.test(result.stderr)) {
+  // A streamed body can only be read once, so a dead container fails the call
+  if (
+    !isStreamInput(options.input) &&
+    result.exitCode !== 0 &&
+    GONE.test(result.stderr)
+  ) {
     shared.recent.delete(agentId)
     name = await ensureWorkstation(agentId)
     result = await dockerRaw(["exec", ...flags, name, ...command], options)
@@ -346,6 +353,53 @@ export async function writeFile(agentId: string, path: string, content: Buffer) 
     ],
     { input: content }
   )
+}
+
+// Opens a regular file and refuses symlinks, so a link in uploads can't point
+// the download route at the rest of the container.
+const READ_UPLOAD = `const fs=require("fs");const p=process.argv[1];const limit=Number(process.argv[2]);let fd;try{fd=fs.openSync(p,fs.constants.O_RDONLY|fs.constants.O_NOFOLLOW)}catch(e){process.exit(18)}const st=fs.fstatSync(fd);if(!st.isFile())process.exit(18);if(st.size>limit)process.exit(19);process.stdout.write(fs.readFileSync(fd))`
+
+export async function writeUploadsFile(
+  agentId: string,
+  absolutePath: string,
+  body: ReadableStream<Uint8Array>
+) {
+  if (!isInsideUploads(absolutePath)) {
+    throw new Error("Upload path is not in the uploads folder.")
+  }
+  await ensureWorkstation(agentId)
+  await execOrThrow(
+    agentId,
+    [
+      "sh",
+      "-c",
+      'mkdir -p -- "$1" && set -C && cat > "$2" && chmod 644 -- "$2"',
+      "sh",
+      UPLOADS_DIR,
+      absolutePath,
+    ],
+    { input: body, timeoutMs: 120_000 }
+  )
+}
+
+export async function readUploadsFile(agentId: string, absolutePath: string) {
+  if (!isInsideUploads(absolutePath)) return null
+  const result = await execIn(
+    agentId,
+    ["node", "-e", READ_UPLOAD, absolutePath, String(MAX_FILE_BYTES)],
+    { timeoutMs: 60_000 }
+  )
+  if (result.exitCode === 18 || result.exitCode === 19) return null
+  if (result.exitCode !== 0) {
+    throw new Error(dockerReason(result.stderr) || "Couldn't read the upload.")
+  }
+  if (result.stdout.byteLength > MAX_FILE_BYTES) return null
+  return result.stdout
+}
+
+export async function removeUploadsFile(agentId: string, absolutePath: string) {
+  if (!isInsideUploads(absolutePath)) return
+  await execOrThrow(agentId, ["rm", "-f", "--", absolutePath])
 }
 
 export async function listDirectory(agentId: string, path: string) {
