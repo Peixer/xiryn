@@ -1,12 +1,27 @@
 "use client"
 
 import * as React from "react"
-import { ArrowUpIcon, ChevronDownIcon, MicIcon, SquareIcon } from "lucide-react"
+import {
+  ArrowUpIcon,
+  ChevronDownIcon,
+  FileIcon,
+  MicIcon,
+  PaperclipIcon,
+  SquareIcon,
+  XIcon,
+} from "lucide-react"
 
 import { Glyph } from "@/components/glyph"
 import { ModelSpecLabel } from "@/components/model-picker"
 import { useDictation } from "@/components/thread/dictation"
 import type { AgentLite } from "@/components/thread/transcript"
+import {
+  formatBytes,
+  isImageMedia,
+  MAX_FILE_BYTES,
+  MAX_FILES_PER_MESSAGE,
+  mediaTypeFor,
+} from "@/lib/attachments"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -15,6 +30,12 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { toast } from "@/components/ui/toast"
 import { cn } from "@/lib/utils"
+
+type PendingFile = { id: string; file: File; url?: string }
+
+function hasDraggedFiles(event: React.DragEvent) {
+  return [...event.dataTransfer.types].includes("Files")
+}
 
 export function Composer({
   placeholder,
@@ -31,7 +52,7 @@ export function Composer({
   placeholder: string
   busy: boolean
   disabled?: boolean
-  onSend: (text: string) => void
+  onSend: (text: string, files: File[]) => void | Promise<void>
   onStop: () => void
   members?: AgentLite[]
   addressee?: AgentLite
@@ -40,17 +61,41 @@ export function Composer({
   draftKey: string
 }) {
   const [text, setText] = React.useState("")
+  const [files, setFiles] = React.useState<PendingFile[]>([])
+  const [sending, setSending] = React.useState(false)
+  const sendingRef = React.useRef(false)
+  const [dragOver, setDragOver] = React.useState(false)
   const ref = React.useRef<HTMLTextAreaElement>(null)
+  const fileRef = React.useRef<HTMLInputElement>(null)
+  const dragDepth = React.useRef(0)
+  const filesRef = React.useRef(files)
+  React.useEffect(() => {
+    filesRef.current = files
+  }, [files])
+  React.useEffect(() => {
+    return () => {
+      for (const item of filesRef.current) if (item.url) URL.revokeObjectURL(item.url)
+    }
+  }, [])
 
-  // Unsent drafts survive navigation between threads
+  const clearFiles = React.useCallback(() => {
+    setFiles((current) => {
+      for (const item of current) if (item.url) URL.revokeObjectURL(item.url)
+      return []
+    })
+  }, [])
+
+  // Unsent drafts survive navigation between threads. Files do not: they
+  // belong to the thread you dropped them on.
   React.useEffect(() => {
     try {
       // Restoring from browser storage is exactly what effects are for
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setText(sessionStorage.getItem(`xiryn:draft:${draftKey}`) ?? "")
     } catch {}
+    clearFiles()
     ref.current?.focus()
-  }, [draftKey])
+  }, [draftKey, clearFiles])
 
   React.useEffect(() => {
     try {
@@ -78,16 +123,68 @@ export function Composer({
     ref.current?.focus()
   }
 
-  const submit = () => {
+  const addFiles = (list: File[]) => {
+    if (list.length === 0 || disabled || busy || sending) return
+    setFiles((current) => {
+      const next = [...current]
+      for (const file of list) {
+        if (next.length >= MAX_FILES_PER_MESSAGE) {
+          toast.add({
+            type: "error",
+            title: `You can attach up to ${MAX_FILES_PER_MESSAGE} files.`,
+          })
+          break
+        }
+        if (file.size > MAX_FILE_BYTES) {
+          toast.add({
+            type: "error",
+            title: `"${file.name || "file"}" is larger than ${formatBytes(MAX_FILE_BYTES)}.`,
+          })
+          continue
+        }
+        const mediaType = mediaTypeFor(file.name || "file", file.type)
+        next.push({
+          id: crypto.randomUUID(),
+          file,
+          url: isImageMedia(mediaType) ? URL.createObjectURL(file) : undefined,
+        })
+      }
+      return next
+    })
+  }
+
+  const removeFile = (id: string) => {
+    setFiles((current) => {
+      const file = current.find((item) => item.id === id)
+      if (file?.url) URL.revokeObjectURL(file.url)
+      return current.filter((item) => item.id !== id)
+    })
+  }
+
+  const submit = async () => {
     const value = text.trim()
-    if (!value || busy || disabled) return
+    if (busy || disabled || sendingRef.current) return
+    if (!value && files.length === 0) return
     if (listening) {
       spokenAfter.current = null
       dictation.stop()
     }
-    onSend(value)
-    setText("")
+    const sendingFiles = files.map((item) => item.file)
+    sendingRef.current = true
+    setSending(true)
+    try {
+      await onSend(value, sendingFiles)
+      setText("")
+      clearFiles()
+    } catch {
+      // The caller shows the error. Keep the draft and the chips.
+    } finally {
+      sendingRef.current = false
+      setSending(false)
+    }
   }
+
+  const canSend = (text.trim().length > 0 || files.length > 0) && !disabled && !sending
 
   return (
     <div className="mx-auto w-full max-w-3xl px-4 pb-4 sm:px-6">
@@ -98,11 +195,76 @@ export function Composer({
         }}
         className={cn(
           "group/composer relative rounded-xl border bg-surface shadow-[0_1px_0_0_var(--hairline),0_8px_24px_-12px_rgb(0_0_0/0.35)] transition-colors focus-within:border-input",
-          busy && "border-rigel/30"
+          busy && "border-rigel/30",
+          dragOver && "border-rigel"
         )}
+        onDragEnter={(event) => {
+          if (!hasDraggedFiles(event)) return
+          event.preventDefault()
+          dragDepth.current += 1
+          setDragOver(true)
+        }}
+        onDragOver={(event) => {
+          if (!hasDraggedFiles(event)) return
+          event.preventDefault()
+          event.dataTransfer.dropEffect = "copy"
+        }}
+        onDragLeave={() => {
+          dragDepth.current = Math.max(0, dragDepth.current - 1)
+          if (dragDepth.current === 0) setDragOver(false)
+        }}
+        onDrop={(event) => {
+          if (!hasDraggedFiles(event)) return
+          event.preventDefault()
+          dragDepth.current = 0
+          setDragOver(false)
+          addFiles([...event.dataTransfer.files])
+        }}
       >
         {busy && (
           <div className="absolute inset-x-6 -top-px h-px bg-linear-to-r from-transparent via-rigel to-transparent" />
+        )}
+        {dragOver && (
+          <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center rounded-xl border border-dashed border-rigel bg-rigel/10 font-mono text-[11px] text-rigel">
+            Drop files to attach
+          </div>
+        )}
+        {files.length > 0 && (
+          <ul className="flex flex-wrap gap-1.5 px-3 pt-2.5">
+            {files.map((item) => (
+              <li
+                key={item.id}
+                className="flex max-w-full items-center gap-1.5 rounded-lg border bg-background/70 py-1 pr-1 pl-1"
+              >
+                {item.url ? (
+                  // The name sits beside the picture
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={item.url} alt="" className="size-8 rounded-md object-cover" />
+                ) : (
+                  <span className="grid size-8 place-items-center rounded-md bg-accent text-muted-foreground">
+                    <FileIcon className="size-3.5" />
+                  </span>
+                )}
+                <span className="min-w-0">
+                  <span className="block max-w-40 truncate text-[12px] leading-tight">
+                    {item.file.name || "file"}
+                  </span>
+                  <span className="block font-mono text-[10px] text-faint">
+                    {formatBytes(item.file.size)}
+                  </span>
+                </span>
+                <button
+                  type="button"
+                  aria-label={`Remove ${item.file.name || "file"}`}
+                  onClick={() => removeFile(item.id)}
+                  disabled={sending}
+                  className="grid size-6 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-30"
+                >
+                  <XIcon className="size-3.5" />
+                </button>
+              </li>
+            ))}
+          </ul>
         )}
         <textarea
           ref={ref}
@@ -114,6 +276,11 @@ export function Composer({
               dictation.stop()
             }
             setText(event.target.value)
+          }}
+          onPaste={(event) => {
+            const pasted = [...event.clipboardData.files]
+            if (pasted.length === 0) return
+            addFiles(pasted)
           }}
           onKeyDown={(event) => {
             if (
@@ -127,10 +294,32 @@ export function Composer({
           }}
           rows={1}
           placeholder={placeholder}
-          disabled={disabled}
+          disabled={disabled || sending}
           className="block [field-sizing:content] max-h-64 min-h-[52px] w-full resize-none bg-transparent px-4 pt-3.5 pb-1 text-[14px] leading-relaxed outline-none placeholder:text-faint disabled:opacity-50"
         />
         <div className="flex items-center gap-2 px-2.5 pt-1 pb-2.5">
+          <button
+            type="button"
+            onClick={() => fileRef.current?.click()}
+            aria-label="Attach files"
+            title="Attach files"
+            disabled={disabled || sending}
+            className="grid size-8 place-items-center rounded-lg border bg-background text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-30"
+          >
+            <PaperclipIcon className="size-4" />
+          </button>
+          <input
+            ref={fileRef}
+            type="file"
+            multiple
+            className="sr-only"
+            tabIndex={-1}
+            aria-hidden
+            onChange={(event) => {
+              addFiles([...(event.target.files ?? [])])
+              event.target.value = ""
+            }}
+          />
           {members && addressee && onAddresseeChange ? (
             <DropdownMenu>
               <DropdownMenuTrigger className="flex h-7 items-center gap-1.5 rounded-md border bg-background/50 px-2 text-[12px] hover:bg-accent">
@@ -183,7 +372,7 @@ export function Composer({
               aria-label={listening ? "Stop voice typing" : "Voice typing"}
               aria-pressed={listening}
               title={listening ? "Stop voice typing" : "Speak your message"}
-              disabled={disabled}
+              disabled={disabled || sending}
               className={cn(
                 "relative grid size-8 place-items-center rounded-lg border transition-colors disabled:opacity-30",
                 listening
@@ -210,7 +399,7 @@ export function Composer({
             <button
               type="submit"
               aria-label="Send"
-              disabled={!text.trim() || disabled}
+              disabled={!canSend}
               className="grid size-8 place-items-center rounded-lg bg-primary text-primary-foreground transition-opacity disabled:opacity-30"
             >
               <ArrowUpIcon className="size-4" />

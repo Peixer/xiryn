@@ -99,15 +99,15 @@ export const messages = sqliteTable(
 
 /* ───────────────────────────── memory ───────────────────────────── */
 
-// Long-term notes an agent keeps about the person and their work. Shared
-// across every thread the agent takes part in.
+// Long-term notes. A row with agentId set belongs to that agent and is
+// visible in every thread they take part in. A null agentId is a shared
+// note the person wrote for every agent. Agents can read shared notes;
+// only the person can create, edit, or delete them (see lib/memory.ts).
 export const memories = sqliteTable(
   "memories",
   {
     id: id(),
-    agentId: text()
-      .notNull()
-      .references(() => agents.id, { onDelete: "cascade" }),
+    agentId: text().references(() => agents.id, { onDelete: "cascade" }),
     content: text().notNull(),
     createdAt: timestamp(),
   },
@@ -337,6 +337,13 @@ export const monthlyBudgetSchema = z
   .trim()
   .regex(/^(\d{1,6}(\.\d{1,2})?)?$/, "Use a dollar amount, e.g. 20 or 7.50.")
 
+// One agent's optional monthly cap. The amount uses the same rules as the
+// global budget: empty or 0 clears it.
+export const agentBudgetSchema = z.object({
+  agentId: z.string().trim().min(1, "Choose an agent.").max(64),
+  amount: monthlyBudgetSchema,
+})
+
 const clock = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Use a time like 08:30.")
 
 export const routineScheduleSchema = z.discriminatedUnion("kind", [
@@ -380,8 +387,11 @@ export const routineInputSchema = z
     path: ["agentId"],
   })
 
+export const memoryScopeSchema = z.enum(["agent", "shared"])
+
 export const memoryInputSchema = z.object({
   content: z.string().trim().min(1, "Write something to remember.").max(2000),
+  scope: memoryScopeSchema.default("agent"),
 })
 
 export type Agent = typeof agents.$inferSelect
@@ -390,6 +400,7 @@ export type Squad = typeof squads.$inferSelect
 export type SquadInput = z.infer<typeof squadInputSchema>
 export type Thread = typeof threads.$inferSelect
 export type Memory = typeof memories.$inferSelect
+export type MemoryScope = z.infer<typeof memoryScopeSchema>
 export type Turn = typeof turns.$inferSelect
 export type Routine = typeof routines.$inferSelect
 export type RoutineInput = z.infer<typeof routineInputSchema>

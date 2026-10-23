@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "65fb3b46-548b-4d98-b859-e816d01a21df",
+  "id": "bd017fe1-6efc-4de0-91a0-8d9259d1f03d",
   "prevId": "598b740e-af96-406d-94af-09bd660f0762",
   "tables": {
     "action_approvals": {
@@ -41,14 +41,6 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
-        },
-        "args_hash": {
-          "name": "args_hash",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "''"
         },
         "summary": {
           "name": "summary",
@@ -216,7 +208,7 @@
           "name": "agent_id",
           "type": "text",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "autoincrement": false
         },
         "content": {

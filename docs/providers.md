@@ -74,7 +74,13 @@ XIRYN_BEDROCK_MODEL_REGIONS=some.model-id=us-east-2
 
 Llama 3.3 70B Instruct's model card says tool use and streaming cannot be combined (`ConverseStream` plus tools returns "This model doesn't support tool use in streaming mode"). Chat still streams. A step that calls tools uses the non-streaming Converse API, which sends `toolConfig` and reads `toolUse` blocks. Llama 3.x often still prints the call as text (`{"type":"function","name":"shell","parameters":{...}}`, `<|python_tag|>`, or a code fence). Xiryn turns that text into a real tool call, runs it, and continues to a final answer. The tool step arrives in one piece rather than token by token.
 
-The Usage page prices these ids. Nova rates are the public eu-west-3 on-demand prices from the Amazon Bedrock price list published 16 October 2026. Claude on Bedrock is billed through AWS Marketplace; the rows match Anthropic's published rates already used for the Anthropic provider. Confirm the bill if AWS applies a geographic premium.
+The Usage page prices these ids from `lib/providers/pricing.ts`.
+
+An id with its own row is a catalog price. `eu.` Nova rates are the public eu-west-3 on-demand prices from the Amazon Bedrock price list published 16 October 2026, checked again on 23 October 2026. On that list, `us.` Nova Pro, Lite, and Micro (us-east-1, us-east-2, and us-west-2) are cheaper than Paris, so those three ids have their own rows. Asia Pacific prices differ by region, and Nova 1 has no global cross-region price, so `apac.`, `global.`, and unprefixed Nova ids stay unpriced until you set one.
+
+Claude on Bedrock is billed through AWS Marketplace and is not in that price list. The `eu.` rows match Anthropic's published rates already used for the Anthropic provider. A `us.`, `global.`, or `apac.` profile of the same Claude model, or the id with no geographic prefix, reuses the `eu.` row as an **estimate**. The Usage page labels it estimate. The public list does not publish a geographic premium for these Claude ids, so none is guessed — an estimate can under-count. `us-gov.` and any other prefix stay unpriced.
+
+A custom price, set on the Usage page for that exact id, overrides a catalog row or an estimate. Clearing it restores the built-in rate. Models with neither a row nor a custom price show tokens and no dollar amount.
 
 ## Local models
 
@@ -150,4 +156,12 @@ Without `XIRYN_DEFAULT_MODEL`, Xiryn uses the first recommended model of the fir
 
 ## Costs
 
-Xiryn is free; providers bill you directly. The **Usage** page shows input, output, cached and reasoning tokens per turn, model and agent. Set spending limits in your provider's dashboard.
+Xiryn is free; providers bill you directly. The **Usage** page shows input, output, cached and reasoning tokens per turn, model and agent, and what that cost.
+
+A model is priced in one of three ways:
+
+- **Catalog** — a published rate shipped with Xiryn.
+- **Estimate** — a Bedrock id that has no row of its own but matches an `eu.` model. The page labels it estimate. It can under-count; the provider's bill is the final word.
+- **Custom** — a rate you set on the Usage page for that exact id, in US dollars per million tokens. It overrides the catalog and any estimate. Remove it to go back.
+
+Anything else shows its tokens and no price. Set spending limits in your provider's dashboard as well.

@@ -7,6 +7,7 @@ import {
   ActivityIcon,
   AlarmClockIcon,
   ArrowUpCircleIcon,
+  BookOpenIcon,
   LayoutGridIcon,
   MailIcon,
   MoonIcon,
@@ -398,6 +399,10 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         <FooterLink href="/routines" pathname={pathname} onNavigate={onNavigate}>
           <AlarmClockIcon className="size-4" />
           Routines
+        </FooterLink>
+        <FooterLink href="/skills" pathname={pathname} onNavigate={onNavigate}>
+          <BookOpenIcon className="size-4" />
+          Skills
         </FooterLink>
         <Link
           href="/usage"

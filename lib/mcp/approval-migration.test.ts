@@ -12,7 +12,7 @@ function read(name: string) {
   return fs.readFileSync(path.join(root, "db", "migrations", name), "utf8")
 }
 
-test("0005 adds args_hash and keeps existing approval rows", () => {
+test("0006 adds args_hash and keeps existing approval rows", () => {
   const sqlite = new Database(":memory:")
   sqlite.pragma("foreign_keys = ON")
   sqlite.exec(`
@@ -41,7 +41,7 @@ test("0005 adds args_hash and keeps existing approval rows", () => {
       1_700_000_001_000
     )
 
-  sqlite.exec(read("0005_approval_args_hash.sql"))
+  sqlite.exec(read("0006_approval_args_hash.sql"))
 
   const row = sqlite.prepare("select * from action_approvals where id = ?").get("a1") as {
     id: string
@@ -81,4 +81,25 @@ test("0005 adds args_hash and keeps existing approval rows", () => {
   assert.equal(hash.dflt_value, "''")
 
   sqlite.close()
+})
+
+test("0006 follows shared memory in the journal", () => {
+  const journal = JSON.parse(read("meta/_journal.json")) as {
+    entries: { idx: number; when: number; tag: string }[]
+  }
+  const shared = journal.entries.find((entry) => entry.tag === "0005_shared_memory")
+  const hash = journal.entries.find((entry) => entry.tag === "0006_approval_args_hash")
+  assert.ok(shared)
+  assert.ok(hash)
+  assert.equal(shared.idx, 5)
+  assert.equal(hash.idx, 6)
+  assert.equal(shared.when, 1_792_776_740_797)
+  assert.ok(hash.when > shared.when)
+  const previous = JSON.parse(read("meta/0005_snapshot.json")) as { id: string }
+  const current = JSON.parse(read("meta/0006_snapshot.json")) as { prevId: string }
+  assert.equal(current.prevId, previous.id)
+  assert.equal(
+    read("0006_approval_args_hash.sql").trim(),
+    "ALTER TABLE `action_approvals` ADD `args_hash` text DEFAULT '' NOT NULL;"
+  )
 })

@@ -78,6 +78,14 @@ Just write to the bot like you'd write to an agent in the app.
 
 - While an agent works, a small status message lists its steps live
   (`$ git clone …`, `search "…"`), then the answer arrives as a normal message.
+- **Photos and files** you send are saved on the current agent's workstation,
+  under `uploads/` in its home directory, and the agent is told the path.
+  Telegram's bot API only hands over files up to **20 MB**; a larger one is
+  declined. Photos (and other images, when the agent's model can see images)
+  are also shown to the model. The file is stored as-is and never run.
+  Stickers and other message types get a short refusal.
+- **Voice notes** are not transcribed. The bot replies that they need a
+  speech-to-text provider. Send text, or a photo or file, instead.
 - In a **squad**, start a message with `@Name` to address a specific member,
   e.g. `@Vega what changed in the docs this week?`.
 - Ask an agent to **show its screen** and the screenshot arrives as a photo.
@@ -184,6 +192,10 @@ Set `TELEGRAM_OWNER_ID` in `.env` to your numeric Telegram user id (ask
   replaced automatically after a few wrong guesses.
 - Messages travel through Telegram's servers like any Telegram chat. Don't send
   through the bot anything you wouldn't send in a regular Telegram message.
+- Files you send are copied into that agent's workstation and nowhere else.
+  Xiryn does not open or execute them. Each file is capped at 20 MB, and a
+  second copy of an image may be kept on the message when the model can see
+  it, so a large photo uses disk twice.
 - Hand-off links grant access to that agent's desktop until they expire
   (30 minutes). Do your payment or login on the desktop itself — never type a
   password or card number into the Telegram chat.
