@@ -120,6 +120,14 @@ Everything lives in `data/xiryn.db` (override with `XIRYN_DATA_DIR`). Schema: `d
 
 `lib/telegram/bridge.ts` long-polls `getUpdates` from inside the server process — no inbound connection is needed. Updates are processed per chat in order. Unpaired users get a refusal; the owner's messages start turns through the same runtime with `channel: "telegram"`, progress is reported by editing one status message, and the final reply (including shared screenshots as photos) is sent when the run ends. Threads started from Telegram are ordinary threads in the app.
 
+## Attachments
+
+The composer takes files and images from the paperclip, a drop onto the box, or a paste. A message can carry up to 10 files, 25 MB each. The server streams each one into that agent's workstation at `/home/xiryn/uploads/` (the `uploads` folder in its home directory, on the container's own volume) under a unique sanitized name. Nothing is sent to a hosted store, and the bytes are not executed or inspected beyond the file name and extension.
+
+The agent is told the name, media type, size and path on its workstation, and reads the file with `fs_read` or the shell. Image bytes are also passed to the model when that model is known to accept image input: OpenAI GPT-4o, GPT-4.1, GPT-4 Turbo, GPT-5, GPT-6, o1/o3/o4 (not o1-mini) and ChatGPT-4o; Anthropic Claude 3 and later; Google Gemini chat models; xAI Grok 4 and Grok vision models; Mistral Pixtral; those same ids through OpenRouter; and Bedrock Claude 3+ plus Amazon Nova Pro, Lite and Premier. Every other model, including Ollama, LM Studio, Groq, DeepSeek and custom endpoints, gets the path only.
+
+The thread shows the name and size. An image thumbnail is loaded from `GET /api/uploads/:agentId/:name`, which reads one regular file inside that uploads folder and refuses anything else (including a symlink). Uploads use the same loopback Host and Origin checks as the rest of the app.
+
 ## Security boundary
 
 `proxy.ts` runs before every request and refuses any `Host` or `Origin` that isn't loopback (or in `XIRYN_ALLOWED_HOSTS`). Together with binding to `127.0.0.1`, this keeps an account-less app private and blocks DNS rebinding. See [SECURITY.md](../SECURITY.md).

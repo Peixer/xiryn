@@ -445,6 +445,9 @@ Hover it under **Recent threads** in the sidebar and click the trash icon, or op
 **Where is my data?**
 In `data/xiryn.db` on your disk. Back it up by copying the file; erase everything by deleting it.
 
+**Can I attach a file?**
+Yes. Use the paperclip on the composer, drop files onto it, or paste an image. Up to 10 files per message, 25 MB each. They are stored in that agent's workstation at `~/uploads` (inside its container, not on your desktop). The agent is told the path and can read the file. Images are shown to the model only when that model is known to accept image input; otherwise it gets the path.
+
 **Does it work without Docker or Firecrawl?**
 Without Docker, agents chat, remember and (with Firecrawl) research, but can't run code or use a desktop. Without Firecrawl, they search and read the web with their own browser. The app tells you what's missing.
 

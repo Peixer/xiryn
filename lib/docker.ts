@@ -1,6 +1,8 @@
 import { spawn } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
+import { Readable } from "node:stream"
+import type { ReadableStream as NodeReadableStream } from "node:stream/web"
 
 // Xiryn drives Docker through the docker command itself, so whatever it is
 // pointed at (Docker Desktop, Docker Engine, Colima, OrbStack, a context)
@@ -50,11 +52,22 @@ const FALLBACK_BINARIES =
 type Result = { exitCode: number | null; stdout: Buffer; stderr: string }
 
 export type RunOptions = {
-  input?: string | Buffer
+  // A stream is piped through and never buffered, so a large upload stays on disk
+  input?: string | Buffer | ReadableStream<Uint8Array>
   timeoutMs?: number
   // Called with each line of output as it arrives (builds)
   onLine?: (line: string) => void
   env?: Record<string, string>
+}
+
+export function isStreamInput(
+  input: RunOptions["input"]
+): input is ReadableStream<Uint8Array> {
+  return (
+    typeof input === "object" &&
+    input !== null &&
+    typeof (input as ReadableStream<Uint8Array>).getReader === "function"
+  )
 }
 
 const globalForDocker = globalThis as unknown as {
@@ -100,22 +113,43 @@ function spawnOnce(binary: string, args: string[], options: RunOptions) {
     const timer = options.timeoutMs
       ? setTimeout(() => child.kill(), options.timeoutMs)
       : null
-    child.on("error", (error) => {
+    let settled = false
+    const finish = (fn: () => void) => {
+      if (settled) return
+      settled = true
       if (timer) clearTimeout(timer)
-      reject(error)
+      fn()
+    }
+    child.on("error", (error) => {
+      finish(() => reject(error))
     })
     child.on("close", (exitCode, signal) => {
-      if (timer) clearTimeout(timer)
-      if (pending.trim()) options.onLine?.(pending)
-      resolve({
-        exitCode: signal ? null : exitCode,
-        stdout: Buffer.concat(stdout),
-        stderr: Buffer.concat(stderr).toString("utf8"),
+      finish(() => {
+        if (pending.trim()) options.onLine?.(pending)
+        resolve({
+          exitCode: signal ? null : exitCode,
+          stdout: Buffer.concat(stdout),
+          stderr: Buffer.concat(stderr).toString("utf8"),
+        })
       })
     })
 
-    if (options.input !== undefined) child.stdin.end(options.input)
-    else child.stdin.end()
+    if (isStreamInput(options.input)) {
+      // The process exiting closes stdin; that EPIPE is not a second failure
+      child.stdin.on("error", () => {})
+      const nodeIn = Readable.fromWeb(
+        options.input as unknown as NodeReadableStream<Uint8Array>
+      )
+      nodeIn.on("error", (error) => {
+        child.kill()
+        finish(() => reject(error))
+      })
+      nodeIn.pipe(child.stdin)
+    } else if (options.input !== undefined) {
+      child.stdin.end(options.input)
+    } else {
+      child.stdin.end()
+    }
   })
 }
 
