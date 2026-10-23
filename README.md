@@ -24,6 +24,7 @@
   <a href="#why-xiryn">Why Xiryn</a> ·
   <a href="#how-it-compares">Compare</a> ·
   <a href="docs/telegram.md">Telegram</a> ·
+  <a href="docs/grokbot-import.md">Grok Bot import</a> ·
   <a href="docs/architecture.md">Architecture</a> ·
   <a href="CONTRIBUTING.md">Contribute</a>
 </p>
@@ -373,6 +374,8 @@ On **Agents**, **Export** downloads `<name>.xiryn-agent.json`: the name, role, s
 
 The file never leaves your computer. Standing orders in a file are prompt text someone else may have written — read them in the preview before confirming. Importing does not overwrite an agent you already have.
 
+**Import a Grok Bot agent** is the next button. Paste the public https share link, or paste the template JSON. The preview lists what will be created and which host a link came from. Confirming creates a new Xiryn agent with its memories and skills. Routines are saved turned off, and plugins are a checklist, not an install. Details: **[docs/grokbot-import.md](docs/grokbot-import.md)**.
+
 ## Feedback
 
 After a few finished tasks Xiryn asks, once, how it's going. Your answer opens a draft in **your own email app** to [souravberaofficial@gmail.com](mailto:souravberaofficial@gmail.com) — nothing is sent by Xiryn itself. You can also write any time from the mail icon in the sidebar, or [open an issue](https://github.com/SouravBeraAkaSpeed/xiryn/issues/new/choose).
@@ -426,6 +429,7 @@ Every setting can come from `.env` **or** from **Settings** in the app. Values s
 | `FIRECRAWL_API_KEY` | Web search and reading |
 | `XIRYN_WEB_APPROVAL` | `off` (default), `new-domains`, or `always`. Asks before outbound `web_fetch` (and `web_search` when `always`) |
 | `XIRYN_WEB_ALLOWLIST` | Hostnames `web_fetch` may call without asking, when approval is `new-domains` |
+| `XIRYN_GROKBOT_IMPORT_HOSTS` | Hostnames a Grok Bot share link may use. Empty allows any public https host. See [docs/grokbot-import.md](docs/grokbot-import.md) |
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_OWNER_ID` | Remote access |
 | `XIRYN_TELEGRAM_NOTIFY` | Telegram notice when a task finishes: `long` (a minute or more, default), `all` or `off` |
 | `XIRYN_DATA_DIR`, `XIRYN_ALLOWED_HOSTS` | Data location; extra hostnames behind your own authenticating proxy |

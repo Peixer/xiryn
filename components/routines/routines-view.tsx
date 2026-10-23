@@ -409,6 +409,7 @@ function RoutineCard({ routine }: { routine: RoutineView }) {
           <Checkbox
             checked={routine.enabled}
             disabled={busy === "toggle"}
+            title={routine.schedule ? undefined : "Set a schedule before turning this on"}
             onCheckedChange={async (checked) => {
               setBusy("toggle")
               try {

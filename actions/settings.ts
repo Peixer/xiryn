@@ -101,6 +101,9 @@ export async function saveSettings(values: Record<string, string | null>) {
     if (key === "security.webAllowlist" && value?.trim()) {
       value = normalizeAllowlistInput(value)
     }
+    if (key === "grokbot.importHosts" && value?.trim()) {
+      value = normalizeAllowlistInput(value)
+    }
     if (key === "mcp.allowedCommands" && value) {
       const names = extensionNames(value)
       if (!names.ok) throw new Error(names.error)

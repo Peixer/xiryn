@@ -72,10 +72,16 @@ export async function saveRoutine(input: unknown, id?: string) {
 
 export async function setRoutineEnabled(id: string, enabled: boolean) {
   const routine = load(id)
-  db.update(routines)
-    .set({ enabled, nextRunAt: enabled ? firstRun(routine.schedule) : null })
-    .where(eq(routines.id, routine.id))
-    .run()
+  let nextRunAt: Date | null = null
+  if (enabled) {
+    if (!routine.schedule) {
+      throw new Error(
+        "This routine has no schedule. Edit it and choose when it runs before turning it on."
+      )
+    }
+    nextRunAt = firstRun(routine.schedule)
+  }
+  db.update(routines).set({ enabled, nextRunAt }).where(eq(routines.id, routine.id)).run()
   revalidatePath("/routines")
 }
 
