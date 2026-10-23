@@ -107,6 +107,9 @@ Name, role, standing orders, and a model of their own. Start from [16 ready-made
 **Routines — tasks on a schedule**<br>
 "Every morning at 8, brief me on…" — say it in the chat or set it up on the Routines page. Daily, weekdays, weekly, every few hours, or once. It runs on its own, even with the browser closed, and tells you when it's done.
 
+**Skills — playbooks on demand**<br>
+How you want invoices filed, a brief shaped, a checklist followed. Saved as files on the Skills page. The agent sees the name and description, then reads the full text when the task needs it. A skill is instructions you can read first; it is not a script Xiryn runs.
+
 **A workstation per agent**<br>
 A Docker container with a shell, a persistent home folder and a 1280×800 desktop with Chromium — created on first use, stopped when idle, never touching your own files.
 
@@ -340,6 +343,14 @@ Tasks your agents do on their own, on a schedule — while you sleep, with the b
 - **Results come to you.** Each routine has its own thread. When a run finishes you get an in-app notification, a desktop notification when no tab is open, and a Telegram message if it's paired — reply there to follow up.
 - **Runs on your computer.** Times are your computer's local time, and Xiryn has to be running: `npm run background -- login` keeps it that way. A run missed while the computer slept still happens if it's back within a few hours.
 - **Start one from outside.** Set `XIRYN_HOOKS_TOKEN`, then `POST /api/hooks/routines/<id>` with `Authorization: Bearer <token>` or the `X-Xiryn-Token` header. The JSON or text body (64 KB at most) is passed to the agent as data, not as instructions, and anything it writes still waits for your approval. The path is shown on each routine. Until the token is set, that URL answers 404. Behind a public hostname, add it to `XIRYN_ALLOWED_HOSTS`.
+
+## Skills
+
+Playbooks you want an agent to follow the same way every time — how invoices get filed, how a weekly brief is shaped.
+
+- **On the Skills page.** Create, edit, delete, import and export them. Each one is a `SKILL.md` file in `data/skills` on this computer.
+- **The agent reads them.** The next message sees a short catalog (the name and description, up to 40). It loads the full text with `skill_read` when the task needs it. It cannot create or change skills.
+- **They are instructions, not programs.** A skill is prompt text. Read it on the Skills page before you rely on it. Xiryn does not run a script because a skill mentions one.
 
 ## Ready-made agents
 

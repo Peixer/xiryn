@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import {
   ActivityIcon,
   AlarmClockIcon,
+  BookOpenIcon,
   BugIcon,
   HomeIcon,
   LayoutGridIcon,
@@ -173,6 +174,13 @@ export function CommandPalette() {
             >
               <AlarmClockIcon />
               Routines
+            </CommandItem>
+            <CommandItem
+              value="skills playbooks library how I want invoices filed"
+              onSelect={() => go("/skills")}
+            >
+              <BookOpenIcon />
+              Skills
             </CommandItem>
             <CommandItem value="home overview" onSelect={() => go("/")}>
               <HomeIcon />
