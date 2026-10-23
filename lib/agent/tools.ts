@@ -969,7 +969,7 @@ export function createSubagentTools(env: ToolEnv) {
           .max(5)
           .describe(
             "List of self-contained task briefs to run in parallel. Each brief must be " +
-            "fully self-contained — subagents share no conversation history with the parent."
+              "fully self-contained — subagents share no conversation history with the parent."
           ),
         timeoutSeconds: z
           .number()
@@ -990,7 +990,8 @@ export function createSubagentTools(env: ToolEnv) {
                 task: tasks[0] ?? "",
                 result: "",
                 ok: false,
-                error: "spawn_subagent cannot be called from inside a subturn (max depth = 1).",
+                error:
+                  "spawn_subagent cannot be called from inside a subturn (max depth = 1).",
                 steps: 0,
                 durationMs: 0,
                 costUsd: null,
@@ -1005,8 +1006,8 @@ export function createSubagentTools(env: ToolEnv) {
 
         const results = await Promise.all(
           tasks.map((task) =>
-            runSubturn({ task, agent, parentThreadId: env.threadId, timeoutMs }).then(
-              (r): SubagentTaskResult => ({
+            runSubturn({ task, agent, parentThreadId: env.threadId, timeoutMs })
+              .then((r): SubagentTaskResult => ({
                 task: r.task,
                 result: r.text,
                 ok: r.ok,
@@ -1014,9 +1015,8 @@ export function createSubagentTools(env: ToolEnv) {
                 steps: r.steps,
                 durationMs: r.durationMs,
                 costUsd: r.costUsd,
-              })
-            ).catch(
-              (err: unknown): SubagentTaskResult => ({
+              }))
+              .catch((err: unknown): SubagentTaskResult => ({
                 task,
                 result: "",
                 ok: false,
@@ -1024,8 +1024,7 @@ export function createSubagentTools(env: ToolEnv) {
                 steps: 0,
                 durationMs: 0,
                 costUsd: null,
-              })
-            )
+              }))
           )
         )
 

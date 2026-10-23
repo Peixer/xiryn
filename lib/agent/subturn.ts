@@ -110,8 +110,7 @@ export async function runSubturn(opts: {
       .orderBy(desc(turns.createdAt))
       .get()
 
-    const costUsd =
-      turnRow?.costMicros != null ? turnRow.costMicros / 1_000_000 : null
+    const costUsd = turnRow?.costMicros != null ? turnRow.costMicros / 1_000_000 : null
 
     return {
       task,
@@ -164,7 +163,11 @@ async function drainStream(
     }
   } finally {
     signal.removeEventListener("abort", onAbort)
-    try { reader.releaseLock() } catch { /* already released */ }
+    try {
+      reader.releaseLock()
+    } catch {
+      /* already released */
+    }
   }
 
   return { text, error }
