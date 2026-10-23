@@ -2,6 +2,7 @@ import { createMCPClient, type MCPClient } from "@ai-sdk/mcp"
 import { Experimental_StdioMCPTransport } from "@ai-sdk/mcp/mcp-stdio"
 import { tool, type ToolSet } from "ai"
 
+import { toUntrustedModelOutput } from "@/lib/agent/untrusted"
 import type { ToolEnv } from "@/lib/agent/tools"
 import { getSetting } from "@/lib/config"
 import { renderApprovalPreview } from "@/lib/mcp/approval-preview"
@@ -137,8 +138,15 @@ async function toolsForServer(server: McpServerConfig, env: ToolEnv) {
           })
           if (hold) return hold
         }
-        return mcpTool.execute(input)
+        // A thrown message skips toModelOutput, so a server can put the
+        // injection in the error instead of the result. Return it as data.
+        try {
+          return await mcpTool.execute(input)
+        } catch (error) {
+          return { error: error instanceof Error ? error.message : String(error) }
+        }
       },
+      toModelOutput: ({ output }) => toUntrustedModelOutput(`mcp:${server.id}`, output),
     })
   }
   return { tools, names }

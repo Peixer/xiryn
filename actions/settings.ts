@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache"
 
+import { normalizeAllowlistInput } from "@/lib/agent/untrusted"
 import { isWritableSetting, setSetting } from "@/lib/config"
 import { extensionNames } from "@/lib/mcp/stdio-policy"
 import {
@@ -26,8 +27,9 @@ function reason(error: unknown) {
 // Values are only ever written here and read on the server; the browser
 // only ever sees masked versions of secrets
 export async function saveSettings(values: Record<string, string | null>) {
-  for (const [key, value] of Object.entries(values)) {
+  for (const [key, raw] of Object.entries(values)) {
     if (!isWritableSetting(key)) throw new Error(`Unknown setting: ${key}`)
+    let value = raw
     if (key === "model.default" && value && !parseModelSpec(value.trim())) {
       throw new Error(
         "The default model must look like provider/model, e.g. openai/gpt-6-luna."
@@ -88,6 +90,16 @@ export async function saveSettings(values: Record<string, string | null>) {
       !/^(on|off)$/.test(value.trim())
     ) {
       throw new Error("A connector is either on or off.")
+    }
+    if (
+      key === "security.webApproval" &&
+      value &&
+      !/^(off|new-domains|always)$/.test(value.trim())
+    ) {
+      throw new Error("Web approval is off, new-domains or always.")
+    }
+    if (key === "security.webAllowlist" && value?.trim()) {
+      value = normalizeAllowlistInput(value)
     }
     if (key === "mcp.allowedCommands" && value) {
       const names = extensionNames(value)

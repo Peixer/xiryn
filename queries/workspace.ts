@@ -308,6 +308,10 @@ export function getSettingsView() {
       apiKey: describeSetting("firecrawl.apiKey"),
       apiUrl: describeSetting("firecrawl.apiUrl"),
     },
+    security: {
+      webApproval: describeSetting("security.webApproval"),
+      webAllowlist: describeSetting("security.webAllowlist"),
+    },
     connectors: {
       gmail: describeSetting("connectors.gmail"),
       calendar: describeSetting("connectors.calendar"),

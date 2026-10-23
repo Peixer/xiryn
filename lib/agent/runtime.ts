@@ -482,7 +482,7 @@ export async function startTurn({
       : {}),
     ...createMemoryTools(env),
     ...createSkillTools(),
-    ...(capabilities.web ? createWebTools() : {}),
+    ...(capabilities.web ? createWebTools(env) : {}),
     // A routine's own runs don't schedule more routines
     ...(routine ? {} : createRoutineTools(env)),
     ...connectors.tools,

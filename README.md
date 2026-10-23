@@ -424,6 +424,8 @@ Every setting can come from `.env` **or** from **Settings** in the app. Values s
 | `XIRYN_WORKSTATION_AUTO_STOP_MINUTES`, `XIRYN_WORKSTATION_AUTO_DELETE_MINUTES` | Idle stop; disposable machines |
 | `XIRYN_PHONE_TAKEOVER` | `off` leaves the phone link out of Telegram hand-offs |
 | `FIRECRAWL_API_KEY` | Web search and reading |
+| `XIRYN_WEB_APPROVAL` | `off` (default), `new-domains`, or `always`. Asks before outbound `web_fetch` (and `web_search` when `always`) |
+| `XIRYN_WEB_ALLOWLIST` | Hostnames `web_fetch` may call without asking, when approval is `new-domains` |
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_OWNER_ID` | Remote access |
 | `XIRYN_TELEGRAM_NOTIFY` | Telegram notice when a task finishes: `long` (a minute or more, default), `all` or `off` |
 | `XIRYN_DATA_DIR`, `XIRYN_ALLOWED_HOSTS` | Data location; extra hostnames behind your own authenticating proxy |
@@ -446,8 +448,9 @@ Xiryn has no user accounts, so it's built never to be reachable by anyone but yo
 - API keys never reach the browser; the UI only sees masked values, and keys are kept out of logs.
 - A notification webhook, if you set one, receives a short message when a task finishes or needs you. The URL is masked in Settings and is never logged. A reply preview is sent only when you turn that on, and then only the first 140 characters.
 - Telegram answers exactly **one** paired account; pairing codes are single-use and rotate after wrong guesses.
-- Agents execute only inside their own containers — never on your desktop or in your files. Their browsers have password saving and card autofill switched off. MCP stdio servers are the exception: they run on the Xiryn host, only for an allowlisted launcher you confirmed while saving `data/mcp.json`.
-- Sending mail or changing a calendar waits for your approval, the same way a payment does.
+- Agents execute only inside their own containers — never on your desktop or in your files. Their browsers have password saving and card autofill switched off. New containers drop every capability, so `sudo` inside them does not work. MCP stdio servers are the exception: they run on the Xiryn host, only for an allowlisted launcher you confirmed while saving `data/mcp.json`.
+- Sending mail or changing a calendar waits for your approval, the same way a payment does. Every send waits.
+- Web pages, mail, files, shell output, search results and MCP output are treated as untrusted data. Settings → Workstations & web can require approval before `web_fetch` leaves for a new domain, or before every web request. The card shows the arguments that will run, including the URL. `XIRYN_WEB_APPROVAL=off` is the default.
 - Saved logins, cards and personal details are encrypted (AES-256-GCM) with a key your operating system's keychain holds. Agents get masked hints only; Xiryn types values into pages itself, logins only on their own site, payment details only after you approve that payment.
 - Each live desktop is published on 127.0.0.1 only and asks for its own random password.
 - No telemetry. No analytics. The only request Xiryn makes on its own is an update check against GitHub's public API when you open Xiryn, sending nothing about you. Switch it off in **Settings → System** or with `XIRYN_UPDATE_CHECK=off`.

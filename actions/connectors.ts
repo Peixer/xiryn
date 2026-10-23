@@ -2,7 +2,12 @@
 
 import { revalidatePath } from "next/cache"
 
-import { getSetting } from "@/lib/config"
+import {
+  addAllowlistHost,
+  parseWebApprovalMode,
+  webApprovalCardFields,
+} from "@/lib/agent/untrusted"
+import { getSetting, setSetting } from "@/lib/config"
 import { answerAction, approvalCardText, getActionApproval } from "@/lib/mcp/approval"
 import { parseMcpConfig, readMcpConfig, writeMcpConfig } from "@/lib/mcp/config"
 import { disconnectGoogle } from "@/lib/mcp/google"
@@ -66,20 +71,55 @@ export async function saveMcpConfig(text: string, confirmationToken?: string) {
 export async function connectorAction(approvalId: string) {
   const approval = getActionApproval(approvalId)
   if (!approval) return null
+  const card = webApprovalCardFields({
+    tool: approval.tool,
+    args: approval.args,
+    summary: approval.summary,
+    mode: parseWebApprovalMode(getSetting("security.webApproval")),
+  })
   return {
     id: approval.id,
     tool: approval.tool,
     summary: approvalCardText(approval),
     status: approval.status,
+    // Full URL or search query when this is an outbound web request.
+    // `summary` is capped at 300 characters and can hide a query string.
+    display: card.display,
+    url: card.url,
+    host: card.host,
+    query: card.query,
+    offerAllowDomain: card.offerAllowDomain,
   }
 }
 
 export async function decideConnectorAction(
   approvalId: string,
-  choice: "approve" | "decline"
+  choice: "approve" | "decline",
+  options?: { allowDomain?: boolean }
 ) {
   try {
     const answer = answerAction(approvalId, choice)
+    if (
+      choice === "approve" &&
+      options?.allowDomain &&
+      parseWebApprovalMode(getSetting("security.webApproval")) === "new-domains"
+    ) {
+      const row = getActionApproval(approvalId)
+      const host = row
+        ? webApprovalCardFields({
+            tool: row.tool,
+            args: row.args,
+            summary: row.summary,
+          }).host
+        : null
+      if (host) {
+        const next = addAllowlistHost(getSetting("security.webAllowlist"), host)
+        if (next) {
+          setSetting("security.webAllowlist", next)
+          revalidatePath("/", "layout")
+        }
+      }
+    }
     const approval = getActionApproval(approvalId)
     const shown = approval ? approvalCardText(approval) : answer.marker.summary
     const { closeActionNotice } = await import("@/lib/telegram/bridge")

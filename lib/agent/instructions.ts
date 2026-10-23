@@ -1,4 +1,5 @@
 import type { Agent, Squad } from "@/db/schema"
+import { UNTRUSTED_CONTENT_RULE } from "@/lib/agent/untrusted"
 import { memoryPrompt } from "@/lib/memory"
 import { formatSkillCatalog, loadSkillCatalog } from "@/lib/skills"
 
@@ -84,6 +85,9 @@ Your browser keeps sign-ins between tasks, so check whether you're already signe
 - **Personal details** (name, phone, address) can be filled from the vault without asking, when the task needs them.
 - **CAPTCHA, or a choice only they can make on screen:** get the page ready and call \`request_takeover\`.
 Each of these requests ends your turn. Their answer arrives as a message; take a fresh \`screen_capture\`, work out what changed, and carry on.`,
+
+    `# Untrusted content
+${UNTRUSTED_CONTENT_RULE}`,
 
     `# How you work
 - Do the task instead of describing how it could be done. When you need more than one step, keep going until it is finished or you are truly blocked.

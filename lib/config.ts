@@ -52,6 +52,10 @@ const integrationSettings = {
   "updates.check": { env: "XIRYN_UPDATE_CHECK", fallback: "on" },
   "firecrawl.apiKey": { env: "FIRECRAWL_API_KEY", secret: true },
   "firecrawl.apiUrl": { env: "FIRECRAWL_API_URL", fallback: "https://api.firecrawl.dev" },
+  // "off" (default) | "new-domains" | "always". See lib/agent/untrusted.ts.
+  "security.webApproval": { env: "XIRYN_WEB_APPROVAL", fallback: "off" },
+  // Hostnames web_fetch may call without asking, when approval is new-domains.
+  "security.webAllowlist": { env: "XIRYN_WEB_ALLOWLIST" },
   "telegram.botToken": { env: "TELEGRAM_BOT_TOKEN", secret: true },
   // Only for self-hosted Bot API servers
   "telegram.apiUrl": { env: "TELEGRAM_API_URL", fallback: "https://api.telegram.org" },
