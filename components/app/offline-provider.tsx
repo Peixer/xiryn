@@ -204,6 +204,14 @@ export function OfflineProvider({ children }: { children: React.ReactNode }) {
     } catch {
       // The local copy is still removed below.
     }
+    try {
+      if ("caches" in window) {
+        const keys = await caches.keys()
+        await Promise.all(keys.map((key) => caches.delete(key)))
+      }
+    } catch {
+      // The worker was also asked to drop its caches.
+    }
     await clearOfflineStore()
     setOutbox([])
     setStoredThreads([])

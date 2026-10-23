@@ -40,6 +40,21 @@ function request<T>(req: IDBRequest<T>) {
   })
 }
 
+const openConnections = new Set<IDBDatabase>()
+
+function track(db: IDBDatabase) {
+  openConnections.add(db)
+  const drop = () => {
+    openConnections.delete(db)
+  }
+  db.onclose = drop
+  // A delete is blocked until every connection closes. This one closes itself.
+  db.onversionchange = () => {
+    db.close()
+    drop()
+  }
+}
+
 function openDb() {
   return new Promise<IDBDatabase>((resolve, reject) => {
     const open = indexedDB.open(DB_NAME, DB_VERSION)
@@ -52,7 +67,10 @@ function openDb() {
         db.createObjectStore("outbox", { keyPath: "id" })
       }
     }
-    open.onsuccess = () => resolve(open.result)
+    open.onsuccess = () => {
+      track(open.result)
+      resolve(open.result)
+    }
     open.onerror = () => reject(open.error)
   })
 }
@@ -197,9 +215,24 @@ export async function deleteOutbox(id: string) {
 export function clearOfflineStore() {
   if (unsupported()) return Promise.resolve()
   return new Promise<void>((resolve) => {
+    let settled = false
+    const finish = () => {
+      if (settled) return
+      settled = true
+      resolve()
+    }
+    for (const db of openConnections) {
+      try {
+        db.close()
+      } catch {
+        // Already closing.
+      }
+    }
+    openConnections.clear()
     const req = indexedDB.deleteDatabase(DB_NAME)
-    req.onsuccess = () => resolve()
-    req.onerror = () => resolve()
-    req.onblocked = () => resolve()
+    req.onsuccess = finish
+    req.onerror = finish
+    // A blocked delete continues once open connections close on versionchange.
+    setTimeout(finish, 2000)
   })
 }
