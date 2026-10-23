@@ -349,7 +349,7 @@ export async function startTurn({
   }
   const firstSpec = specFor(first)
   // A monthly budget holds turns on paid models once it's spent
-  const blocked = budgetBlock(firstSpec)
+  const blocked = budgetBlock(firstSpec, first.id)
   if (blocked) throw new TurnError(blocked, 402)
   // Local models get a context their instructions fit in (once per model)
   await Promise.all(

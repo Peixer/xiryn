@@ -13,6 +13,7 @@ import {
   MessageSquareIcon,
   MoonIcon,
   PlusIcon,
+  SearchIcon,
   SettingsIcon,
   UsersIcon,
   BotIcon,
@@ -135,6 +136,13 @@ export function CommandPalette() {
             </CommandGroup>
           )}
           <CommandGroup heading="Actions">
+            <CommandItem
+              value="search messages find text in threads"
+              onSelect={() => go("/search?q=")}
+            >
+              <SearchIcon />
+              Search messages…
+            </CommandItem>
             <CommandItem value="new agent create" onSelect={() => openAgentDialog()}>
               <PlusIcon />
               New agent
