@@ -136,6 +136,9 @@ Basic auth covers the whole site, including:
 - the chat stream (`POST /api/threads/.../turn`) and the event stream (`GET /api/events`), which stay unbuffered (`flush_interval -1`)
 - the desktop websocket (`/desktop/.../websockify` → port 6797)
 - the Google OAuth callback
+- `POST /api/hooks/routines/<id>`, until you opt out (below)
+
+Routine webhooks use their own bearer token, `XIRYN_HOOKS_TOKEN` (`Authorization: Bearer` or `X-Xiryn-Token`). Leave it unset and the route answers 404. The hostname in that URL has to be in `XIRYN_ALLOWED_HOSTS` or the request is 403 before the token is checked. The body is untrusted data for the agent; approvals are not skipped. `deploy/Caddyfile` comments the shape that proxies `/api/hooks/*` without basic auth. Copying it means moving `basic_auth` into a handle that does not match that path — a handle on its own does not override a site-level password. Do not put the token in the URL, and do not log it.
 
 Phone takeover links that Xiryn opens through a Cloudflare quick tunnel still go straight to the container's noVNC page. They are not on this hostname. Turn them off with `XIRYN_PHONE_TAKEOVER=off` if you only want the Caddy path.
 
