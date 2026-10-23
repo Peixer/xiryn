@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto"
 
-import { and, desc, eq } from "drizzle-orm"
+import type { FileUIPart } from "ai"
+import { and, asc, desc, eq } from "drizzle-orm"
 import { nanoid } from "nanoid"
 
 import { db } from "@/db"
@@ -30,6 +31,15 @@ import {
   type TgUser,
 } from "@/lib/telegram/api"
 import { markdownToTelegramHtml, plainText, splitMarkdown } from "@/lib/telegram/format"
+import {
+  DOWNLOAD_FAILED_REPLY,
+  planInbound,
+  receiveInboundFile,
+  redactSecret,
+  tooLargeReply,
+  UNSUPPORTED_REPLY,
+  VOICE_NOTE_REPLY,
+} from "@/lib/telegram/inbound-files"
 
 /* ────────────────────────────────────────────────────────────────────
  * Remote access over Telegram.
@@ -361,8 +371,14 @@ async function handle(token: string, update: TgUpdate) {
     return
   }
 
+  const inbound = planInbound(message, true)
+  if (inbound.action !== "text") {
+    await deliverInbound(token, message.chat.id, message, inbound)
+    return
+  }
+
   if (!text) {
-    await say(token, message.chat.id, "I can only read text messages for now.")
+    await say(token, message.chat.id, "Send a text message, a photo, or a file.")
     return
   }
 
@@ -427,6 +443,7 @@ function helpText() {
   return [
     "**Xiryn — remote**",
     "Write a message and your current agent answers, working on its own workstation while your computer keeps running Xiryn.",
+    "Photos and files you send (up to 20 MB) are saved on that agent's workstation. Voice notes aren't supported yet.",
     "",
     "/agents — pick an agent or squad",
     "/new — start a fresh thread",
@@ -632,11 +649,100 @@ const TOOL_LABELS: Record<string, (input: Record<string, unknown>) => string> = 
   delegate: () => "delegating",
 }
 
+async function deliverInbound(
+  token: string,
+  chatId: number,
+  message: TgMessage,
+  inbound: ReturnType<typeof planInbound>
+) {
+  if (inbound.action === "voice") {
+    await say(token, chatId, VOICE_NOTE_REPLY)
+    return
+  }
+  if (inbound.action === "unsupported" || inbound.action === "ignored") {
+    await say(token, chatId, UNSUPPORTED_REPLY)
+    return
+  }
+  if (inbound.action === "too-large") {
+    await say(token, chatId, tooLargeReply(inbound.bytes))
+    return
+  }
+  if (inbound.action !== "file") return
+
+  const target = resolveTarget()
+  if (!target) {
+    await sendAgentPicker(token, chatId)
+    return
+  }
+  const caption = inbound.file.caption ?? ""
+  const agentId = agentIdForTarget(target, caption)
+  if (!agentId) {
+    await sendAgentPicker(token, chatId)
+    return
+  }
+  const agent = db.select().from(agents).where(eq(agents.id, agentId)).get()
+  let result: Awaited<ReturnType<typeof receiveInboundFile>>
+  try {
+    result = await receiveInboundFile({
+      isOwner: true,
+      message,
+      token,
+      agentId,
+      modelSpec: resolveModelSpec(agent?.model),
+    })
+  } catch (error) {
+    console.error(
+      "[xiryn] telegram: inbound file failed:",
+      redactSecret(error instanceof Error ? error.message : String(error), token)
+    )
+    await say(token, chatId, DOWNLOAD_FAILED_REPLY)
+    return
+  }
+  if (result.action === "saved") {
+    await converse(token, chatId, result.userText, undefined, result.fileParts)
+    return
+  }
+  const reply =
+    result.action === "too-large" ||
+    result.action === "failed" ||
+    result.action === "voice" ||
+    result.action === "unsupported"
+      ? result.message
+      : UNSUPPORTED_REPLY
+  if (result.action === "failed") {
+    console.error(
+      "[xiryn] telegram: inbound file failed:",
+      redactSecret(result.detail ?? result.message, token)
+    )
+  }
+  await say(token, chatId, reply)
+}
+
+// The agent who will run the turn, so the file lands on that workstation.
+function agentIdForTarget(target: Target, text: string) {
+  if (target.agentId) return target.agentId
+  if (!target.squadId) return null
+  const members = db
+    .select({ agent: agents })
+    .from(squadMembers)
+    .innerJoin(agents, eq(squadMembers.agentId, agents.id))
+    .where(eq(squadMembers.squadId, target.squadId))
+    .orderBy(asc(squadMembers.position))
+    .all()
+    .map((row) => row.agent as Agent)
+  const mention = text.match(/^@(\S+)\s+([\s\S]+)$/)
+  const named =
+    mention &&
+    members.find((member) => member.name.toLowerCase() === mention[1].toLowerCase())
+  return (named || members[0])?.id ?? null
+}
+
 async function converse(
   token: string,
   chatId: number,
   text: string,
-  vault?: VaultMarker
+  vault?: VaultMarker,
+  fileParts?: FileUIPart[]
 ) {
   const target = resolveTarget()
   if (!target) {
@@ -682,7 +788,7 @@ async function converse(
   const message = {
     id: nanoid(),
     role: "user",
-    parts: [{ type: "text", text: body }],
+    parts: [{ type: "text", text: body }, ...(fileParts ?? [])],
     ...(vault && { metadata: { vault } }),
   } as XirynMessage
 

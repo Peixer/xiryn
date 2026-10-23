@@ -118,7 +118,7 @@ Everything lives in `data/xiryn.db` (override with `XIRYN_DATA_DIR`). Schema: `d
 
 ## Telegram bridge
 
-`lib/telegram/bridge.ts` long-polls `getUpdates` from inside the server process — no inbound connection is needed. Updates are processed per chat in order. Unpaired users get a refusal; the owner's messages start turns through the same runtime with `channel: "telegram"`, progress is reported by editing one status message, and the final reply (including shared screenshots as photos) is sent when the run ends. Threads started from Telegram are ordinary threads in the app.
+`lib/telegram/bridge.ts` long-polls `getUpdates` from inside the server process — no inbound connection is needed. Updates are processed per chat in order. Unpaired users get a refusal; the owner's messages start turns through the same runtime with `channel: "telegram"`, progress is reported by editing one status message, and the final reply (including shared screenshots as photos) is sent when the run ends. Photos, videos, audio, and other files from that same owner are streamed from the Bot API (20 MB cap) into the agent's workstation `uploads/` folder and then sent as the user message; voice notes are refused. Threads started from Telegram are ordinary threads in the app.
 
 ## Security boundary
 
