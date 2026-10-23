@@ -4,7 +4,13 @@ import * as React from "react"
 import { useRouter } from "next/navigation"
 import { PencilIcon } from "lucide-react"
 
-import { clearModelPrice, setModelPrice, setMonthlyBudget } from "@/actions/usage"
+import {
+  clearModelPrice,
+  setAgentBudget,
+  setModelPrice,
+  setMonthlyBudget,
+} from "@/actions/usage"
+import { Glyph } from "@/components/glyph"
 import { Button } from "@/components/ui/button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Spinner } from "@/components/ui/spinner"
@@ -39,9 +45,67 @@ function useAction() {
   return { run, pending }
 }
 
+type AgentLimit = {
+  id: string
+  name: string
+  glyph: string
+  limit: number | null
+  spent: number
+}
+
+function AgentLimitRow({ agent }: { agent: AgentLimit }) {
+  const { run, pending } = useAction()
+  const [value, setValue] = React.useState(agent.limit ? String(agent.limit) : "")
+
+  return (
+    <form
+      className="flex flex-col gap-2 sm:flex-row sm:items-center"
+      onSubmit={(event) => {
+        event.preventDefault()
+        void run(
+          () => setAgentBudget(agent.id, value),
+          Number.parseFloat(value) > 0 ? "Limit saved" : "Limit removed"
+        )
+      }}
+    >
+      <div className="flex min-w-0 items-center gap-2 sm:flex-1">
+        <Glyph seed={agent.glyph} className="size-5 shrink-0" />
+        <span className="min-w-0 flex-1 truncate text-[13px] font-medium">
+          {agent.name}
+        </span>
+        <span className="shrink-0 font-mono text-[11px] text-muted-foreground tabular-nums">
+          {formatUsd(agent.spent)} this month
+        </span>
+      </div>
+      <div className="flex items-center gap-2">
+        <input
+          aria-label={`${agent.name}, US dollars per month`}
+          inputMode="decimal"
+          value={value}
+          onChange={(event) => setValue(event.target.value)}
+          placeholder="no limit"
+          className={cn(field, "w-28 flex-none")}
+        />
+        <Button type="submit" size="sm" disabled={pending}>
+          {pending && <Spinner data-icon="inline-start" />}
+          Save
+        </Button>
+      </div>
+    </form>
+  )
+}
+
 // This month's spend against an optional budget, which pauses paid models
-// once it's reached
-export function BudgetCard({ spent, budget }: { spent: number; budget: number | null }) {
+// once it's reached. Each agent can also have its own cap.
+export function BudgetCard({
+  spent,
+  budget,
+  agents,
+}: {
+  spent: number
+  budget: number | null
+  agents: AgentLimit[]
+}) {
   const { run, pending } = useAction()
   const [value, setValue] = React.useState(budget ? String(budget) : "")
   const share = budget ? Math.min(1, spent / budget) : 0
@@ -99,6 +163,24 @@ export function BudgetCard({ spent, budget }: { spent: number; budget: number | 
         Once it&apos;s reached, agents on paid models wait until the 1st. Local models
         keep working, since they cost nothing.
       </p>
+      <div className="flex flex-col gap-2 border-t pt-3">
+        <span className="label-mono">limit per agent</span>
+        {agents.length === 0 ? (
+          <p className="text-[11.5px] leading-relaxed text-muted-foreground">
+            Create an agent to cap its spend without lowering the monthly budget.
+          </p>
+        ) : (
+          <>
+            <p className="text-[11.5px] leading-relaxed text-muted-foreground">
+              Optional. Holds that agent once its own month-to-date spend reaches the
+              amount. The monthly budget above still applies to everyone.
+            </p>
+            {agents.map((agent) => (
+              <AgentLimitRow key={agent.id} agent={agent} />
+            ))}
+          </>
+        )}
+      </div>
     </div>
   )
 }
