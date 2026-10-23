@@ -1,3 +1,4 @@
+import type { Metadata } from "next"
 import { headers } from "next/headers"
 
 import { AgentDialog } from "@/components/dialogs/agent-dialog"
@@ -10,6 +11,11 @@ import { NotificationsProvider } from "@/components/workspace/notifier"
 import { Sidebar } from "@/components/workspace/sidebar"
 import { StatusBar } from "@/components/workspace/status-bar"
 import { getNavigation, getSystemStatus } from "@/queries/workspace"
+
+// Next's file-based manifest link has no crossorigin attribute (it adds one
+// only for Vercel preview). Browsers use the first manifest link, so this
+// clears that tag. The root layout emits the credentialed link instead.
+export const metadata: Metadata = { manifest: null }
 
 export default async function WorkspaceLayout({
   children,

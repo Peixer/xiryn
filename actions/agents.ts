@@ -1,8 +1,9 @@
 "use server"
 
 import { eq } from "drizzle-orm"
-import { z } from "zod"
+import { nanoid } from "nanoid"
 import { revalidatePath } from "next/cache"
+import { z } from "zod"
 
 import { db } from "@/db"
 import { agentInputSchema, agents, threads, type AgentInput } from "@/db/schema"
@@ -11,8 +12,11 @@ import {
   deleteAgentSafely,
   type DeleteAgentDeps,
 } from "@/lib/agent-admin"
+import { parsePortableAgent, prepareAgentImport } from "@/lib/agent-portable"
 import { activeThreadIds, stopRun } from "@/lib/agent/runtime"
 import { engineSnapshot } from "@/lib/docker"
+import { getProviderMeta } from "@/lib/providers/catalog"
+import { isProviderConfigured, resolveModelSpec } from "@/lib/providers/registry"
 import { deleteWorkstation, workstationLeftovers } from "@/lib/workstation"
 
 const deleteAgentSchema = z.object({
@@ -47,6 +51,60 @@ function normalize(values: AgentInput) {
     ...data,
     instructions: data.instructions?.trim() || null,
     model: data.model?.trim() || null,
+  }
+}
+
+// A file from another install. Validates again here — the preview the page
+// showed is not trusted — and always inserts a new agent. A taken name gets
+// a " (2)" suffix. A model whose provider isn't configured is left empty so
+// the agent uses the workspace default; `modelNotice` tells the person.
+export async function importAgent(raw: string) {
+  const parsed = parsePortableAgent(typeof raw === "string" ? raw : "")
+  if (!parsed.ok) {
+    return { ok: false as const, code: parsed.code, error: parsed.error }
+  }
+  const taken = db
+    .select({ name: agents.name })
+    .from(agents)
+    .all()
+    .map((row) => row.name)
+  const prepared = prepareAgentImport(parsed.file, {
+    takenNames: taken,
+    providerConfigured: (id) => {
+      const meta = getProviderMeta(id)
+      return meta ? isProviderConfigured(meta.id) : false
+    },
+    defaultModel: resolveModelSpec(null),
+    glyphFallback: nanoid(10),
+  })
+  const input = agentInputSchema.safeParse(prepared.input)
+  if (!input.success) {
+    return {
+      ok: false as const,
+      code: "invalid" as const,
+      error: input.error.issues[0]?.message ?? "This agent file isn't valid.",
+    }
+  }
+  try {
+    const { agent, threadId } = await createAgent(input.data)
+    return {
+      ok: true as const,
+      agent: { id: agent.id, name: agent.name },
+      threadId,
+      renamedFrom: prepared.renamedFrom,
+      modelNotice: prepared.modelNotice,
+    }
+  } catch (error) {
+    // The file is untrusted prompt text. Log the failure, not the payload.
+    console.error(
+      "[xiryn] couldn't import the agent:",
+      error instanceof Error ? error.name : "unknown"
+    )
+    return {
+      ok: false as const,
+      code: "failed" as const,
+      error: "Couldn't import the agent.",
+    }
   }
 }
 

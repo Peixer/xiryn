@@ -51,23 +51,39 @@ const FALLBACK_BINARIES =
 
 type Result = { exitCode: number | null; stdout: Buffer; stderr: string }
 
+type StreamInput = Readable | ReadableStream<Uint8Array>
+
 export type RunOptions = {
-  // A stream is piped through and never buffered, so a large upload stays on disk
-  input?: string | Buffer | ReadableStream<Uint8Array>
+  // A stream is piped through and never buffered, so a large upload stays on disk.
+  // Web uploads pass a ReadableStream; Telegram uploads pass a Node Readable.
+  input?: string | Buffer | StreamInput
   timeoutMs?: number
   // Called with each line of output as it arrives (builds)
   onLine?: (line: string) => void
   env?: Record<string, string>
 }
 
-export function isStreamInput(
-  input: RunOptions["input"]
-): input is ReadableStream<Uint8Array> {
+function isWebStream(input: RunOptions["input"]): input is ReadableStream<Uint8Array> {
   return (
     typeof input === "object" &&
     input !== null &&
+    !(input instanceof Readable) &&
+    !Buffer.isBuffer(input) &&
     typeof (input as ReadableStream<Uint8Array>).getReader === "function"
   )
+}
+
+// True when the body can be read only once, so a failed exec must not be retried.
+export function isStreamInput(input: RunOptions["input"]): input is StreamInput {
+  return input instanceof Readable || isWebStream(input)
+}
+
+function toNodeStream(input: RunOptions["input"]): Readable | null {
+  if (input instanceof Readable) return input
+  if (isWebStream(input)) {
+    return Readable.fromWeb(input as unknown as NodeReadableStream<Uint8Array>)
+  }
+  return null
 }
 
 const globalForDocker = globalThis as unknown as {
@@ -110,8 +126,13 @@ function spawnOnce(binary: string, args: string[], options: RunOptions) {
       lines(chunk)
     })
 
+    const streamed = toNodeStream(options.input)
     const timer = options.timeoutMs
-      ? setTimeout(() => child.kill(), options.timeoutMs)
+      ? setTimeout(() => {
+          // Stop a Node Readable (Telegram) or the fromWeb wrapper (composer uploads).
+          streamed?.destroy()
+          child.kill()
+        }, options.timeoutMs)
       : null
     let settled = false
     const finish = (fn: () => void) => {
@@ -134,21 +155,24 @@ function spawnOnce(binary: string, args: string[], options: RunOptions) {
       })
     })
 
-    if (isStreamInput(options.input)) {
-      // The process exiting closes stdin; that EPIPE is not a second failure
-      child.stdin.on("error", () => {})
-      const nodeIn = Readable.fromWeb(
-        options.input as unknown as NodeReadableStream<Uint8Array>
-      )
-      nodeIn.on("error", (error) => {
+    const stdin = child.stdin
+    if (!stdin) return
+    // The process exiting closes stdin; that EPIPE is not a second failure.
+    stdin.on("error", () => {})
+    if (streamed) {
+      streamed.on("error", (error: NodeJS.ErrnoException) => {
+        // The child closed stdin after reading the file, or the timeout destroyed it.
+        if (error.code === "EPIPE" || error.code === "ERR_STREAM_PREMATURE_CLOSE") return
         child.kill()
         finish(() => reject(error))
       })
-      nodeIn.pipe(child.stdin)
-    } else if (options.input !== undefined) {
-      child.stdin.end(options.input)
+      streamed.pipe(stdin)
+      return
+    }
+    if (typeof options.input === "string" || Buffer.isBuffer(options.input)) {
+      stdin.end(options.input)
     } else {
-      child.stdin.end()
+      stdin.end()
     }
   })
 }

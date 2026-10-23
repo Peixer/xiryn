@@ -19,7 +19,8 @@ export default function Page() {
           <p className="max-w-2xl text-[13.5px] leading-relaxed text-muted-foreground">
             Everyone you&apos;ve created, with the model they run on, the state of their
             workstation and what they&apos;ve accumulated. From here you can open, edit,
-            stop or reset an agent&apos;s machine, and delete agents you no longer need.
+            stop or reset an agent&apos;s machine, export its configuration, import one
+            from a file, and delete agents you no longer need.
           </p>
         </header>
         <AgentsView agents={agents} />
