@@ -1,11 +1,10 @@
-import { tool, type InferUITools, type UIDataTypes, type UIMessage } from "ai"
-import { and, asc, eq } from "drizzle-orm"
+import { tool, type InferUITools, type UIMessage } from "ai"
+import { asc, eq } from "drizzle-orm"
 import { z } from "zod"
 
 import { db } from "@/db"
 import {
   agents,
-  memories,
   routines,
   routineScheduleSchema,
   squads,
@@ -13,6 +12,7 @@ import {
   type Agent,
   type Routine,
 } from "@/db/schema"
+import type { Attachment } from "@/lib/attachments"
 import { describeSchedule, nextRun } from "@/lib/schedule"
 import { listSkills, readSkill, SkillError } from "@/lib/skills"
 import type { ActionApproval } from "@/lib/mcp/approval"
@@ -39,6 +39,7 @@ import {
   type VaultItemView,
   type VaultKind,
 } from "@/lib/vault"
+import { forgetAgentNote, saveAgentNote, searchMemories } from "@/lib/memory"
 import { webFetch, webSearch } from "@/lib/web"
 import {
   captureScreen,
@@ -186,7 +187,7 @@ export function createWorkstationTools(env: ToolEnv) {
   return {
     shell: tool({
       description:
-        "Run a shell command on your workstation (Linux, bash, with passwordless sudo). Returns combined output and the exit code. Each call is a fresh shell that starts in your home directory unless `cwd` is given. Programs started in the background keep running.",
+        "Run a shell command on your workstation (Linux, bash). `sudo` does not work: new containers drop every capability. Returns combined output and the exit code. Each call is a fresh shell that starts in your home directory unless `cwd` is given. Programs started in the background keep running.",
       inputSchema: z.object({
         command: z.string().min(1).describe("The command to run"),
         cwd: z.string().optional().describe("Working directory"),
@@ -522,9 +523,24 @@ export function createVaultTools(env: ToolEnv) {
 
 export function createMemoryTools(env: ToolEnv) {
   return {
+    memory_search: tool({
+      description:
+        "Search your own notes and the shared notes by keyword. Matching is a case-insensitive substring. Use it when a fact may be in an older note that was not loaded into this prompt. Returns up to 10 matches with id, scope (agent or shared), age and the full note text. Shared notes are read-only: only the person can create, edit, or delete them, from the Memory panel.",
+      inputSchema: z.object({
+        query: z
+          .string()
+          .min(1)
+          .max(200)
+          .describe("A word or phrase to find inside a note"),
+      }),
+      execute: async ({ query }) => ({
+        matches: searchMemories(env.current().id, query),
+      }),
+    }),
+
     memory_write: tool({
       description:
-        "Save a durable note to your long-term memory. It will be in front of you in every future conversation, in every thread. Use it for facts about the person, their projects, preferences, decisions and standing instructions — and whenever they ask you to remember something.",
+        "Save a durable note to your own long-term memory. It will be in front of you in every future conversation, in every thread. Use it for facts about the person, their projects, preferences, decisions and standing instructions — and whenever they ask you to remember something. This never writes a shared note. Shared notes apply to every agent, and only the person can create, edit, or delete them, from the Memory panel.",
       inputSchema: z.object({
         note: z
           .string()
@@ -533,32 +549,23 @@ export function createMemoryTools(env: ToolEnv) {
           .describe(
             "One self-contained statement that makes sense without this conversation"
           ),
+        scope: z
+          .enum(["agent", "shared"])
+          .optional()
+          .describe(
+            "Leave unset. You cannot save a shared note; only the person can, from the Memory panel."
+          ),
       }),
-      execute: async ({ note }) => {
-        const [row] = db
-          .insert(memories)
-          .values({ agentId: env.current().id, content: note.trim() })
-          .returning({ id: memories.id })
-          .all()
-        return { id: row.id, saved: note.trim() }
-      },
+      execute: async ({ note, scope }) => saveAgentNote(env.current().id, note, scope),
     }),
 
     memory_forget: tool({
       description:
-        "Delete a note from your memory by its id, when it is wrong, outdated or the person asks you to forget it.",
+        "Delete one of your own notes by its id, when it is wrong, outdated or the person asks you to forget it. Shared notes cannot be deleted this way; the person removes those from the Memory panel.",
       inputSchema: z.object({
         id: z.string().describe("The note's id, shown in your memory"),
       }),
-      execute: async ({ id }) => {
-        const removed = db
-          .delete(memories)
-          .where(and(eq(memories.id, id), eq(memories.agentId, env.current().id)))
-          .returning({ id: memories.id })
-          .all()
-        if (removed.length === 0) throw new Error(`No note with id ${id} in your memory.`)
-        return { forgotten: id }
-      },
+      execute: async ({ id }) => forgetAgentNote(env.current().id, id),
     }),
   }
 }
@@ -885,4 +892,8 @@ export type XirynMetadata = {
   }
 }
 
-export type XirynMessage = UIMessage<XirynMetadata, UIDataTypes, InferUITools<XirynTools>>
+export type XirynMessage = UIMessage<
+  XirynMetadata,
+  { attachment: Attachment },
+  InferUITools<XirynTools>
+>

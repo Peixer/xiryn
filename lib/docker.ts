@@ -1,6 +1,8 @@
 import { spawn } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
+import { Readable } from "node:stream"
+import type { ReadableStream as NodeReadableStream } from "node:stream/web"
 
 // Xiryn drives Docker through the docker command itself, so whatever it is
 // pointed at (Docker Desktop, Docker Engine, Colima, OrbStack, a context)
@@ -49,12 +51,39 @@ const FALLBACK_BINARIES =
 
 type Result = { exitCode: number | null; stdout: Buffer; stderr: string }
 
+type StreamInput = Readable | ReadableStream<Uint8Array>
+
 export type RunOptions = {
-  input?: string | Buffer
+  // A stream is piped through and never buffered, so a large upload stays on disk.
+  // Web uploads pass a ReadableStream; Telegram uploads pass a Node Readable.
+  input?: string | Buffer | StreamInput
   timeoutMs?: number
   // Called with each line of output as it arrives (builds)
   onLine?: (line: string) => void
   env?: Record<string, string>
+}
+
+function isWebStream(input: RunOptions["input"]): input is ReadableStream<Uint8Array> {
+  return (
+    typeof input === "object" &&
+    input !== null &&
+    !(input instanceof Readable) &&
+    !Buffer.isBuffer(input) &&
+    typeof (input as ReadableStream<Uint8Array>).getReader === "function"
+  )
+}
+
+// True when the body can be read only once, so a failed exec must not be retried.
+export function isStreamInput(input: RunOptions["input"]): input is StreamInput {
+  return input instanceof Readable || isWebStream(input)
+}
+
+function toNodeStream(input: RunOptions["input"]): Readable | null {
+  if (input instanceof Readable) return input
+  if (isWebStream(input)) {
+    return Readable.fromWeb(input as unknown as NodeReadableStream<Uint8Array>)
+  }
+  return null
 }
 
 const globalForDocker = globalThis as unknown as {
@@ -97,25 +126,54 @@ function spawnOnce(binary: string, args: string[], options: RunOptions) {
       lines(chunk)
     })
 
+    const streamed = toNodeStream(options.input)
     const timer = options.timeoutMs
-      ? setTimeout(() => child.kill(), options.timeoutMs)
+      ? setTimeout(() => {
+          // Stop a Node Readable (Telegram) or the fromWeb wrapper (composer uploads).
+          streamed?.destroy()
+          child.kill()
+        }, options.timeoutMs)
       : null
-    child.on("error", (error) => {
+    let settled = false
+    const finish = (fn: () => void) => {
+      if (settled) return
+      settled = true
       if (timer) clearTimeout(timer)
-      reject(error)
+      fn()
+    }
+    child.on("error", (error) => {
+      finish(() => reject(error))
     })
     child.on("close", (exitCode, signal) => {
-      if (timer) clearTimeout(timer)
-      if (pending.trim()) options.onLine?.(pending)
-      resolve({
-        exitCode: signal ? null : exitCode,
-        stdout: Buffer.concat(stdout),
-        stderr: Buffer.concat(stderr).toString("utf8"),
+      finish(() => {
+        if (pending.trim()) options.onLine?.(pending)
+        resolve({
+          exitCode: signal ? null : exitCode,
+          stdout: Buffer.concat(stdout),
+          stderr: Buffer.concat(stderr).toString("utf8"),
+        })
       })
     })
 
-    if (options.input !== undefined) child.stdin.end(options.input)
-    else child.stdin.end()
+    const stdin = child.stdin
+    if (!stdin) return
+    // The process exiting closes stdin; that EPIPE is not a second failure.
+    stdin.on("error", () => {})
+    if (streamed) {
+      streamed.on("error", (error: NodeJS.ErrnoException) => {
+        // The child closed stdin after reading the file, or the timeout destroyed it.
+        if (error.code === "EPIPE" || error.code === "ERR_STREAM_PREMATURE_CLOSE") return
+        child.kill()
+        finish(() => reject(error))
+      })
+      streamed.pipe(stdin)
+      return
+    }
+    if (typeof options.input === "string" || Buffer.isBuffer(options.input)) {
+      stdin.end(options.input)
+    } else {
+      stdin.end()
+    }
   })
 }
 
@@ -123,11 +181,60 @@ function isMissing(error: unknown) {
   return (error as NodeJS.ErrnoException)?.code === "ENOENT"
 }
 
+// Default process cap for one agent desktop (Chromium, Xvfb, the panel, and
+// a shell). The workstation create call already passes --memory from
+// settings; this default applies only when a create forgets its own limit.
+export const WORKSTATION_PIDS_LIMIT = "512"
+export const WORKSTATION_DEFAULT_MEMORY = "4096m"
+
+function optionValues(args: readonly string[], flag: string) {
+  const values: string[] = []
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i]
+    if (arg === flag) {
+      const next = args[i + 1]
+      if (next && !next.startsWith("--")) values.push(next)
+    } else if (arg.startsWith(`${flag}=`)) {
+      values.push(arg.slice(flag.length + 1))
+    }
+  }
+  return values
+}
+
+// Flags for every `docker create` this process issues (agent workstations).
+// Chromium in the workstation image is already started with --no-sandbox
+// (workstation/rootfs/etc/chromium.d/xiryn), so the desktop does not get
+// CAP_SYS_ADMIN back for Chromium's setuid sandbox. Xvfb, x11vnc, and the
+// panel run as the unprivileged user and need no capabilities.
+// no-new-privileges also blocks setuid, including the image's passwordless
+// sudo. The sudoers file is left unchanged for the separate sudoers change.
+// This set was not executed against a live workstation desktop here.
+export function hardenContainerCreateArgs(args: readonly string[]): string[] {
+  if (args[0] !== "create") return [...args]
+  const extra: string[] = []
+  const security = optionValues(args, "--security-opt")
+  if (!security.some((value) => value.includes("no-new-privileges"))) {
+    extra.push("--security-opt", "no-new-privileges")
+  }
+  if (!optionValues(args, "--cap-drop").includes("ALL")) {
+    extra.push("--cap-drop", "ALL")
+  }
+  if (optionValues(args, "--pids-limit").length === 0) {
+    extra.push("--pids-limit", WORKSTATION_PIDS_LIMIT)
+  }
+  if (optionValues(args, "--memory").length === 0) {
+    extra.push("--memory", WORKSTATION_DEFAULT_MEMORY)
+  }
+  if (extra.length === 0) return [...args]
+  return [args[0], ...extra, ...args.slice(1)]
+}
+
 // Runs `docker <args>` and reports how it went, whatever the exit code
 export async function dockerRaw(args: string[], options: RunOptions = {}) {
+  const command = hardenContainerCreateArgs(args)
   if (shared.binary) {
     try {
-      return await spawnOnce(shared.binary, args, options)
+      return await spawnOnce(shared.binary, command, options)
     } catch (error) {
       if (!isMissing(error)) throw error
       shared.binary = null
@@ -136,7 +243,7 @@ export async function dockerRaw(args: string[], options: RunOptions = {}) {
   for (const binary of ["docker", ...FALLBACK_BINARIES]) {
     if (binary !== "docker" && !fs.existsSync(binary)) continue
     try {
-      const result = await spawnOnce(binary, args, options)
+      const result = await spawnOnce(binary, command, options)
       shared.binary = binary
       return result
     } catch (error) {

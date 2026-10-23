@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache"
 
 import { normalizeAllowlistInput } from "@/lib/agent/untrusted"
 import { isWritableSetting, setSetting } from "@/lib/config"
+import { extensionNames } from "@/lib/mcp/stdio-policy"
 import {
   assertWebhookFormat,
   assertWebhookPreview,
@@ -99,6 +100,10 @@ export async function saveSettings(values: Record<string, string | null>) {
     }
     if (key === "security.webAllowlist" && value?.trim()) {
       value = normalizeAllowlistInput(value)
+    }
+    if (key === "mcp.allowedCommands" && value) {
+      const names = extensionNames(value)
+      if (!names.ok) throw new Error(names.error)
     }
     setSetting(key, value)
   }

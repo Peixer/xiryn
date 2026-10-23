@@ -9,6 +9,7 @@ import {
   TurnError,
 } from "@/lib/agent/runtime"
 import type { XirynMessage } from "@/lib/agent/tools"
+import { sanitizeUserParts } from "@/lib/attachments"
 
 const bodySchema = z.object({
   message: z.object({
@@ -49,18 +50,16 @@ export async function POST(
   const parsed = bodySchema.safeParse(await request.json().catch(() => null))
   if (!parsed.success) return fail("Malformed message.")
 
-  const text = parsed.data.message.parts
-    .map((part) =>
-      part.type === "text" && typeof part.text === "string" ? part.text : ""
-    )
-    .join("")
-  if (!text.trim()) return fail("Message is empty.")
-  if (text.length > 100_000) return fail("Message is too long.")
+  const cleaned = sanitizeUserParts(parsed.data.message.parts)
+  if ("error" in cleaned) return fail(cleaned.error)
 
   try {
     const run = await startTurn({
       threadId,
-      message: parsed.data.message as unknown as XirynMessage,
+      message: {
+        ...parsed.data.message,
+        parts: cleaned.parts,
+      } as unknown as XirynMessage,
       agentId: parsed.data.agentId,
     })
     return createUIMessageStreamResponse({ stream: subscribe(run) })

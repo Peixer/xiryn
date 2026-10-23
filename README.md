@@ -44,22 +44,22 @@ This year every major lab shipped a personal agent that works on a cloud machine
 
 ```bash
 # macOS / Linux
-curl -fsSL https://raw.githubusercontent.com/SouravBeraAkaSpeed/xiryn/main/setup.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Peixer/xiryn/main/setup.sh | bash
 ```
 
 ```powershell
 # Windows (PowerShell)
-irm https://raw.githubusercontent.com/SouravBeraAkaSpeed/xiryn/main/setup.ps1 | iex
+irm https://raw.githubusercontent.com/Peixer/xiryn/main/setup.ps1 | iex
 ```
 
 **No API key? Run it free.** Add `--local` and the same command also installs [Ollama](https://ollama.com), downloads a model that fits your computer's memory and makes it every agent's default — nothing leaves your machine, nothing is billed:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/SouravBeraAkaSpeed/xiryn/main/setup.sh | bash -s -- --local
+curl -fsSL https://raw.githubusercontent.com/Peixer/xiryn/main/setup.sh | bash -s -- --local
 ```
 
 ```powershell
-$env:XIRYN_LOCAL="1"; irm https://raw.githubusercontent.com/SouravBeraAkaSpeed/xiryn/main/setup.ps1 | iex
+$env:XIRYN_LOCAL="1"; irm https://raw.githubusercontent.com/Peixer/xiryn/main/setup.ps1 | iex
 ```
 
 **Have a coding agent?** Paste [one prompt](#set-up-with-your-coding-agent) into Claude Code, Codex or Cursor — it installs everything, asks you for your keys and starts Xiryn.
@@ -102,7 +102,7 @@ $env:XIRYN_LOCAL="1"; irm https://raw.githubusercontent.com/SouravBeraAkaSpeed/x
 <td width="50%" valign="top">
 
 **Agents with a job**<br>
-Name, role, standing orders, and a model of their own. Start from [16 ready-made agents and 4 squads](#ready-made-agents) or write your own.
+Name, role, standing orders, and a model of their own. Start from [16 ready-made agents and 4 squads](#ready-made-agents) or write your own. [Export one as a JSON file](#sharing-an-agent) and import it on another install — you read the prompt and confirm before it is created.
 
 **Routines — tasks on a schedule**<br>
 "Every morning at 8, brief me on…" — say it in the chat or set it up on the Routines page. Daily, weekdays, weekly, every few hours, or once. It runs on its own, even with the browser closed, and tells you when it's done.
@@ -111,7 +111,7 @@ Name, role, standing orders, and a model of their own. Start from [16 ready-made
 How you want invoices filed, a brief shaped, a checklist followed. Saved as files on the Skills page. The agent sees the name and description, then reads the full text when the task needs it. A skill is instructions you can read first; it is not a script Xiryn runs.
 
 **A workstation per agent**<br>
-A Docker container with a shell, a persistent home folder and a 1280×800 desktop with Chromium — created on first use, stopped when idle, never touching your own files.
+A Docker container with a shell, a persistent home folder and a 1280×800 desktop with Chromium — created on first use, stopped when idle, never touching your own files. New containers drop every capability, so `sudo` inside them does not work.
 
 **Live desktop, take over any time**<br>
 Watch the agent click and type in real time. Hit **Take over** and it pauses; hand it back with a note and it picks up from what you did.
@@ -120,7 +120,7 @@ Watch the agent click and type in real time. Hit **Take over** and it pauses; ha
 <td width="50%" valign="top">
 
 **Long-term memory**<br>
-Agents save what matters about you and your work; every thread sees it. Inspect, add or delete notes any time.
+Agents save what matters about you and your work; every thread sees it. Inspect, add or delete notes any time. Shared notes, which only you can add, edit or delete, are loaded into every agent. Older notes past the prompt budget stay searchable.
 
 **Web research**<br>
 Search and clean page reading through Firecrawl, with cited sources.
@@ -192,8 +192,8 @@ Agents ask when they need a decision, confirm before anything irreversible, and 
 
 | Your system | Run this in a terminal |
 | --- | --- |
-| **macOS / Linux** | `curl -fsSL https://raw.githubusercontent.com/SouravBeraAkaSpeed/xiryn/main/setup.sh \| bash` |
-| **Windows** (PowerShell) | `irm https://raw.githubusercontent.com/SouravBeraAkaSpeed/xiryn/main/setup.ps1 \| iex` |
+| **macOS / Linux** | `curl -fsSL https://raw.githubusercontent.com/Peixer/xiryn/main/setup.sh \| bash` |
+| **Windows** (PowerShell) | `irm https://raw.githubusercontent.com/Peixer/xiryn/main/setup.ps1 \| iex` |
 
 Already cloned the repo? Run `./setup.sh` on macOS/Linux, or double-click **`setup.cmd`** on Windows.
 
@@ -211,11 +211,11 @@ The setup asks once, then does the rest:
 Using Claude Code, Codex, Cursor or another coding agent? Paste this prompt into it. It installs everything, asks you for your keys and starts Xiryn:
 
 ```text
-Install and start Xiryn for me — the open-source personal agent that runs on my own computer: https://github.com/SouravBeraAkaSpeed/xiryn
+Install and start Xiryn for me — the open-source personal agent that runs on my own computer: https://github.com/Peixer/xiryn
 
 1. From my home folder, run Xiryn's setup without prompts. It clones Xiryn into ./xiryn (or reuses it), installs Git, Node.js and Docker if they're missing, installs the packages and builds the agents' desktop image, which takes several minutes the first time — let it finish:
-   - macOS / Linux:  curl -fsSL https://raw.githubusercontent.com/SouravBeraAkaSpeed/xiryn/main/setup.sh | XIRYN_YES=1 XIRYN_NO_START=1 bash
-   - Windows (PowerShell):  $env:XIRYN_YES="1"; $env:XIRYN_NO_START="1"; irm https://raw.githubusercontent.com/SouravBeraAkaSpeed/xiryn/main/setup.ps1 | iex
+   - macOS / Linux:  curl -fsSL https://raw.githubusercontent.com/Peixer/xiryn/main/setup.sh | XIRYN_YES=1 XIRYN_NO_START=1 bash
+   - Windows (PowerShell):  $env:XIRYN_YES="1"; $env:XIRYN_NO_START="1"; irm https://raw.githubusercontent.com/Peixer/xiryn/main/setup.ps1 | iex
    (If you'd rather not pipe a script, clone the repo and run ./setup.sh or .\setup.ps1 inside it with the same two variables.)
    - If it stops and shows a command that needs my password, show me that command, wait for me to run it in my own terminal, then run the setup again.
    - If Docker Desktop was just installed or isn't running, ask me to open it and accept its terms (Windows may also ask for a restart). Wait until `docker info` works, then run the setup again.
@@ -238,7 +238,7 @@ Install and start Xiryn for me — the open-source personal agent that runs on m
 Install [Node.js 20.9+](https://nodejs.org) and [Docker](https://docs.docker.com/get-started/get-docker/), then:
 
 ```bash
-git clone https://github.com/SouravBeraAkaSpeed/xiryn.git
+git clone https://github.com/Peixer/xiryn.git
 cd xiryn
 npm install
 npm run setup     # checks Docker, builds the agents' desktop image, creates .env
@@ -311,6 +311,8 @@ git pull
 docker compose up -d --build
 ```
 
+The app container runs as `node` and uses `DOCKER_HOST` to reach a socket proxy. It does not mount `/var/run/docker.sock`. A data volume left from a previous root container has to be `chown`ed to uid 1000 once, or the database will not open.
+
 </details>
 
 Your data — `data/xiryn.db`, the vault and the agents' home folders — is untouched by updates.
@@ -364,6 +366,12 @@ Open **Templates** in the sidebar, pick one, and change anything before it goes 
 | **Build** | **Rigel** — software engineer · **Arcturus** — code reviewer · **Electra** — website builder · **Lyra** — data analyst · **Pollux** — budget keeper for bank CSVs |
 
 **Squads in one click:** *Crew* (Atlas, Vega, Rigel, Lyra), *Launch crew* (Vega, Sirius, Antares), *Trip team* (Polaris, Altair, Mira) and *Dev team* (Rigel, Arcturus, Electra).
+
+## Sharing an agent
+
+On **Agents**, **Export** downloads `<name>.xiryn-agent.json`: the name, role, standing orders, model and glyph. It leaves out the id, memory, threads, routines, vault, keys, workstation files and usage. **Import** takes a file or pasted JSON (256 KB at most), shows the name, role, model and the standing orders in full, and creates a **new** agent only after you confirm. A name that's already taken is saved as "Name (2)". If the file's model isn't configured on this install, the new agent uses your default model and the page says so.
+
+The file never leaves your computer. Standing orders in a file are prompt text someone else may have written — read them in the preview before confirming. Importing does not overwrite an agent you already have.
 
 ## Feedback
 
@@ -420,7 +428,8 @@ Every setting can come from `.env` **or** from **Settings** in the app. Values s
 | `XIRYN_WEB_ALLOWLIST` | Hostnames `web_fetch` may call without asking, when approval is `new-domains` |
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_OWNER_ID` | Remote access |
 | `XIRYN_TELEGRAM_NOTIFY` | Telegram notice when a task finishes: `long` (a minute or more, default), `all` or `off` |
-| `XIRYN_DATA_DIR`, `XIRYN_ALLOWED_HOSTS` | Data location; extra hostnames behind your own proxy |
+| `XIRYN_DATA_DIR`, `XIRYN_ALLOWED_HOSTS` | Data location; extra hostnames behind your own authenticating proxy |
+| `XIRYN_MCP_ALLOWED_COMMANDS` | Extra program names for MCP stdio, besides npx, uvx, node, python3, python, docker, bunx |
 | `XIRYN_URL` | Public origin (`https://host`) or the local default. Telegram links, Google OAuth, and the remote desktop stream |
 | `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`, `BEDROCK_BASE_URL` | Amazon Bedrock. Region opts in the instance role; keys are optional. See [docs/providers.md](docs/providers.md) |
 | `XIRYN_BEDROCK_EXTRA_REGIONS`, `XIRYN_BEDROCK_MODEL_REGIONS`, `XIRYN_BEDROCK_MAX_OUTPUT` | Extra Bedrock regions (for example `us-east-2` for Llama 3.3 70B in Ohio), per-model region pins, and per-model output caps |
@@ -435,13 +444,13 @@ Every setting can come from `.env` **or** from **Settings** in the app. Values s
 
 Xiryn has no user accounts, so it's built never to be reachable by anyone but you:
 
-- Binds to **127.0.0.1** only, and refuses any request whose `Host` or `Origin` isn't loopback — which also blocks DNS-rebinding attacks from web pages you visit.
+- Binds to **127.0.0.1** only, and refuses any request whose `Host` isn't loopback — which also blocks DNS-rebinding attacks from web pages you visit. State-changing requests must also send an `Origin` for that same host and port. Exposed servers still rely on Caddy basic auth (or a similar proxy); Xiryn has no in-app accounts.
 - API keys never reach the browser; the UI only sees masked values, and keys are kept out of logs.
 - A notification webhook, if you set one, receives a short message when a task finishes or needs you. The URL is masked in Settings and is never logged. A reply preview is sent only when you turn that on, and then only the first 140 characters.
 - Telegram answers exactly **one** paired account; pairing codes are single-use and rotate after wrong guesses.
-- Agents execute only inside their own containers — never on your desktop or in your files. Their browsers have password saving and card autofill switched off. MCP stdio servers are the exception: they run on the Xiryn host, and only for commands you listed in `data/mcp.json`.
+- Agents execute only inside their own containers — never on your desktop or in your files. Their browsers have password saving and card autofill switched off. New containers drop every capability, so `sudo` inside them does not work. MCP stdio servers are the exception: they run on the Xiryn host, only for an allowlisted launcher you confirmed while saving `data/mcp.json`.
 - Sending mail or changing a calendar waits for your approval, the same way a payment does. Every send waits.
-- Web pages, mail, files, shell output, search results and MCP output are treated as untrusted data. Settings → Workstations & web can require approval before `web_fetch` leaves for a new domain, or before every web request. The card shows the full URL. `XIRYN_WEB_APPROVAL=off` is the default.
+- Web pages, mail, files, shell output, search results and MCP output are treated as untrusted data. Settings → Workstations & web can require approval before `web_fetch` leaves for a new domain, or before every web request. The card shows the arguments that will run, including the URL. `XIRYN_WEB_APPROVAL=off` is the default.
 - Saved logins, cards and personal details are encrypted (AES-256-GCM) with a key your operating system's keychain holds. Agents get masked hints only; Xiryn types values into pages itself, logins only on their own site, payment details only after you approve that payment.
 - Each live desktop is published on 127.0.0.1 only and asks for its own random password.
 - No telemetry. No analytics. The only request Xiryn makes on its own is an update check against GitHub's public API when you open Xiryn, sending nothing about you. Switch it off in **Settings → System** or with `XIRYN_UPDATE_CHECK=off`.
@@ -461,6 +470,9 @@ Hover it under **Recent threads** in the sidebar and click the trash icon, or op
 
 **Where is my data?**
 In `data/xiryn.db` on your disk. Back it up by copying the file; erase everything by deleting it.
+
+**Can I attach a file?**
+Yes. Use the paperclip on the composer, drop files onto it, or paste an image. Up to 10 files per message, 25 MB each. They are stored in that agent's workstation at `~/uploads` (inside its container, not on your desktop). The agent is told the path and can read the file. Images are shown to the model only when that model is known to accept image input; otherwise it gets the path.
 
 **Does it work without Docker or Firecrawl?**
 Without Docker, agents chat, remember and (with Firecrawl) research, but can't run code or use a desktop. Without Firecrawl, they search and read the web with their own browser. The app tells you what's missing.

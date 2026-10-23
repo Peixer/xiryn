@@ -39,11 +39,17 @@ Because the run lives in the server process and not in the HTTP request, closing
 
 Defined in `lib/agent/tools.ts`. Every tool resolves "the agent holding the turn" at call time, so after a delegation the same tool acts on the new agent's workstation and memory.
 
+### Memory
+
+Each agent has its own notes (`memories.agent_id`). A note with a null `agent_id` is **shared**: it is injected into every agent's prompt under a **Shared notes** block, with its own 3,000-character budget, separate from the 12,000-character budget for that agent's own notes. Newest notes win inside each budget. Notes that do not fit stay in the database and are reachable with `memory_search` (a case-insensitive substring search over that agent's notes and the shared notes, up to 10 matches).
+
+Agents can write and delete only their own notes (`memory_write`, `memory_forget`). Shared notes are prompt text for every agent, so only the person can create, edit, or delete them, from the Memory panel. `memory_write` refuses `scope: "shared"`. Clearing one agent's memory does not delete shared notes, and deleting an agent does not either.
+
 | Group | Tools | Backed by |
 | --- | --- | --- |
 | Workstation | `shell`, `fs_read`, `fs_write`, `fs_list` | `docker exec` into the agent's container |
 | Desktop | `screen_capture`, `screen_share`, `pointer_*`, `key_*` | `scrot` and `xdotool` on the container's X display |
-| Memory | `memory_write`, `memory_forget` | Local SQLite |
+| Memory | `memory_write`, `memory_forget`, `memory_search` | Local SQLite |
 | Skills | `skill_list`, `skill_read` | Files in `data/skills/<slug>/SKILL.md`. Read-only for agents |
 | Routines | `routine_create`, `routine_list`, `routine_delete` | Local SQLite; run by the scheduler (not offered during a routine's own runs) |
 | Web | `web_search`, `web_fetch` | Firecrawl v2 |
@@ -98,12 +104,16 @@ A squad thread has an ordered list of members. A message is addressed to one of 
 
 ## Workstations
 
-Each agent's workstation is a Docker container named `xiryn-ws-<agent id>`, run from an image built on your computer out of [`workstation/`](../workstation): Debian with Xvfb, xfwm4 and a panel, Chromium, x11vnc + noVNC, xdotool, Node.js, Python and passwordless `sudo`. Xiryn talks to Docker only through the `docker` CLI (`lib/docker.ts`), so Docker Desktop, Docker Engine, Colima or OrbStack all work, as does whatever context the CLI points at.
+Each agent's workstation is a Docker container named `xiryn-ws-<agent id>`, run from an image built on your computer out of [`workstation/`](../workstation): Debian with Xvfb, xfwm4 and a panel, Chromium, x11vnc + noVNC, xdotool, Node.js and Python. New containers drop every capability (`--cap-drop ALL` and `no-new-privileges`), so `sudo` does not work. The image still has a sudoers file; the create flags are what block setuid. Xiryn talks to Docker only through the `docker` CLI (`lib/docker.ts`), so Docker Desktop, Docker Engine, Colima or OrbStack all work, as does whatever context the CLI points at.
 
 - **Image.** Its tag is a fingerprint of the `workstation/` folder (`lib/workstation-image.ts`). `npm run setup` builds it, or Xiryn does at boot or on first use. When an update changes the folder, the new image is built once and each agent moves to it the next time its machine starts.
 - **Lifecycle.** The first tool call that needs a machine creates it (starting Docker Desktop if it isn't running), with the agent's home folder in a named volume, `xiryn-home-<agent id>`, so files survive restarts and image updates. Inside the container a watchdog stops it after `XIRYN_WORKSTATION_AUTO_STOP_MINUTES` without activity (a running command or someone watching counts), even if Xiryn itself is closed. A janitor in the server removes machines of deleted agents and, with `XIRYN_WORKSTATION_AUTO_DELETE_MINUTES`, machines stopped for longer than that. Resetting or deleting an agent removes its container and volume.
 - **Commands.** `shell` runs `xiryn-run`, which writes output to a file, so a program left running in the background can't hold the call open, and returns the beginning and end of very long output.
 - **Live desktop.** noVNC listens on port 6080 inside the container, published on `127.0.0.1` with a random host port. The browser connects there directly with the container's random VNC password, which only the server hands out. For phone take-overs, `xiryn-tunnel` starts a Cloudflare quick tunnel inside the container that closes itself after 30 minutes.
+
+## Portable agents
+
+`lib/agent-portable.ts` writes a versioned JSON file (`version: 1`, `kind: "xiryn-agent"`) with only an agent's name, role, standing orders, model and glyph. Import checks the file — 256 KB, a known version, and the same length limits as the agent form — shows the prompt, and after confirmation inserts a new row through `actions/agents.ts`. A taken name is saved with a " (2)" suffix. A model whose provider isn't configured here is dropped so the agent uses the workspace default. Memory, threads, routines, vault items, secrets, workstation files and the usage ledger are not in the file, and the import doesn't send it anywhere. Standing orders from a file are untrusted prompt text; the preview is there so you can read them first.
 
 ## Data
 
@@ -123,12 +133,20 @@ Everything lives in `data/xiryn.db` (override with `XIRYN_DATA_DIR`). Schema: `d
 
 `lib/config.ts` defines every setting once, with its environment variable and default. A value saved in the UI wins over `.env`, which wins over the default. Secrets are only ever described to the browser in masked form.
 
-`security.webApproval` (`XIRYN_WEB_APPROVAL`) is `off` by default, `new-domains`, or `always`. `off` lets `web_fetch` and `web_search` run as before. `new-domains` asks before `web_fetch` calls a hostname that is not listed in `security.webAllowlist` (`XIRYN_WEB_ALLOWLIST`). `always` asks before every `web_fetch` and `web_search`. The approval card shows the full URL, query string included, and can add that hostname for next time. Search in `new-domains` mode is not host-gated: the query still goes to the configured Firecrawl endpoint. Pages, mail, files, shell output, search snippets and MCP results are handed to the model inside `<untrusted>` markers (`lib/agent/untrusted.ts`); the system prompt tells the agent that text is data, not instructions. A `web_fetch` URL the parser rewrites is requested in that rewritten form, so a backslash cannot make the allowlist name a different host than the one Firecrawl calls.
+`security.webApproval` (`XIRYN_WEB_APPROVAL`) is `off` by default, `new-domains`, or `always`. `off` lets `web_fetch` and `web_search` run as before. `new-domains` asks before `web_fetch` calls a hostname that is not listed in `security.webAllowlist` (`XIRYN_WEB_ALLOWLIST`). `always` asks before every `web_fetch` and `web_search`. The approval card shows the hashed arguments that will run, including the URL, and can add that hostname for next time. Search in `new-domains` mode is not host-gated: the query still goes to the configured Firecrawl endpoint. Pages, mail, files, shell output, search snippets and MCP results are handed to the model inside `<untrusted>` markers (`lib/agent/untrusted.ts`); the system prompt tells the agent that text is data, not instructions. A `web_fetch` URL the parser rewrites is requested in that rewritten form, so a backslash cannot make the allowlist name a different host than the one Firecrawl calls.
 
 ## Telegram bridge
 
-`lib/telegram/bridge.ts` long-polls `getUpdates` from inside the server process — no inbound connection is needed. Updates are processed per chat in order. Unpaired users get a refusal; the owner's messages start turns through the same runtime with `channel: "telegram"`, progress is reported by editing one status message, and the final reply (including shared screenshots as photos) is sent when the run ends. Threads started from Telegram are ordinary threads in the app.
+`lib/telegram/bridge.ts` long-polls `getUpdates` from inside the server process — no inbound connection is needed. Updates are processed per chat in order. Unpaired users get a refusal; the owner's messages start turns through the same runtime with `channel: "telegram"`, progress is reported by editing one status message, and the final reply (including shared screenshots as photos) is sent when the run ends. Photos, videos, audio, and other files from that same owner are streamed from the Bot API (20 MB cap) into the agent's workstation `uploads/` folder and then sent as the user message; voice notes are refused. Threads started from Telegram are ordinary threads in the app.
+
+## Attachments
+
+The composer takes files and images from the paperclip, a drop onto the box, or a paste. A message can carry up to 10 files, 25 MB each. The server streams each one into that agent's workstation at `/home/xiryn/uploads/` (the `uploads` folder in its home directory, on the container's own volume) under a unique sanitized name. Nothing is sent to a hosted store, and the bytes are not executed or inspected beyond the file name and extension.
+
+The agent is told the name, media type, size and path on its workstation, and reads the file with `fs_read` or the shell. Image bytes are also passed to the model when that model is known to accept image input: OpenAI GPT-4o, GPT-4.1, GPT-4 Turbo, GPT-5, GPT-6, o1/o3/o4 (not o1-mini) and ChatGPT-4o; Anthropic Claude 3 and later; Google Gemini chat models; xAI Grok 4 and Grok vision models; Mistral Pixtral; those same ids through OpenRouter; and Bedrock Claude 3+ plus Amazon Nova Pro, Lite and Premier. Every other model, including Ollama, LM Studio, Groq, DeepSeek and custom endpoints, gets the path only.
+
+The thread shows the name and size. An image thumbnail is loaded from `GET /api/uploads/:agentId/:name`, which reads one regular file inside that uploads folder and refuses anything else (including a symlink). Uploads use the same loopback Host and Origin checks as the rest of the app.
 
 ## Security boundary
 
-`proxy.ts` runs before every request and refuses any `Host` or `Origin` that isn't loopback (or in `XIRYN_ALLOWED_HOSTS`). Together with binding to `127.0.0.1`, this keeps an account-less app private and blocks DNS rebinding. See [SECURITY.md](../SECURITY.md).
+`proxy.ts` runs before every request and refuses a `Host` that isn't loopback (or in `XIRYN_ALLOWED_HOSTS`). GET and HEAD may omit `Origin`, which covers page loads and the SSE stream at `/api/events`. Every other method must send an `Origin` for that same host and port, so another website, another local port, or a different loopback name cannot post a server action. That check is not a login. On a shared machine, put Caddy basic auth or a similar proxy in front; in-app accounts are a separate future item. See [SECURITY.md](../SECURITY.md) and [aws.md](aws.md).

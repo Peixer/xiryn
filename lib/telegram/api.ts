@@ -30,6 +30,16 @@ export type TgUser = {
   username?: string
 }
 export type TgChat = { id: number; type: "private" | "group" | "supergroup" | "channel" }
+export type TgFile = {
+  file_id: string
+  file_unique_id?: string
+  file_size?: number
+  file_name?: string
+  mime_type?: string
+  width?: number
+  height?: number
+  duration?: number
+}
 export type TgMessage = {
   message_id: number
   from?: TgUser
@@ -37,8 +47,14 @@ export type TgMessage = {
   date: number
   text?: string
   caption?: string
-  photo?: unknown[]
-  document?: unknown
+  photo?: TgFile[]
+  document?: TgFile
+  video?: TgFile
+  audio?: TgFile
+  voice?: TgFile
+  video_note?: TgFile
+  animation?: TgFile
+  sticker?: { file_id?: string }
 }
 export type TgCallbackQuery = {
   id: string

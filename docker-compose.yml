@@ -5,16 +5,62 @@ services:
     container_name: xiryn
     restart: unless-stopped
     env_file: .env
-    # Talking to Docker needs access to its socket, which is root-only on
-    # most hosts. (Access to the socket is root-equivalent either way.)
-    user: root
+    # The image USER is node. The engine socket is not mounted here.
+    user: node
+    environment:
+      DOCKER_HOST: tcp://docker-socket-proxy:2375
+      # buildx 0.38 defaults to a BuildKit container that pulls
+      # moby/buildkit and bind-mounts the engine socket. The legacy builder
+      # is POST /build, which the proxy allows. Host installs are unchanged.
+      DOCKER_BUILDKIT: "0"
     ports:
       # Loopback only: Xiryn has no login, so never publish it on 0.0.0.0
       - "127.0.0.1:6796:6796"
     volumes:
       - xiryn-data:/app/data
-      # Agents' workstations run as sibling containers on the host's Docker
-      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      - docker-socket-proxy
+    networks:
+      - default
+      - docker-proxy
+
+  # Only this container holds the engine socket. It is not published and it
+  # has no route off the internal network. The allowlist is
+  # deploy/docker-socket-proxy.haproxy.cfg (containers, exec, images, build,
+  # volumes, info, version, ping). Plugins, swarm, secrets, system, networks,
+  # and the other families are denied.
+  # A data volume created while this service ran as root is owned by root.
+  # Once, if the app cannot open its database: chown -R 1000:1000 on that volume.
+  docker-socket-proxy:
+    image: haproxy:3.4.2-alpine@sha256:0878b11eb64c433be1b0f578a584b8aca12f6caaa64c8f239b8b556c0dd5eeeb
+    container_name: xiryn-docker-proxy
+    restart: unless-stopped
+    # The image's default user cannot open a root:docker socket. This
+    # process is the one that holds the socket; the app stays `node`.
+    user: "0:0"
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /run
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./deploy/docker-socket-proxy.haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    entrypoint: ["haproxy"]
+    command:
+      - -W
+      - -db
+      - -f
+      - /usr/local/etc/haproxy/haproxy.cfg
+    networks:
+      - docker-proxy
 
 volumes:
   xiryn-data:
+
+networks:
+  docker-proxy:
+    internal: true

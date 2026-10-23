@@ -76,13 +76,18 @@ export function readMcpConfig(): { servers: McpServerConfig[]; error: string | n
   }
 }
 
-export function writeMcpConfig(text: string) {
+export function parseMcpConfig(text: string) {
   const parsed = fileSchema.parse(JSON.parse(text))
   const ids = new Set<string>()
   for (const server of parsed.servers) {
     if (ids.has(server.id)) throw new Error(`Two servers share the id "${server.id}".`)
     ids.add(server.id)
   }
+  return parsed
+}
+
+export function writeMcpConfig(text: string) {
+  const parsed = parseMcpConfig(text)
   fs.mkdirSync(DATA_DIR, { recursive: true })
   const tmp = `${MCP_CONFIG_PATH}.${process.pid}.tmp`
   fs.writeFileSync(tmp, `${JSON.stringify(parsed, null, 2)}\n`, { mode: 0o600 })

@@ -1,0 +1,1 @@
+ALTER TABLE `action_approvals` ADD `args_hash` text DEFAULT '' NOT NULL;

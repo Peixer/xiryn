@@ -1,4 +1,4 @@
-import { getActionApproval } from "@/lib/mcp/approval"
+import { ARGS_DIFFER_REASON, getActionApproval } from "@/lib/mcp/approval"
 import { isApprovalHold } from "@/lib/mcp/policy"
 
 // External text is wrapped before the model reads it. A page, an email or a
@@ -47,9 +47,25 @@ export function approvalHoldIsOurs(
   return summaryFor(record.approvalId) === record.summary
 }
 
+// A hash mismatch is our refusal to run a different payload. Wrapping it
+// would tell the model to ignore the one message that says to retry the
+// approved arguments. A forged reason, or extra fields, stays inside the fence.
+export function isOwnArgumentRejection(output: unknown) {
+  if (!output || typeof output !== "object") return false
+  const record = output as Record<string, unknown>
+  if (Object.keys(record).length !== 2) return false
+  return record.status === "rejected" && record.reason === ARGS_DIFFER_REASON
+}
+
 // Approval holds are our own instruction to stop. Wrapping them would tell
 // the model to ignore the one message it must follow.
 export function toUntrustedModelOutput(source: string, output: unknown) {
+  if (isOwnArgumentRejection(output)) {
+    return {
+      type: "text" as const,
+      value: JSON.stringify({ status: "rejected", reason: ARGS_DIFFER_REASON }),
+    }
+  }
   if (approvalHoldIsOurs(output, (id) => getActionApproval(id)?.summary ?? null)) {
     const record = output as { status: string; approvalId: string; summary: string }
     return {
