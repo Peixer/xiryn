@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
 
+import { importGithubSkills, previewGithubSkills } from "@/lib/github-skills"
 import {
   SKILL_DESCRIPTION_MAX,
   SKILL_MAX_BYTES,
@@ -76,6 +77,38 @@ export async function importSkills(text: string, filename?: string) {
     })
     revalidatePath("/skills")
     return { ok: true as const, ...result }
+  } catch (error) {
+    return { ok: false as const, error: messageOf(error) }
+  }
+}
+
+const githubUrlSchema = z
+  .string()
+  .trim()
+  .min(1, "Paste a GitHub link.")
+  .max(2000, "That link is too long.")
+
+const githubSlugsSchema = z
+  .array(slugSchema)
+  .min(1, "Select at least one skill.")
+  .max(64, "Choose at most 64 skills.")
+
+export async function previewGithubSkillImport(url: string) {
+  try {
+    return await previewGithubSkills(githubUrlSchema.parse(url))
+  } catch (error) {
+    return { ok: false as const, error: messageOf(error) }
+  }
+}
+
+export async function importGithubSkillSelection(url: string, slugs: string[]) {
+  try {
+    const result = await importGithubSkills(
+      githubUrlSchema.parse(url),
+      githubSlugsSchema.parse(slugs)
+    )
+    if (result.ok) revalidatePath("/skills")
+    return result
   } catch (error) {
     return { ok: false as const, error: messageOf(error) }
   }

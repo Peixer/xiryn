@@ -36,7 +36,8 @@ export default function Page() {
             is the text an agent will follow. Xiryn does not run a script because a skill
             mentions one. The library holds {SKILL_MAX_COUNT} skills, each 16 KB or
             smaller. A file that isn&apos;t valid is skipped and listed here; it is not
-            sent to the model.
+            sent to the model. From GitHub previews a public folder of SKILL.md files
+            before anything is saved.
           </p>
         </div>
         <SkillsView skills={skills} warnings={warnings} />

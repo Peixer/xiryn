@@ -612,15 +612,16 @@ export function createSkillTools() {
   return {
     skill_list: tool({
       description:
-        "List the skills in this workspace: reusable playbooks the person wrote (name, slug, and description). Read one with skill_read before following it. You cannot create, edit, or delete skills.",
+        "List the skills saved on the Skills page (name, slug, and description). An imported skill is marked. Read one with skill_read before following it. You cannot create, edit, or delete skills.",
       inputSchema: z.object({}),
       execute: async () => {
         const library = listSkills()
         return {
-          skills: library.skills.map(({ slug, name, description }) => ({
+          skills: library.skills.map(({ slug, name, description, source }) => ({
             slug,
             name,
             description,
+            ...(source ? { imported: true } : {}),
           })),
           ...(library.warnings.length > 0 && { skipped: library.warnings.length }),
         }
