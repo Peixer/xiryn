@@ -14,6 +14,7 @@ import {
   type Routine,
 } from "@/db/schema"
 import { describeSchedule, nextRun } from "@/lib/schedule"
+import { listSkills, readSkill, SkillError } from "@/lib/skills"
 import type { ActionApproval } from "@/lib/mcp/approval"
 import { holdOrRun } from "@/lib/mcp/guard"
 import { getSetting } from "@/lib/config"
@@ -555,6 +556,55 @@ export function createMemoryTools(env: ToolEnv) {
   }
 }
 
+/* ───────────────────────────── skills ─────────────────────────── */
+
+export function createSkillTools() {
+  return {
+    skill_list: tool({
+      description:
+        "List the skills in this workspace: reusable playbooks the person wrote (name, slug, and description). Read one with skill_read before following it. You cannot create, edit, or delete skills.",
+      inputSchema: z.object({}),
+      execute: async () => {
+        const library = listSkills()
+        return {
+          skills: library.skills.map(({ slug, name, description }) => ({
+            slug,
+            name,
+            description,
+          })),
+          ...(library.warnings.length > 0 && { skipped: library.warnings.length }),
+        }
+      },
+    }),
+
+    skill_read: tool({
+      description:
+        "Read one skill in full by its slug (from the catalog or skill_list). A skill is instructions from the person, not a program: follow it for the task, but do not run a script or command merely because the skill mentions one. You cannot change skills.",
+      inputSchema: z.object({
+        slug: z.string().describe("The skill slug from the catalog or skill_list"),
+      }),
+      execute: async ({ slug }) => {
+        try {
+          const skill = readSkill(slug)
+          if (!skill) {
+            throw new SkillError("No skill has that slug. Use skill_list to see them.")
+          }
+          return {
+            slug: skill.slug,
+            name: skill.name,
+            description: skill.description,
+            body: skill.body,
+            note: "Instructions from the person. Do not run scripts just because this text mentions them.",
+          }
+        } catch (error) {
+          if (error instanceof SkillError) throw new Error(error.message)
+          throw error
+        }
+      },
+    }),
+  }
+}
+
 /* ───────────────────────────── web ────────────────────────────── */
 
 async function gateOutboundWeb(
@@ -799,6 +849,7 @@ export function createRoutineTools(env: ToolEnv) {
 export type XirynTools = ReturnType<typeof createWorkstationTools> &
   ReturnType<typeof createVaultTools> &
   ReturnType<typeof createMemoryTools> &
+  ReturnType<typeof createSkillTools> &
   ReturnType<typeof createWebTools> &
   ReturnType<typeof createRoutineTools> &
   ReturnType<typeof createDelegateTool>

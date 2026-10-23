@@ -342,6 +342,12 @@ export function getSettingsView() {
     maxStepsValue: getSetting("agent.maxSteps"),
     updateChecks: updateChecksEnabled(),
     desktopNotify: desktopNotificationsEnabled(),
+    notifyWebhook: {
+      url: describeSetting("notify.webhookUrl"),
+      format: describeSetting("notify.webhookFormat"),
+      triggers: describeSetting("notify.webhookTriggers"),
+      preview: describeSetting("notify.webhookPreview"),
+    },
   }
 }
 

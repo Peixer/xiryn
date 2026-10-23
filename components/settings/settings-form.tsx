@@ -1152,6 +1152,190 @@ function UpdateCheck({ enabled }: { enabled: boolean }) {
   )
 }
 
+const WEBHOOK_FORMATS = ["ntfy", "slack", "json"] as const
+const WEBHOOK_TRIGGERS = [
+  ["finished", "Finished"],
+  ["failed", "Failed"],
+  ["approval", "Needs approval"],
+  ["takeover", "Needs takeover"],
+  ["secret", "Needs a secret"],
+] as const
+
+const webhookSelectClass =
+  "h-8 w-full rounded-lg border border-input bg-transparent px-2 text-[13px] outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/40 dark:bg-input/30"
+
+// The server checks this again. Checked here too so a rejected URL still
+// explains itself: a production server action hides the thrown message.
+function webhookUrlProblem(value: string) {
+  try {
+    const url = new URL(value)
+    if (
+      (url.protocol === "http:" || url.protocol === "https:") &&
+      url.hostname.length > 0
+    ) {
+      return null
+    }
+  } catch {
+    // Not a URL.
+  }
+  return "Notification webhook URL must be an http or https URL."
+}
+
+function webhookTriggers(value: string | null) {
+  if (!value || value.trim() === "none") return [] as string[]
+  const known = new Set<string>(WEBHOOK_TRIGGERS.map(([id]) => id))
+  return value
+    .split(",")
+    .map((part) => part.trim())
+    .filter((part) => known.has(part))
+}
+
+function NotificationWebhook({ data }: { data: SettingsData["notifyWebhook"] }) {
+  const { save, pending } = useSave()
+  const [url, setUrl] = React.useState("")
+  const [format, setFormat] = React.useState(
+    data.format.value === "ntfy" ||
+      data.format.value === "slack" ||
+      data.format.value === "json"
+      ? data.format.value
+      : "json"
+  )
+  const [triggers, setTriggers] = React.useState(() =>
+    webhookTriggers(data.triggers.value)
+  )
+  const [preview, setPreview] = React.useState(data.preview.value === "on")
+
+  return (
+    <div className="flex flex-col gap-4 rounded-xl border bg-surface/50 p-4">
+      <div className="flex flex-col gap-0.5">
+        <span className="flex items-center gap-2">
+          <span className="text-[14px] font-semibold">Notification webhook</span>
+          <SourceBadge setting={data.url} />
+        </span>
+        <p className="text-[12.5px] leading-relaxed text-muted-foreground">
+          A phone notification when a task finishes or needs you, including on a machine
+          with no desktop. Xiryn POSTs one short message to this URL. ntfy is a phone
+          push, Slack is an incoming webhook, and JSON is a generic body. Nothing is sent
+          until a URL is set, and the address stays on this machine.
+        </p>
+      </div>
+      <label className="flex flex-col gap-1.5">
+        <span className="flex items-center justify-between">
+          <span className="label-mono">Notification webhook URL</span>
+          <span className="font-mono text-[10px] text-faint">{data.url.env}</span>
+        </span>
+        <SecretInput
+          setting={data.url}
+          value={url}
+          onChange={setUrl}
+          placeholder="https://ntfy.sh/your-topic"
+        />
+      </label>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="flex flex-col gap-1.5">
+          <span className="flex items-center justify-between">
+            <span className="label-mono">Format</span>
+            <SourceBadge setting={data.format} />
+          </span>
+          <select
+            value={format}
+            onChange={(event) =>
+              setFormat(event.target.value as (typeof WEBHOOK_FORMATS)[number])
+            }
+            className={webhookSelectClass}
+          >
+            {WEBHOOK_FORMATS.map((item) => (
+              <option key={item} value={item}>
+                {item}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex items-start gap-2.5 sm:mt-6">
+          <Checkbox
+            checked={preview}
+            onCheckedChange={(checked) => setPreview(checked === true)}
+            className="mt-0.5"
+          />
+          <span className="flex flex-col gap-0.5">
+            <span className="text-[13px] font-medium">Include a preview</span>
+            <span className="text-[12px] leading-relaxed text-muted-foreground">
+              Off by default. At most 140 characters of the reply or the request, because
+              that text can be private.
+            </span>
+          </span>
+        </label>
+      </div>
+      <fieldset className="flex flex-col gap-2">
+        <legend className="label-mono mb-1">Send when</legend>
+        <div className="flex flex-wrap gap-x-4 gap-y-2">
+          {WEBHOOK_TRIGGERS.map(([id, label]) => (
+            <label key={id} className="flex items-center gap-2 text-[13px]">
+              <Checkbox
+                checked={triggers.includes(id)}
+                onCheckedChange={(checked) =>
+                  setTriggers((current) => {
+                    const next = new Set(current)
+                    if (checked === true) next.add(id)
+                    else next.delete(id)
+                    return WEBHOOK_TRIGGERS.map(([trigger]) => trigger).filter(
+                      (trigger) => next.has(trigger)
+                    )
+                  })
+                }
+              />
+              {label}
+            </label>
+          ))}
+        </div>
+      </fieldset>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          size="sm"
+          disabled={pending}
+          onClick={() => {
+            const chosen = WEBHOOK_TRIGGERS.map(([id]) => id)
+              .filter((id) => triggers.includes(id))
+              .join(",")
+            const payload: Record<string, string | null> = {
+              "notify.webhookFormat": format,
+              "notify.webhookTriggers": chosen || "none",
+              "notify.webhookPreview": preview ? "on" : "off",
+            }
+            const nextUrl = url.trim()
+            if (nextUrl) {
+              const problem = webhookUrlProblem(nextUrl)
+              if (problem) {
+                toast.add({ type: "error", title: "Couldn't save", description: problem })
+                return
+              }
+              payload["notify.webhookUrl"] = nextUrl
+            }
+            return save(payload, "Notification webhook saved").then((ok) => {
+              if (ok) setUrl("")
+            })
+          }}
+        >
+          {pending && <Spinner data-icon="inline-start" />}
+          Save
+        </Button>
+        {data.url.source === "local" && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="text-muted-foreground"
+            disabled={pending}
+            onClick={() => save({ "notify.webhookUrl": null }, "Webhook URL removed")}
+          >
+            <RotateCcwIcon data-icon="inline-start" />
+            Forget saved URL
+          </Button>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function DesktopNotify({ enabled }: { enabled: boolean }) {
   const { save, pending } = useSave()
   return (
@@ -1339,6 +1523,7 @@ export function SettingsForm({
               </div>
             ))}
           </div>
+          <NotificationWebhook data={data.notifyWebhook} />
           <DesktopNotify enabled={data.desktopNotify} />
           <UpdateCheck enabled={data.updateChecks} />
         </Section>
