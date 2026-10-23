@@ -26,6 +26,7 @@ import {
   createDelegateTool,
   createMemoryTools,
   createRoutineTools,
+  createSkillTools,
   createWebTools,
   createVaultTools,
   createWorkstationTools,
@@ -474,6 +475,7 @@ export async function startTurn({
       ? { ...createWorkstationTools(env), ...createVaultTools(env) }
       : {}),
     ...createMemoryTools(env),
+    ...createSkillTools(),
     ...(capabilities.web ? createWebTools() : {}),
     // A routine's own runs don't schedule more routines
     ...(routine ? {} : createRoutineTools(env)),
