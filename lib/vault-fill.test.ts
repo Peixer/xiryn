@@ -90,10 +90,97 @@ test("a shared public suffix is not the same site", () => {
   assert.equal(sameSite("attacker.github.io", "victim.github.io"), false)
   assert.equal(sameSite("evil.co.uk", "barclays.co.uk"), false)
   assert.equal(sameSite("a.blogspot.com", "b.blogspot.com"), false)
+  assert.equal(sameSite("www.github.io", "github.io"), false)
+  assert.equal(sameSite("www.blogspot.com", "myblog.blogspot.com"), false)
   assert.equal(sameSite("login.example.com", "example.com"), true)
   assert.equal(sameSite("www.example.com", "example.com"), true)
   assert.equal(sameSite("example.com.evil.com", "example.com"), false)
   assert.equal(sameSite("notexample.com", "example.com"), false)
+})
+
+test("a leading www stays on the host, so a public suffix does not swallow it", () => {
+  const phishing = pageFromTargets([
+    {
+      url: "https://www.github.io/phish?password=" + secret,
+      title: "GitHub",
+      focused: true,
+      visible: true,
+    },
+  ])
+  assert.ok(phishing)
+  assert.equal(phishing.host, "www.github.io")
+  assert.equal(JSON.stringify(phishing).includes(secret), false)
+  assert.equal(
+    assessLoginFill({
+      kind: "login",
+      label: "Pages",
+      site: "github.io",
+      field: "password",
+      pageHost: phishing.host,
+      approved: true,
+    }).action,
+    "refuse"
+  )
+
+  const ordinary = pageFromTargets([
+    {
+      url: "https://www.example.com/login",
+      title: "Example",
+      focused: true,
+      visible: true,
+    },
+  ])
+  assert.equal(ordinary?.host, "www.example.com")
+  const step = assessLoginFill({
+    kind: "login",
+    label: "Example",
+    site: "example.com",
+    field: "password",
+    pageHost: ordinary?.host ?? null,
+    approved: false,
+  })
+  assert.equal(step.action, "ask")
+  if (step.action !== "ask") return
+  assert.match(step.summary, /www\.example\.com/)
+  assert.equal(step.summary.includes(secret), false)
+})
+
+test("userinfo and an IDN lookalike do not become the saved host", () => {
+  const userinfo = pageFromTargets([
+    {
+      url: "https://github.com:pw@evil.example/login?password=" + secret,
+      title: "Sign in to GitHub",
+      focused: true,
+      visible: true,
+    },
+  ])
+  assert.equal(userinfo?.host, "evil.example")
+  assert.equal(userinfo?.url, "https://evil.example")
+  assert.equal(JSON.stringify(userinfo).includes(secret), false)
+  assert.equal(JSON.stringify(userinfo).includes("github.com"), false)
+  assert.equal(
+    assessLoginFill({
+      kind: "login",
+      label: "GitHub",
+      site: "github.com",
+      field: "password",
+      pageHost: userinfo?.host ?? null,
+      approved: true,
+    }).action,
+    "refuse"
+  )
+
+  const lookalike = pageFromTargets([
+    {
+      url: "https://\u0435xample.com/login",
+      title: "Example",
+      focused: true,
+      visible: true,
+    },
+  ])
+  assert.ok(lookalike)
+  assert.equal(lookalike.host, "xn--xample-2of.com")
+  assert.equal(sameSite(lookalike.host, "example.com"), false)
 })
 
 test("a window title does not choose the page, and there is no first-tab fallback", () => {

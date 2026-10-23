@@ -18,7 +18,11 @@ function described(page: PageTarget) {
     return null
   }
   if (url.protocol !== "http:" && url.protocol !== "https:") return null
-  const host = url.hostname.replace(/\.$/, "").replace(/^www\./i, "")
+  // Keep every label, including a leading "www". eTLD+1 already treats
+  // www.example.com and example.com as one site. Stripping the label here
+  // would hide the real host on the approval card and collapse a separate
+  // registrable name such as www.github.io onto the public suffix github.io.
+  const host = url.hostname.replace(/\.$/, "")
   if (!host) return null
   return {
     url: url.origin,
