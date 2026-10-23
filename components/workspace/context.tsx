@@ -6,7 +6,7 @@ import type { AgentTemplate } from "@/lib/templates"
 import type { Navigation, NavAgent, NavSquad, SystemStatus } from "@/queries/workspace"
 
 // Kept here so components importing the dialog API find templates alongside it
-export { agentTemplates, type AgentTemplate } from "@/lib/templates"
+export { agentTemplates, templateCategories, type AgentTemplate, type TemplateCategory } from "@/lib/templates"
 
 type DialogState =
   | { kind: "agent"; agent?: NavAgent; template?: AgentTemplate }

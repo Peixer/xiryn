@@ -24,7 +24,7 @@ const MASK = `(() => {
 })()`
 
 const mode = process.argv[2] || "serve"
-if (mode === "pages" || mode === "mask") {
+if (mode === "pages" || mode === "mask" || mode === "ping") {
   client(mode)
 } else if (mode === "serve") {
   serve()
@@ -200,6 +200,9 @@ function serve() {
     if (!request || typeof request !== "object") return { error: "bad request" }
     if (request.op === "pages") return listPages()
     if (request.op === "mask") return maskFields()
+    // A connect-and-reply, with no page contents. browser uses it to tell a
+    // live broker from a socket file left behind when the machine stopped.
+    if (request.op === "ping") return { ok: true }
     return { error: "unsupported" }
   }
 
