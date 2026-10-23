@@ -8,18 +8,21 @@ function escapeHtml(value: string) {
   )
 }
 
+const noReferrer = { "Referrer-Policy": "no-referrer" }
+
 function page(title: string, body: string, status = 200) {
-  const html = `<!doctype html><meta charset="utf-8"><title>${escapeHtml(title)}</title><body style="font-family:system-ui;max-width:36rem;margin:4rem auto;line-height:1.5"><h1>${escapeHtml(title)}</h1><p>${escapeHtml(body)}</p><p><a href="/settings">Back to settings</a></p></body>`
+  const html = `<!doctype html><meta charset="utf-8"><meta name="referrer" content="no-referrer"><title>${escapeHtml(title)}</title><body style="font-family:system-ui;max-width:36rem;margin:4rem auto;line-height:1.5"><h1>${escapeHtml(title)}</h1><p>${escapeHtml(body)}</p><p><a href="/settings">Back to settings</a></p></body>`
   return new NextResponse(html, {
     status,
-    headers: { "Content-Type": "text/html; charset=utf-8" },
+    headers: { "Content-Type": "text/html; charset=utf-8", ...noReferrer },
   })
 }
 
 function settingsRedirect(requestUrl: string) {
   const configured = process.env.XIRYN_URL?.trim().replace(/\/+$/, "")
-  if (configured) return NextResponse.redirect(`${configured}/settings`)
-  return NextResponse.redirect(new URL("/settings", requestUrl))
+  if (configured)
+    return NextResponse.redirect(`${configured}/settings`, { headers: noReferrer })
+  return NextResponse.redirect(new URL("/settings", requestUrl), { headers: noReferrer })
 }
 
 export async function GET(request: Request) {
@@ -32,8 +35,8 @@ export async function GET(request: Request) {
   if (!code || !state)
     return page("Google was not connected", "The callback was missing a code.", 400)
   try {
-    verifyGoogleState(state)
-    await exchangeGoogleCode(code)
+    const verifier = verifyGoogleState(state)
+    await exchangeGoogleCode(code, verifier)
   } catch (cause) {
     const message = cause instanceof Error ? cause.message : "The token exchange failed."
     return page("Google was not connected", message, 400)

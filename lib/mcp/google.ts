@@ -1,4 +1,4 @@
-import { createHmac, randomBytes, timingSafeEqual } from "node:crypto"
+import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto"
 
 import { getSetting, setSetting } from "@/lib/config"
 import { sealText, unsealText } from "@/lib/vault"
@@ -8,6 +8,31 @@ import { sealText, unsealText } from "@/lib/vault"
 // never starts a browser of its own, so this works on a headless server.
 
 const AAD = "google-refresh"
+const DISCONNECTED = "1"
+const STATE_TTL_MS = 10 * 60_000
+
+type PendingOAuth = { verifier: string; exp: number }
+
+const globalForOAuth = globalThis as unknown as {
+  __xirynGoogleOAuth?: Map<string, PendingOAuth>
+}
+const pendingOAuth = (globalForOAuth.__xirynGoogleOAuth ??= new Map())
+
+function rememberVerifier(nonce: string, verifier: string, exp: number) {
+  const now = Date.now()
+  for (const [key, row] of pendingOAuth) {
+    if (row.exp < now) pendingOAuth.delete(key)
+  }
+  pendingOAuth.set(nonce, { verifier, exp })
+}
+
+function takeVerifier(nonce: string) {
+  const row = pendingOAuth.get(nonce)
+  pendingOAuth.delete(nonce)
+  if (!row || row.exp < Date.now()) return null
+  return row.verifier
+}
+
 const SCOPES = [
   "https://www.googleapis.com/auth/gmail.readonly",
   "https://www.googleapis.com/auth/gmail.send",
@@ -30,8 +55,13 @@ export function googleConfigured() {
   return Boolean(getSetting("google.clientId") && getSetting("google.clientSecret"))
 }
 
+function storedRefreshToken() {
+  if (getSetting("google.disconnected") === DISCONNECTED) return undefined
+  return getSetting("google.refreshToken")
+}
+
 export function googleConnected() {
-  return Boolean(getSetting("google.refreshToken"))
+  return Boolean(storedRefreshToken())
 }
 
 function clientCredentials() {
@@ -53,9 +83,12 @@ export function googleAuthUrl() {
     )
   }
   const { clientId } = clientCredentials()
-  const payload = Buffer.from(
-    JSON.stringify({ exp: Date.now() + 10 * 60_000, n: randomBytes(16).toString("hex") })
-  ).toString("base64url")
+  const exp = Date.now() + STATE_TTL_MS
+  const nonce = randomBytes(16).toString("hex")
+  const verifier = randomBytes(32).toString("base64url")
+  const challenge = createHash("sha256").update(verifier).digest("base64url")
+  rememberVerifier(nonce, verifier, exp)
+  const payload = Buffer.from(JSON.stringify({ exp, n: nonce })).toString("base64url")
   const mac = createHmac("sha256", clientCredentials().clientSecret)
     .update(payload)
     .digest("base64url")
@@ -66,15 +99,17 @@ export function googleAuthUrl() {
   url.searchParams.set("scope", SCOPES.join(" "))
   url.searchParams.set("access_type", "offline")
   url.searchParams.set("prompt", "consent")
-  url.searchParams.set("include_granted_scopes", "true")
+  url.searchParams.set("code_challenge", challenge)
+  url.searchParams.set("code_challenge_method", "S256")
   url.searchParams.set("state", `${payload}.${mac}`)
   return url.toString()
 }
 
+const invalidState = "The Google sign-in state was not valid. Try connecting again."
+
 export function verifyGoogleState(state: string) {
   const dot = state.lastIndexOf(".")
-  if (dot <= 0)
-    throw new Error("The Google sign-in state was not valid. Try connecting again.")
+  if (dot <= 0) throw new Error(invalidState)
   const payload = state.slice(0, dot)
   const mac = state.slice(dot + 1)
   const expected = createHmac("sha256", clientCredentials().clientSecret)
@@ -82,15 +117,28 @@ export function verifyGoogleState(state: string) {
     .digest("base64url")
   const a = Buffer.from(mac)
   const b = Buffer.from(expected)
-  if (a.length !== b.length || !timingSafeEqual(a, b)) {
-    throw new Error("The Google sign-in state was not valid. Try connecting again.")
+  if (a.length !== b.length || !timingSafeEqual(a, b)) throw new Error(invalidState)
+  let parsed: { exp?: unknown; n?: unknown }
+  try {
+    parsed = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as {
+      exp?: unknown
+      n?: unknown
+    }
+  } catch {
+    throw new Error(invalidState)
   }
-  const parsed = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as {
-    exp?: number
-  }
-  if (!parsed.exp || parsed.exp < Date.now()) {
+  if (typeof parsed.exp !== "number" || parsed.exp < Date.now()) {
+    if (typeof parsed.n === "string") pendingOAuth.delete(parsed.n)
     throw new Error("That Google sign-in link expired. Try connecting again.")
   }
+  if (typeof parsed.n !== "string" || !parsed.n) throw new Error(invalidState)
+  const verifier = takeVerifier(parsed.n)
+  if (!verifier) {
+    throw new Error(
+      "That Google sign-in link was already used or expired. Try connecting again."
+    )
+  }
+  return verifier
 }
 
 async function tokenRequest(body: URLSearchParams) {
@@ -117,9 +165,10 @@ async function tokenRequest(body: URLSearchParams) {
   return json
 }
 
-export async function exchangeGoogleCode(code: string) {
+export async function exchangeGoogleCode(code: string, verifier: string) {
   const redirect = googleRedirectUri()
   if (!redirect) throw new Error("XIRYN_URL is not set.")
+  if (!verifier) throw new Error(invalidState)
   const { clientId, clientSecret } = clientCredentials()
   const json = await tokenRequest(
     new URLSearchParams({
@@ -128,6 +177,7 @@ export async function exchangeGoogleCode(code: string) {
       client_secret: clientSecret,
       redirect_uri: redirect,
       grant_type: "authorization_code",
+      code_verifier: verifier,
     })
   )
   if (!json.refresh_token) {
@@ -136,18 +186,47 @@ export async function exchangeGoogleCode(code: string) {
     )
   }
   setSetting("google.refreshToken", sealText(AAD, json.refresh_token))
+  setSetting("google.disconnected", null)
   accessCache = null
 }
 
-export function disconnectGoogle() {
-  setSetting("google.refreshToken", null)
+async function revokeRefreshToken(token: string) {
+  try {
+    const response = await fetch("https://oauth2.googleapis.com/revoke", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ token }),
+      signal: AbortSignal.timeout(15_000),
+    })
+    const text = await response.text().catch(() => "")
+    if (response.ok) return true
+    const json = JSON.parse(text) as { error?: string }
+    return json.error === "invalid_token"
+  } catch {
+    return false
+  }
+}
+
+export async function disconnectGoogle() {
+  const stored = getSetting("google.refreshToken")
   accessCache = null
+  let revoked = !stored
+  if (stored) {
+    try {
+      revoked = await revokeRefreshToken(unsealText(AAD, stored))
+    } catch {
+      revoked = false
+    }
+  }
+  setSetting("google.refreshToken", null)
+  setSetting("google.disconnected", DISCONNECTED)
+  return { revoked }
 }
 
 let accessCache: { token: string; expiresAt: number } | null = null
 
 async function refreshToken() {
-  const stored = getSetting("google.refreshToken")
+  const stored = storedRefreshToken()
   if (!stored) {
     throw new Error(
       "Google is not connected. Open Settings → Connectors and connect Gmail and Calendar."

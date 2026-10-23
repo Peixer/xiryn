@@ -215,9 +215,26 @@ export function ConnectorsPanel({
               className="text-muted-foreground"
               onClick={async () => {
                 setPending("disconnect")
-                await disconnectGoogleAccount()
+                const result = await disconnectGoogleAccount()
                 setPending(null)
-                toast.add({ type: "success", title: "Google disconnected" })
+                if (!result.ok) {
+                  toast.add({
+                    type: "error",
+                    title: "Couldn't disconnect",
+                    description: result.error,
+                  })
+                  return
+                }
+                if (result.revoked) {
+                  toast.add({ type: "success", title: "Google disconnected" })
+                } else {
+                  toast.add({
+                    type: "error",
+                    title: "Disconnected on this computer",
+                    description:
+                      "Google still has the grant. Remove Xiryn from your Google account.",
+                  })
+                }
                 router.refresh()
               }}
             >

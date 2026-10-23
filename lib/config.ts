@@ -72,6 +72,8 @@ const integrationSettings = {
   "google.clientSecret": { env: "GOOGLE_CLIENT_SECRET", secret: true },
   // Sealed refresh token written by the OAuth callback, or a raw token in env
   "google.refreshToken": { env: "GOOGLE_REFRESH_TOKEN", secret: true, internal: true },
+  // "1" after Disconnect, so an env refresh token cannot turn the connector back on
+  "google.disconnected": { env: null, internal: true },
   // "off" hides that connector's tools. Default on, once Google is connected.
   "connectors.gmail": { env: "XIRYN_GMAIL", fallback: "on" },
   "connectors.calendar": { env: "XIRYN_CALENDAR", fallback: "on" },
