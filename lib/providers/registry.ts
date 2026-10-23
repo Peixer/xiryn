@@ -10,6 +10,7 @@ import type { LanguageModel } from "ai"
 
 import { getSetting, getSettingSource } from "@/lib/config"
 import { createBedrockModel, isBedrockConfigured } from "@/lib/providers/bedrock"
+import { withPromptCache } from "@/lib/providers/prompt-cache"
 import {
   formatModelSpec,
   getProviderMeta,
@@ -61,6 +62,15 @@ export function resolveModelSpec(agentModel?: string | null) {
 }
 
 export function createModel(spec: string): LanguageModel {
+  const parsed = parseModelSpec(spec)
+  return withPromptCache(
+    createRawModel(spec),
+    parsed?.provider ?? "",
+    parsed?.model ?? spec
+  )
+}
+
+function createRawModel(spec: string): LanguageModel {
   const parsed = parseModelSpec(spec)
   if (!parsed) {
     throw new ModelConfigError(

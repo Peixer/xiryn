@@ -74,6 +74,8 @@ const bedrockSettings = {
   "bedrock.modelRegions": { env: "XIRYN_BEDROCK_MODEL_REGIONS" },
   // model-id=tokens pairs. Overrides the built-in output ceilings.
   "bedrock.maxOutput": { env: "XIRYN_BEDROCK_MAX_OUTPUT" },
+  // Bedrock prompt caching: on unless this is off/0/false (see lib/providers/prompt-cache.ts)
+  "cache.prompt": { env: "XIRYN_PROMPT_CACHE" },
 } satisfies Record<string, SettingDef>
 
 const providerSettings = Object.fromEntries(
