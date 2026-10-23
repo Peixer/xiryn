@@ -731,6 +731,16 @@ export async function deleteWorkstation(agentId: string) {
     .run()
 }
 
+// Whether the agent's container or home volume still exists
+export async function workstationLeftovers(agentId: string) {
+  const container = await inspect(containerName(agentId))
+  if (container) return true
+  const volume = await dockerRaw(["volume", "inspect", volumeName(agentId)], {
+    timeoutMs: 20_000,
+  })
+  return volume.exitCode === 0
+}
+
 // Wipes the machine: the next use starts a fresh one
 export const resetWorkstation = deleteWorkstation
 

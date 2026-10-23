@@ -8,6 +8,7 @@ import { nanoid } from "nanoid"
 import { Controller, useForm, useWatch } from "react-hook-form"
 
 import { createAgent, deleteAgent, updateAgent } from "@/actions/agents"
+import { reportDeletion } from "@/components/agents/delete-feedback"
 import { Confirm } from "@/components/confirm"
 import { Glyph } from "@/components/glyph"
 import { ModelPicker } from "@/components/model-picker"
@@ -248,20 +249,24 @@ function AgentForm({ agent, template }: { agent?: NavAgent; template?: AgentTemp
               </Button>
             }
             title={`Delete ${agent.name}?`}
-            description="Its threads, its memory and its workstation (including every file on it) are deleted. This can't be undone."
-            action="Delete agent"
+            description={
+              <>
+                {agent.busy && (
+                  <span className="mb-2 block font-medium text-destructive">
+                    {agent.name} is working right now. Its current task will be stopped.
+                  </span>
+                )}
+                Its threads and messages, its memory, its routines and its workstation
+                (the Docker container and every file on it) are deleted. This can&apos;t
+                be undone.
+              </>
+            }
+            action={agent.busy ? "Stop and delete" : "Delete agent"}
             onConfirm={async () => {
-              try {
-                await deleteAgent(agent.id)
-                toast.add({ type: "success", title: `${agent.name} deleted` })
+              const outcome = await deleteAgent(agent.id, { stopRunning: agent.busy })
+              if (reportDeletion(outcome)) {
                 closeDialog()
                 router.push("/")
-              } catch (error) {
-                toast.add({
-                  type: "error",
-                  title: "Couldn't delete the agent",
-                  description: error instanceof Error ? error.message : undefined,
-                })
               }
             }}
           />

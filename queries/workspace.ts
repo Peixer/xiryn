@@ -29,6 +29,7 @@ import {
   isProviderConfigured,
   resolveModelSpec,
 } from "@/lib/providers/registry"
+import { agentFootprints, workingThreads } from "@/lib/agent-admin"
 import { engineSnapshot } from "@/lib/docker"
 import { isRoutineRunning, threadHref } from "@/lib/routines"
 import { describeSchedule } from "@/lib/schedule"
@@ -138,6 +139,37 @@ export function getNavigation() {
 }
 
 export type Navigation = ReturnType<typeof getNavigation>
+// One row per agent for the management page: who it is, what it runs on, and
+// everything deleting it would remove
+export function getAgentOverview() {
+  const rows = getAgents()
+  const footprints = agentFootprints()
+  const active = activeThreadIds()
+  return rows.map((agent) => {
+    const footprint = footprints.get(agent.id)
+    return {
+      id: agent.id,
+      name: agent.name,
+      role: agent.role,
+      glyph: agent.glyph,
+      // What the agent was set to, and what it will actually run on
+      model: agent.model,
+      effectiveModel: resolveModelSpec(agent.model),
+      instructions: agent.instructions,
+      createdAt: agent.createdAt.toISOString(),
+      lastActiveAt: footprint?.lastActiveAt?.toISOString() ?? null,
+      threads: footprint?.threads ?? 0,
+      messages: footprint?.messages ?? 0,
+      memories: footprint?.memories ?? 0,
+      routines: footprint?.routines ?? 0,
+      squads: footprint?.squads ?? [],
+      busy: workingThreads(agent.id, active).length > 0,
+    }
+  })
+}
+
+export type AgentOverview = ReturnType<typeof getAgentOverview>[number]
+
 export type NavAgent = Navigation["agents"][number]
 export type NavSquad = Navigation["squads"][number]
 export type NavThread = Navigation["threads"][number]

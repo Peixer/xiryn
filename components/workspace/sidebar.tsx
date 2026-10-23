@@ -16,6 +16,8 @@ import {
   StarIcon,
   SunIcon,
   Trash2Icon,
+  BotIcon,
+  SlidersHorizontalIcon,
 } from "lucide-react"
 import { useTheme } from "next-themes"
 
@@ -56,12 +58,16 @@ function Section({
   count,
   onAdd,
   addLabel,
+  manageHref,
+  onNavigate,
   children,
 }: {
   label: string
   count?: number
   onAdd?: () => void
   addLabel?: string
+  manageHref?: string
+  onNavigate?: () => void
   children: React.ReactNode
 }) {
   return (
@@ -71,12 +77,27 @@ function Section({
         {count !== undefined && (
           <span className="font-mono text-[10px] text-faint tabular-nums">{count}</span>
         )}
+        {manageHref && (
+          <Tooltip>
+            <TooltipTrigger
+              render={<Link href={manageHref} onClick={onNavigate} />}
+              aria-label={`Manage ${label.toLowerCase()}`}
+              className="ml-auto grid size-5 place-items-center rounded-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            >
+              <SlidersHorizontalIcon className="size-3.5" />
+            </TooltipTrigger>
+            <TooltipContent side="right">{`Manage ${label.toLowerCase()}`}</TooltipContent>
+          </Tooltip>
+        )}
         {onAdd && (
           <Tooltip>
             <TooltipTrigger
               onClick={onAdd}
               aria-label={addLabel}
-              className="ml-auto grid size-5 place-items-center rounded-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              className={cn(
+                "grid size-5 place-items-center rounded-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
+                !manageHref && "ml-auto"
+              )}
             >
               <PlusIcon className="size-3.5" />
             </TooltipTrigger>
@@ -241,6 +262,8 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
           count={nav.agents.length}
           onAdd={() => openAgentDialog()}
           addLabel="New agent"
+          manageHref="/agents"
+          onNavigate={onNavigate}
         >
           {nav.agents.length === 0 ? (
             <button
@@ -364,6 +387,10 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
       </div>
 
       <div className="flex flex-col gap-px border-t p-2">
+        <FooterLink href="/agents" pathname={pathname} onNavigate={onNavigate}>
+          <BotIcon className="size-4" />
+          Agents
+        </FooterLink>
         <FooterLink href="/templates" pathname={pathname} onNavigate={onNavigate}>
           <LayoutGridIcon className="size-4" />
           Templates
