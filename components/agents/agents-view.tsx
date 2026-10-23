@@ -136,7 +136,10 @@ function DeletionNotice({ agent, machine }: { agent: AgentOverview; machine: Mac
         <p>
           {dying.map((squad) => squad.name).join(", ")}{" "}
           {dying.length === 1 ? "has" : "have"} no one else, so{" "}
-          {dying.length === 1 ? "it is" : "they are"} deleted with its threads.
+          {dying.length === 1
+            ? "it is deleted with its threads"
+            : "they are deleted with their threads"}
+          .
         </p>
       )}
       <p>Usage history stays in the ledger without a name. This can&apos;t be undone.</p>

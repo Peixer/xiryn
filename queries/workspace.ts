@@ -29,7 +29,7 @@ import {
   isProviderConfigured,
   resolveModelSpec,
 } from "@/lib/providers/registry"
-import { agentFootprints, workingThreads } from "@/lib/agent-admin"
+import { agentFootprints, busyIds, workingThreads } from "@/lib/agent-admin"
 import { engineSnapshot } from "@/lib/docker"
 import { isRoutineRunning, threadHref } from "@/lib/routines"
 import { describeSchedule } from "@/lib/schedule"
@@ -103,12 +103,17 @@ export function getNavigation() {
 
   const running = new Set(activeThreadIds())
   const latest = new Map<string, string>()
-  const busy = new Set<string>()
+  const busy = busyIds(
+    threadRows,
+    squadRows.flatMap((squad) =>
+      squad.agents.map((agent) => ({ squadId: squad.id, agentId: agent.id }))
+    ),
+    running
+  )
   for (const thread of threadRows) {
     const owner = thread.agentId ?? thread.squadId
     if (!owner) continue
     if (!latest.has(owner)) latest.set(owner, thread.id)
-    if (running.has(thread.id)) busy.add(owner)
   }
 
   return {

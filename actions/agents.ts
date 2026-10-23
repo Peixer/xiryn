@@ -84,7 +84,12 @@ export async function updateAgent(agentId: string, values: AgentInput) {
 // Failures come back as values: in a production build Next replaces the
 // message of an error thrown from a server action with a generic one.
 export async function deleteAgent(agentId: string, options?: { stopRunning?: boolean }) {
-  const input = deleteAgentSchema.safeParse({ agentId, ...options })
+  // Read the flag off `options` explicitly. Spreading it would let a second
+  // `agentId` field replace the one this function was called with.
+  const input = deleteAgentSchema.safeParse({
+    agentId,
+    stopRunning: options?.stopRunning,
+  })
   if (!input.success) {
     return { ok: false as const, code: "invalid" as const, error: "Invalid request." }
   }

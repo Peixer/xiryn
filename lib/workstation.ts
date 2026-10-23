@@ -731,14 +731,22 @@ export async function deleteWorkstation(agentId: string) {
     .run()
 }
 
-// Whether the agent's container or home volume still exists
+// Whether the agent's container or home volume still exists.
+// Throws when Docker can't be asked — a failure must not look like success,
+// or a deletion would report the machine gone while its files are still there.
 export async function workstationLeftovers(agentId: string) {
   const container = await inspect(containerName(agentId))
   if (container) return true
   const volume = await dockerRaw(["volume", "inspect", volumeName(agentId)], {
     timeoutMs: 20_000,
   })
-  return volume.exitCode === 0
+  if (volume.exitCode === 0) return true
+  const detail = `${volume.stderr}\n${volume.stdout.toString()}`
+  if (volume.exitCode !== null && /no such volume/i.test(detail)) return false
+  throw new Error(
+    dockerReason(volume.stderr) ||
+      "Couldn't check whether the workstation volume is gone."
+  )
 }
 
 // Wipes the machine: the next use starts a fresh one

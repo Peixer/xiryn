@@ -199,6 +199,17 @@ test("deleting removes the agent's rows, keeps everyone else's, and destroys the
   assert.equal(count("squad_members", `squad_id = '${duo.id}'`), 1)
 })
 
+test("an empty squad the agent was never in is kept", async () => {
+  const agent = makeAgent("Unrelated")
+  const [orphan] = db.insert(squads).values({ name: "Orphan" }).returning().all()
+  const orphanThread = makeThread({ squadId: orphan.id })
+
+  await admin.deleteAgentSafely(agent.id, fakeDeps().deps)
+
+  assert.equal(count("squads", `id = '${orphan.id}'`), 1)
+  assert.equal(count("threads", `id = '${orphanThread.id}'`), 1)
+})
+
 test("an unknown agent is rejected", async () => {
   await assert.rejects(
     admin.deleteAgentSafely("nope", fakeDeps().deps),
@@ -269,6 +280,26 @@ test("a turn that won't stop leaves everything in place", async () => {
   assert.deepEqual(calls.stopped, [thread.id])
   assert.equal(count("agents", `id = '${agent.id}'`), 1)
   assert.deepEqual(calls.destroyed, [])
+})
+
+test("a running squad thread counts as every member working", () => {
+  const busy = admin.busyIds(
+    [
+      { id: "own", agentId: "a", squadId: null },
+      { id: "shared", agentId: null, squadId: "squad" },
+      { id: "other", agentId: "c", squadId: null },
+    ],
+    [
+      { squadId: "squad", agentId: "a" },
+      { squadId: "squad", agentId: "b" },
+    ],
+    ["shared"]
+  )
+  assert.deepEqual([...busy].sort(), ["a", "b", "squad"])
+  assert.equal(
+    admin.busyIds([{ id: "own", agentId: "a", squadId: null }], [], ["other"]).size,
+    0
+  )
 })
 
 test("another agent's run doesn't block deletion", async () => {

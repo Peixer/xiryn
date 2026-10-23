@@ -123,6 +123,34 @@ export function agentFootprint(agentId: string) {
   return agentFootprints([agentId]).get(agentId) ?? { ...EMPTY, squads: [] }
 }
 
+// Who should show as working, and therefore who a delete dialog must offer
+// to stop: the thread's own agent or squad, plus every member of a squad
+// whose thread is running. A squad turn is one shared run, so each member
+// is mid-turn even though the thread row points at the squad.
+export function busyIds(
+  rows: { id: string; agentId: string | null; squadId: string | null }[],
+  memberships: { squadId: string; agentId: string }[],
+  active: Iterable<string>
+) {
+  const running = new Set(active)
+  const membersBySquad = new Map<string, string[]>()
+  for (const membership of memberships) {
+    const members = membersBySquad.get(membership.squadId)
+    if (members) members.push(membership.agentId)
+    else membersBySquad.set(membership.squadId, [membership.agentId])
+  }
+  const busy = new Set<string>()
+  for (const thread of rows) {
+    if (!running.has(thread.id)) continue
+    const owner = thread.agentId ?? thread.squadId
+    if (owner) busy.add(owner)
+    if (thread.squadId) {
+      for (const agentId of membersBySquad.get(thread.squadId) ?? []) busy.add(agentId)
+    }
+  }
+  return busy
+}
+
 // Threads with a turn running that the agent is part of: its own, and the
 // squad threads of every squad it belongs to
 export function workingThreads(agentId: string, active: Iterable<string>) {
@@ -224,14 +252,23 @@ export async function deleteAgentSafely(
   // 2. The rows, in one transaction. Threads, messages, memory, routines and
   // payment requests go with the agent through their foreign keys; ledger
   // rows (turns) keep their cost but lose the link, so spend history stays
-  // right. Squads left with nobody in them go too.
+  // right. Squads this agent belonged to that now have nobody left go too.
+  // Other memberless squads are left alone: they were not in the confirmation.
   const removed = agentFootprint(agentId)
+  const touchedSquads = removed.squads.map((squad) => squad.id)
   db.transaction((tx) => {
     tx.delete(agents).where(eq(agents.id, agentId)).run()
+    if (touchedSquads.length === 0) return
     tx.delete(squads)
       .where(
-        notExists(
-          db.select().from(squadMembers).where(eq(squadMembers.squadId, squads.id))
+        and(
+          inArray(squads.id, touchedSquads),
+          notExists(
+            tx
+              .select({ squadId: squadMembers.squadId })
+              .from(squadMembers)
+              .where(eq(squadMembers.squadId, squads.id))
+          )
         )
       )
       .run()
