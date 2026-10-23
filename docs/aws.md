@@ -144,6 +144,26 @@ Phone takeover links that Xiryn opens through a Cloudflare quick tunnel still go
 
 Point DNS at the instance and wait until `https://<host>` asks for the basic-auth user.
 
+## Health
+
+`GET /api/health` is the check an uptime monitor, or `curl` on the instance, can hit. It answers in under a second from the local database, the Docker daemon, and saved settings (it leaves the update checker alone). The JSON is `status` (`ok`, `degraded`, or `down`), the app version, uptime in seconds, `db.ok` (SQLite answered `select 1`), Docker (`ready`, `stopped`, `missing`, or `unknown` when the probe times out), `routines.enabled` (how many routines are switched on) and `routines.nextRunAt` (the soonest of those, or null), Telegram (`configured` when a bot token is set, otherwise `off`), and `providersConfigured`. Keys, paths, and thread contents stay out of the body.
+
+On the box:
+
+```bash
+curl -sS localhost:6796/api/health
+```
+
+The request's Host has to be loopback or listed in `XIRYN_ALLOWED_HOSTS`, the same rule as every other route (`proxy.ts`). `localhost` is allowed, so that command works on the instance. Any other Host gets **403** until it is added to `XIRYN_ALLOWED_HOSTS`.
+
+Caddy basic auth still covers this path with the rest of the site:
+
+```bash
+curl -sS -u 'monitor:password' https://xiryn.example.com/api/health
+```
+
+`200` means `status` is `ok` or `degraded`. Docker stopped, missing, or unanswered before the short probe timeout is `degraded` with `200`. `503` means `status` is `down`: SQLite did not answer `select 1`.
+
 ## Updating
 
 `deploy/deploy.sh` fast-forwards the checkout, installs, builds, and restarts `xiryn`. Run it from a user who can `sudo systemctl`:

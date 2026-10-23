@@ -411,6 +411,7 @@ Every setting can come from `.env` **or** from **Settings** in the app. Values s
 | `XIRYN_URL` | Public origin (`https://host`) or the local default. Telegram links, Google OAuth, and the remote desktop stream |
 | `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`, `BEDROCK_BASE_URL` | Amazon Bedrock. Region opts in the instance role; keys are optional. See [docs/providers.md](docs/providers.md) |
 | `XIRYN_BEDROCK_EXTRA_REGIONS`, `XIRYN_BEDROCK_MODEL_REGIONS`, `XIRYN_BEDROCK_MAX_OUTPUT` | Extra Bedrock regions (for example `us-east-2` for Llama 3.3 70B in Ohio), per-model region pins, and per-model output caps |
+| `XIRYN_PROMPT_CACHE` | Prompt cache for Bedrock Claude and Nova, and for Claude sent through OpenRouter. `off` (also `0`, `false`, `no`) turns it off. On when unset |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN`, `XIRYN_GMAIL`, `XIRYN_CALENDAR` | Built-in Gmail and Calendar. See [docs/mcp.md](docs/mcp.md) |
 | `XIRYN_DESKTOP_PROXY_PORT`, `XIRYN_DESKTOP_PROXY` | Loopback websocket proxy for desktops behind Caddy |
 | `XIRYN_UPDATE_CHECK` | `off` stops the update check and star count |
