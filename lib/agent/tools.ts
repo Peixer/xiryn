@@ -906,7 +906,8 @@ export type XirynTools = ReturnType<typeof createWorkstationTools> &
   ReturnType<typeof createSkillTools> &
   ReturnType<typeof createWebTools> &
   ReturnType<typeof createRoutineTools> &
-  ReturnType<typeof createDelegateTool>
+  ReturnType<typeof createDelegateTool> &
+  ReturnType<typeof createSubagentTools>
 
 export type XirynMetadata = {
   // The agent that started the reply, or that a squad message was sent to
@@ -935,3 +936,102 @@ export type XirynMessage = UIMessage<
   { attachment: Attachment },
   InferUITools<XirynTools>
 >
+
+/* ─────────────────────────── spawn_subagent ─────────────────────────────── */
+
+type SubagentTaskResult = {
+  task: string
+  result: string
+  ok: boolean
+  error?: string
+  steps: number
+  durationMs: number
+  costUsd: number | null
+}
+
+type SpawnSubagentOutput = {
+  results: SubagentTaskResult[]
+  totalCostUsd: number
+}
+
+export function createSubagentTools(env: ToolEnv) {
+  return {
+    spawn_subagent: tool({
+      description:
+        "Run one or more self-contained subtasks in parallel, each in their own child thread. " +
+        "Each task runs the same agent with the same model. Results are returned when all tasks finish. " +
+        "Use this to fan out independent research, analysis or generation tasks. " +
+        "Do NOT use this recursively — subagents cannot spawn further subagents.",
+      inputSchema: z.object({
+        tasks: z
+          .array(z.string().min(1).max(2000))
+          .min(1)
+          .max(5)
+          .describe(
+            "List of self-contained task briefs to run in parallel. Each brief must be " +
+            "fully self-contained — subagents share no conversation history with the parent."
+          ),
+        timeoutSeconds: z
+          .number()
+          .int()
+          .min(10)
+          .max(300)
+          .default(120)
+          .optional()
+          .describe("Wall-clock timeout per task in seconds. Default: 120."),
+      }),
+      execute: async ({ tasks, timeoutSeconds = 120 }): Promise<SpawnSubagentOutput> => {
+        const { runSubturn, isSubturnThread } = await import("@/lib/agent/subturn")
+
+        if (isSubturnThread(env.threadId)) {
+          return {
+            results: [
+              {
+                task: tasks[0] ?? "",
+                result: "",
+                ok: false,
+                error: "spawn_subagent cannot be called from inside a subturn (max depth = 1).",
+                steps: 0,
+                durationMs: 0,
+                costUsd: null,
+              },
+            ],
+            totalCostUsd: 0,
+          }
+        }
+
+        const agent = env.current()
+        const timeoutMs = (timeoutSeconds ?? 120) * 1000
+
+        const results = await Promise.all(
+          tasks.map((task) =>
+            runSubturn({ task, agent, parentThreadId: env.threadId, timeoutMs }).then(
+              (r): SubagentTaskResult => ({
+                task: r.task,
+                result: r.text,
+                ok: r.ok,
+                ...(r.error ? { error: r.error } : {}),
+                steps: r.steps,
+                durationMs: r.durationMs,
+                costUsd: r.costUsd,
+              })
+            ).catch(
+              (err: unknown): SubagentTaskResult => ({
+                task,
+                result: "",
+                ok: false,
+                error: err instanceof Error ? err.message : String(err),
+                steps: 0,
+                durationMs: 0,
+                costUsd: null,
+              })
+            )
+          )
+        )
+
+        const totalCostUsd = results.reduce((sum, r) => sum + (r.costUsd ?? 0), 0)
+        return { results, totalCostUsd }
+      },
+    }),
+  }
+}

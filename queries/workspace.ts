@@ -96,8 +96,10 @@ export function getNavigation() {
       title: threads.title,
       preview: threads.preview,
       activeAt: threads.activeAt,
+      ephemeral: threads.ephemeral,
     })
     .from(threads)
+    .where(eq(threads.ephemeral, false))
     .orderBy(desc(threads.activeAt))
     .all()
 
@@ -208,7 +210,7 @@ export function getThread(threadId: string) {
 export type ThreadView = NonNullable<ReturnType<typeof getThread>>
 
 export function getThreadsFor(owner: { agentId?: string; squadId?: string }) {
-  const where = owner.agentId
+  const ownerWhere = owner.agentId
     ? eq(threads.agentId, owner.agentId)
     : eq(threads.squadId, owner.squadId ?? "")
   return db
@@ -219,7 +221,7 @@ export function getThreadsFor(owner: { agentId?: string; squadId?: string }) {
       activeAt: threads.activeAt,
     })
     .from(threads)
-    .where(where)
+    .where(and(ownerWhere, eq(threads.ephemeral, false)))
     .orderBy(desc(threads.activeAt))
     .limit(50)
     .all()

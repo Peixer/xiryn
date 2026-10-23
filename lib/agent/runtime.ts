@@ -25,6 +25,7 @@ import { buildInstructions, type Capabilities } from "@/lib/agent/instructions"
 import {
   createDelegateTool,
   createMemoryTools,
+  createSubagentTools,
   createRoutineTools,
   createSkillTools,
   createWebTools,
@@ -485,6 +486,8 @@ export async function startTurn({
     ...(capabilities.web ? createWebTools(env) : {}),
     // A routine's own runs don't schedule more routines
     ...(routine ? {} : createRoutineTools(env)),
+    // Subagent spawning — disabled inside subturns (depth guard in subturn.ts)
+    ...createSubagentTools(env),
     ...connectors.tools,
     ...(thread.squad
       ? createDelegateTool((targetId, handoverBrief) => {
