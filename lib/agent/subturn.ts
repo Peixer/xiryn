@@ -63,7 +63,7 @@ export type SubturnResult = {
 
 // ─── Depth guard (per thread id) ─────────────────────────────────────────────
 
-const activeSubturnThreadIds = new Set<string>()
+export const activeSubturnThreadIds = new Set<string>()
 
 export function isSubturnThread(threadId: string) {
   return activeSubturnThreadIds.has(threadId)
@@ -112,13 +112,7 @@ export async function runSubturn(opts: {
   timeoutMs?: number
   signal?: AbortSignal
 }): Promise<SubturnResult> {
-  const {
-    task,
-    agent,
-    parentThreadId,
-    timeoutMs = DEFAULT_TIMEOUT_MS,
-    signal,
-  } = opts
+  const { task, agent, parentThreadId, timeoutMs = DEFAULT_TIMEOUT_MS, signal } = opts
 
   // Vuln 2: server-side task length cap
   if (!task || task.trim().length === 0) {
@@ -169,9 +163,7 @@ export async function runSubturn(opts: {
   const timeoutController = new AbortController()
   const timeoutHandle = setTimeout(
     () =>
-      timeoutController.abort(
-        new Error(`Subturn timed out after ${clampedTimeout}ms`)
-      ),
+      timeoutController.abort(new Error(`Subturn timed out after ${clampedTimeout}ms`)),
     clampedTimeout
   )
 
@@ -248,7 +240,9 @@ async function drainStream(
         text += (chunk as { type: "text-delta"; delta: string }).delta
       } else if (chunk.type === "error") {
         const raw = (chunk as { type: "error"; error?: unknown }).error
-        error = sanitizeError(raw instanceof Error ? raw : new Error(String(raw ?? "unknown")))
+        error = sanitizeError(
+          raw instanceof Error ? raw : new Error(String(raw ?? "unknown"))
+        )
         break
       }
     }
