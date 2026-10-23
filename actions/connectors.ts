@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache"
 
 import { getSetting } from "@/lib/config"
-import { answerAction, getActionApproval } from "@/lib/mcp/approval"
+import { answerAction, approvalCardText, getActionApproval } from "@/lib/mcp/approval"
 import { parseMcpConfig, readMcpConfig, writeMcpConfig } from "@/lib/mcp/config"
 import { disconnectGoogle } from "@/lib/mcp/google"
 import { resetMcpClients } from "@/lib/mcp/load"
@@ -69,7 +69,7 @@ export async function connectorAction(approvalId: string) {
   return {
     id: approval.id,
     tool: approval.tool,
-    summary: approval.summary,
+    summary: approvalCardText(approval),
     status: approval.status,
   }
 }
@@ -80,12 +80,12 @@ export async function decideConnectorAction(
 ) {
   try {
     const answer = answerAction(approvalId, choice)
+    const approval = getActionApproval(approvalId)
+    const shown = approval ? approvalCardText(approval) : answer.marker.summary
     const { closeActionNotice } = await import("@/lib/telegram/bridge")
     await closeActionNotice(
       approvalId,
-      choice === "approve"
-        ? `Approved · ${answer.marker.summary}`
-        : `Declined · ${answer.marker.summary}`
+      choice === "approve" ? `Approved\n${shown}` : `Declined\n${shown}`
     ).catch(() => {})
     return { ok: true as const, text: answer.text, marker: answer.marker }
   } catch (error) {

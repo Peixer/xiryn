@@ -16,7 +16,13 @@ import {
 import type { XirynMessage, SecretRequest } from "@/lib/agent/tools"
 import { getSetting, setSetting } from "@/lib/config"
 import { getApproval, type Approval, type VaultItemView } from "@/lib/vault"
-import { answerAction, getActionApproval, type ActionApproval } from "@/lib/mcp/approval"
+import {
+  answerAction,
+  approvalCardText,
+  getActionApproval,
+  type ActionApproval,
+} from "@/lib/mcp/approval"
+import { clip } from "@/lib/mcp/approval-preview"
 import { answerPayment, answerSecret, type VaultMarker } from "@/lib/vault-requests"
 import { getTakeoverLink } from "@/lib/workstation"
 import { resolveModelSpec } from "@/lib/providers/registry"
@@ -324,6 +330,13 @@ async function edit(token: string, chatId: number, messageId: number, html: stri
 
 const escape = (text: string) =>
   text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+
+// Telegram rejects messages past 4096 characters. Escaping can grow the
+// text, so cut it here. clip() keeps a count that an earlier cut already
+// reported, instead of replacing it with the length of this slice.
+function fitTelegram(text: string) {
+  return clip(text, 3_200)
+}
 
 /* ─────────────────────────── handling ─────────────────────────── */
 
@@ -1167,8 +1180,8 @@ export async function notifyAction({
     chat_id: owner,
     parse_mode: "HTML",
     text: [
-      `<b>${escape(agent.name)}</b> wants to`,
-      escape(approval.summary),
+      `<b>${escape(agent.name)}</b> wants to do this`,
+      fitTelegram(escape(approvalCardText(approval))),
       "",
       "Nothing is sent until you approve.",
       `<a href="${escape(inApp)}">Open in Xiryn</a>`,
@@ -1191,7 +1204,9 @@ export async function closeActionNotice(approvalId: string, outcome: string) {
   if (!notice) return
   const token = getSetting("telegram.botToken")
   if (!token) return
-  await edit(token, notice.chatId, notice.messageId, escape(outcome)).catch(() => {})
+  await edit(token, notice.chatId, notice.messageId, fitTelegram(escape(outcome))).catch(
+    () => {}
+  )
 }
 
 async function handleAction(
@@ -1212,6 +1227,7 @@ async function handleAction(
     return
   }
   const approval = getActionApproval(approvalId)
+  const shown = approval ? approvalCardText(approval) : outcome.marker.summary
   await callTelegram(token, "answerCallbackQuery", {
     callback_query_id: query.id,
     text: outcome.marker.summary.slice(0, 190),
@@ -1222,7 +1238,7 @@ async function handleAction(
       token,
       chatId,
       query.message.message_id,
-      `${choice === "approve" ? "✅" : "✕"} ${escape(outcome.marker.summary)}`
+      fitTelegram(`${choice === "approve" ? "✅" : "✕"}\n${escape(shown)}`)
     ).catch(() => {})
   }
   if (!approval || !chatId) return

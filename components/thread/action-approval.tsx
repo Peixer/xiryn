@@ -84,7 +84,12 @@ export function ActionApprovalCard({
               ? "wants to do this · nothing happens until you choose"
               : "approval request"}
       </span>
-      <p className="text-[13.5px] leading-relaxed">{action.summary}</p>
+      <pre
+        dir="ltr"
+        className="max-h-96 overflow-auto font-sans text-[13.5px] leading-relaxed break-words whitespace-pre-wrap [unicode-bidi:plaintext]"
+      >
+        {action.summary}
+      </pre>
       <p className="font-mono text-[10.5px] text-muted-foreground">{action.tool}</p>
       {error && <p className="text-[12px] text-destructive">{error}</p>}
       {open && (

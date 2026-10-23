@@ -39,10 +39,16 @@ function close(sqlite: Database.Database, dir: string) {
   fs.rmSync(dir, { recursive: true, force: true })
 }
 
+function sharedMemoryIndex(journal: Journal) {
+  const index = journal.entries.findIndex((entry) => entry.tag === "0005_shared_memory")
+  assert.ok(index > 0)
+  return index
+}
+
 test("shared-memory migration applies on an empty database", () => {
   const journal = readJournal()
-  const latest = journal.entries[journal.entries.length - 1]
-  assert.equal(latest.tag, "0005_shared_memory")
+  const index = sharedMemoryIndex(journal)
+  assert.equal(journal.entries[index].tag, "0005_shared_memory")
 
   const { dir, sqlite, db } = openTemp()
   try {
@@ -74,9 +80,10 @@ test("shared-memory migration applies on an empty database", () => {
 
 test("shared-memory migration keeps notes already stored on a populated database", () => {
   const journal = readJournal()
-  const prior = journal.entries.slice(0, -1)
+  const index = sharedMemoryIndex(journal)
+  const prior = journal.entries.slice(0, index)
   assert.ok(prior.length >= 1)
-  assert.equal(journal.entries[journal.entries.length - 1].tag, "0005_shared_memory")
+  assert.equal(journal.entries[index].tag, "0005_shared_memory")
 
   const { dir, sqlite, db } = openTemp()
   try {

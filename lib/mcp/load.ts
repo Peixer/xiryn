@@ -4,6 +4,7 @@ import { tool, type ToolSet } from "ai"
 
 import type { ToolEnv } from "@/lib/agent/tools"
 import { getSetting } from "@/lib/config"
+import { renderApprovalPreview } from "@/lib/mcp/approval-preview"
 import { expandEnv, readMcpConfig, type McpServerConfig } from "@/lib/mcp/config"
 import { stdioPathRefusal } from "@/lib/mcp/stdio-path"
 import { mcpCommandRefusal, mcpEnvRefusal } from "@/lib/mcp/stdio-policy"
@@ -131,7 +132,7 @@ async function toolsForServer(server: McpServerConfig, env: ToolEnv) {
         ) {
           const hold = await holdOrRun(env, {
             tool: exposed,
-            summary: `${server.id}: ${name}`,
+            summary: renderApprovalPreview(exposed, input),
             args: input,
           })
           if (hold) return hold

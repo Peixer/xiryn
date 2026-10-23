@@ -35,6 +35,7 @@ import {
   type ToolEnv,
 } from "@/lib/agent/tools"
 import { getMaxSteps } from "@/lib/config"
+import { approvalHeadline } from "@/lib/mcp/approval-preview"
 import { loadConnectorTools } from "@/lib/mcp/load"
 import { isApprovalHold } from "@/lib/mcp/policy"
 import { bedrockMaxOutputTokens } from "@/lib/providers/bedrock-routing"
@@ -454,7 +455,7 @@ export async function startTurn({
       )
     },
     onActionRequested: async (agent, approval) => {
-      attention("action", agent, approval.summary)
+      attention("action", agent, approvalHeadline(approval.summary))
       const { notifyAction } = await bridge()
       await notifyAction({ agent, squadId: thread.squadId, approval }).catch(
         telegramFailed

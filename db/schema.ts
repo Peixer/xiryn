@@ -240,6 +240,9 @@ export const actionApprovals = sqliteTable(
     tool: text().notNull(),
     // Canonical JSON of the arguments, so a later identical call can be matched
     args: text().notNull(),
+    // SHA-256 of those arguments. Execution runs only when the call matches it.
+    argsHash: text().notNull().default(""),
+    // The card text rendered from the arguments. Not a separate short label.
     summary: text().notNull(),
     status: text({ enum: ["pending", "approved", "declined", "used"] })
       .notNull()
