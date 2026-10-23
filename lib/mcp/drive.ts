@@ -135,9 +135,13 @@ export function isRateLimited(status: number, body: string) {
 }
 
 export function assertSafeDriveMethod(method: string, url: string) {
-  if (method.toUpperCase() !== "DELETE") return
   const path = new URL(url).pathname.replace(/\/+$/, "")
-  // files.delete removes the file forever. Permission deletes are a different path.
+  // files.delete and files.emptyTrash both remove bytes forever. Permission
+  // deletes are a longer path and stay allowed.
+  if (/\/files\/trash$/.test(path) || /emptyTrash/i.test(path)) {
+    throw new DriveError("Permanent delete is not available.")
+  }
+  if (method.toUpperCase() !== "DELETE") return
   if (/\/files\/[^/]+$/.test(path)) {
     throw new DriveError("Permanent delete is not available.")
   }
@@ -155,6 +159,12 @@ export function assertGoogleDriveUrl(url: string) {
   }
   if (parsed.username || parsed.password) {
     throw new DriveError("Refused a Drive URL with credentials in it.")
+  }
+  if (
+    !parsed.pathname.startsWith("/drive/v3/") &&
+    !parsed.pathname.startsWith("/upload/drive/v3/")
+  ) {
+    throw new DriveError("Refused a URL that is not the Drive API.")
   }
 }
 
@@ -227,6 +237,9 @@ export function workspacePath(input: string) {
   }
   if (/[\u0000\r\n]/.test(value))
     throw new DriveError("The workstation path is not valid.")
+  if (value.startsWith("/") || value.startsWith("~") || /^[A-Za-z]:/.test(value)) {
+    throw new DriveError("The workstation path must stay inside the agent home folder.")
+  }
   const parts = value.split(/[\\/]+/).filter((part) => part && part !== ".")
   if (parts.some((part) => part === "..")) {
     throw new DriveError("The workstation path cannot climb out of the agent workspace.")
@@ -416,6 +429,16 @@ export async function listDriveFiles(
   if (input.pageToken && !PAGE_TOKEN.test(input.pageToken)) {
     throw new DriveError("That Drive page token is not valid.")
   }
+  const text = input.query?.trim()
+  if (text && (text.length > 200 || /[\u0000-\u001F\u007F]/.test(text))) {
+    throw new DriveError("That Drive search is not valid.")
+  }
+  if (input.folderId && !FILE_ID.test(input.folderId)) {
+    throw new DriveError("That Drive folder id is not valid.")
+  }
+  if (input.mimeType && !MIME.test(input.mimeType)) {
+    throw new DriveError("That Drive file type is not valid.")
+  }
   const pageSize = clampPageSize(input.limit)
   const url = new URL("https://www.googleapis.com/drive/v3/files")
   url.searchParams.set("q", buildDriveQuery(input))
@@ -569,10 +592,7 @@ async function uploadBytes(
   },
   deps: DriveDeps
 ) {
-  if (
-    input.body.length > DRIVE_UPLOAD_CAP &&
-    !input.metadataMime.startsWith("application/vnd.google-apps.")
-  ) {
+  if (input.body.length > DRIVE_UPLOAD_CAP) {
     throw new DriveError(`That file is over the ${DRIVE_UPLOAD_CAP} byte upload cap.`)
   }
   if (input.body.length > DRIVE_BYTE_CAP) {
@@ -726,6 +746,20 @@ async function createFile(
 ) {
   const body = bytes ?? Buffer.from(payload.content, "utf8")
   const metadataMime = payload.mimeType || "text/plain"
+  if (
+    payload.action === "Upload file" &&
+    metadataMime.startsWith("application/vnd.google-apps.")
+  ) {
+    throw new DriveError(
+      "Upload a normal file, or create a Google Doc or Sheet with the doc tool."
+    )
+  }
+  if (payload.action === "Create Google Doc" && metadataMime !== GOOGLE_DOC) {
+    throw new DriveError("A Google Doc has to be created as a document.")
+  }
+  if (payload.action === "Create Google Sheet" && metadataMime !== GOOGLE_SHEET) {
+    throw new DriveError("A Google Sheet has to be created as a spreadsheet.")
+  }
   const bodyMime =
     payload.action === "Create Google Sheet"
       ? "text/csv"

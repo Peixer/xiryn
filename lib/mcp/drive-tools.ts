@@ -13,6 +13,7 @@ import {
   driveToolSchemas,
   encodeShareDetail,
   getDriveFile,
+  redactDriveText,
   listDriveFiles,
   listDrivePermissions,
   readDriveFile,
@@ -58,9 +59,8 @@ function mimeFor(name: string, given?: string) {
 }
 
 function failure(error: unknown) {
-  return {
-    error: error instanceof Error ? error.message : "Google Drive request failed.",
-  }
+  const message = error instanceof Error ? error.message : "Google Drive request failed."
+  return { error: redactDriveText(message) }
 }
 
 async function folderName(id: string | undefined, deps: DriveDeps) {

@@ -348,6 +348,30 @@ test("permanent delete is refused and trash is a patch", async () => {
       ),
     /www\.googleapis\.com/
   )
+  await assert.rejects(
+    () =>
+      driveRequest(
+        "https://www.googleapis.com/gmail/v1/users/me/messages",
+        {},
+        deps(async () => {
+          called = true
+          return jsonResponse({})
+        })
+      ),
+    /not the Drive API/
+  )
+  await assert.rejects(
+    () =>
+      driveRequest(
+        "https://www.googleapis.com/drive/v3/files/trash",
+        { method: "DELETE" },
+        deps(async () => {
+          called = true
+          return jsonResponse({})
+        })
+      ),
+    /Permanent delete/
+  )
   assert.equal(called, false)
 
   const calls: { method: string; url: string; body?: string }[] = []
@@ -416,6 +440,8 @@ test("a public share is the approved grant and does not discover the file", asyn
 test("workspace paths cannot climb out, and tool schemas reject writes that are not specific", () => {
   assert.throws(() => workspacePath("../secrets"), /cannot climb/)
   assert.throws(() => workspacePath("notes/../../etc/passwd"), /cannot climb/)
+  assert.throws(() => workspacePath("/etc/passwd"), /home folder/)
+  assert.throws(() => workspacePath("~/secrets"), /home folder/)
   assert.equal(workspacePath("notes/a.txt"), "notes/a.txt")
   assert.equal(driveToolSchemas.drive_search.safeParse({ limit: 21 }).success, false)
   assert.equal(
