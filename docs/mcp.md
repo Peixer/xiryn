@@ -64,7 +64,7 @@ Gmail and Calendar tools turn on together with that connection. Uncheck either o
 
 Agents then have `gmail_search`, `gmail_read`, `gmail_draft`, `gmail_send`, `gmail_reply`, `calendar_list_events`, `calendar_create_event`, `calendar_update_event` and `calendar_delete_event`.
 
-To disconnect, use **Disconnect** in Settings. That deletes the sealed token.
+To disconnect, use **Disconnect** in Settings. That revokes the grant at Google and deletes the sealed token. A refresh token left in the environment stays unused until you connect again.
 
 ## Other MCP servers
 
