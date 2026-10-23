@@ -135,9 +135,13 @@ export async function decideConnectorAction(
 }
 
 export async function disconnectGoogleAccount() {
-  disconnectGoogle()
-  revalidatePath("/", "layout")
-  return { ok: true as const }
+  try {
+    const { revoked } = await disconnectGoogle()
+    revalidatePath("/", "layout")
+    return { ok: true as const, revoked }
+  } catch (error) {
+    return { ok: false as const, error: reason(error) }
+  }
 }
 
 export async function testDriveConnection() {

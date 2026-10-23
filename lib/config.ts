@@ -76,6 +76,8 @@ const integrationSettings = {
   // and Drive was not among them. Unset means this token has not been refreshed
   // since Drive was added, so Drive stays off until a reconnect.
   "google.grantedScopes": { env: null, internal: true },
+  // "1" after Disconnect, so an env refresh token cannot turn the connector back on
+  "google.disconnected": { env: null, internal: true },
   // "off" hides that connector's tools. Gmail and Calendar default on, once
   // Google is connected. Drive defaults off so an existing Gmail consent is
   // not asked for a new scope until the owner turns Drive on.

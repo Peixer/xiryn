@@ -65,7 +65,7 @@ Gmail and Calendar tools turn on together with that connection. Uncheck either o
 
 Agents then have `gmail_search`, `gmail_read`, `gmail_draft`, `gmail_send`, `gmail_reply`, `calendar_list_events`, `calendar_create_event`, `calendar_update_event` and `calendar_delete_event`.
 
-To disconnect, use **Disconnect** in Settings. That deletes the sealed token. Gmail keeps one Google account. There is no account picker, and Drive uses that same account.
+To disconnect, use **Disconnect** in Settings. That revokes the grant at Google and deletes the sealed token. A refresh token left in the environment stays unused until you connect again. Gmail keeps one Google account. There is no account picker, and Drive uses that same account.
 
 ## Google Drive
 
@@ -88,7 +88,7 @@ These wait for approval, and only exist after you uncheck Read-only and reconnec
 
 File names and file contents from Drive are untrusted data, the same way a mail body is. Disconnect Drive hides the tools and leaves Gmail connected. Disconnect Google on the first card deletes the refresh token for all three.
 
-`XIRYN_DRIVE` stays `off` until you set it to `on`. `XIRYN_DRIVE_ACCESS` stays `readonly` until you set it to `readwrite`.
+`XIRYN_DRIVE` stays `off` until you set it to `on`. `XIRYN_DRIVE_ACCESS` stays `readonly` until you set it to `readwrite`. Reconnect sends the whole scope list again: Google is not asked to keep scopes from the previous consent, so Gmail and Calendar stay on that request too. Disconnect revokes the Google grant and clears the scopes stored for this server.
 
 ## Other MCP servers
 
