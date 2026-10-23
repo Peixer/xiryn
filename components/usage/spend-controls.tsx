@@ -59,7 +59,7 @@ function AgentLimitRow({ agent }: { agent: AgentLimit }) {
 
   return (
     <form
-      className="flex flex-wrap items-center gap-2"
+      className="flex flex-col gap-2 sm:flex-row sm:items-center"
       onSubmit={(event) => {
         event.preventDefault()
         void run(
@@ -68,25 +68,29 @@ function AgentLimitRow({ agent }: { agent: AgentLimit }) {
         )
       }}
     >
-      <Glyph seed={agent.glyph} className="size-5" />
-      <span className="min-w-0 flex-1 truncate text-[13px] font-medium">
-        {agent.name}
-      </span>
-      <span className="font-mono text-[11px] text-muted-foreground tabular-nums">
-        {formatUsd(agent.spent)} this month
-      </span>
-      <input
-        aria-label={`${agent.name}, US dollars per month`}
-        inputMode="decimal"
-        value={value}
-        onChange={(event) => setValue(event.target.value)}
-        placeholder="no limit"
-        className={cn(field, "w-28 flex-none")}
-      />
-      <Button type="submit" size="sm" disabled={pending}>
-        {pending && <Spinner data-icon="inline-start" />}
-        Save
-      </Button>
+      <div className="flex min-w-0 items-center gap-2 sm:flex-1">
+        <Glyph seed={agent.glyph} className="size-5 shrink-0" />
+        <span className="min-w-0 flex-1 truncate text-[13px] font-medium">
+          {agent.name}
+        </span>
+        <span className="shrink-0 font-mono text-[11px] text-muted-foreground tabular-nums">
+          {formatUsd(agent.spent)} this month
+        </span>
+      </div>
+      <div className="flex items-center gap-2">
+        <input
+          aria-label={`${agent.name}, US dollars per month`}
+          inputMode="decimal"
+          value={value}
+          onChange={(event) => setValue(event.target.value)}
+          placeholder="no limit"
+          className={cn(field, "w-28 flex-none")}
+        />
+        <Button type="submit" size="sm" disabled={pending}>
+          {pending && <Spinner data-icon="inline-start" />}
+          Save
+        </Button>
+      </div>
     </form>
   )
 }
