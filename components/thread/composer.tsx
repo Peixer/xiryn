@@ -3,13 +3,17 @@
 import * as React from "react"
 import {
   ArrowUpIcon,
+  CameraIcon,
   ChevronDownIcon,
   FileIcon,
   MicIcon,
   PaperclipIcon,
+  ShareIcon,
   SquareIcon,
   XIcon,
 } from "lucide-react"
+
+import { hapticTap } from "@/components/app/haptic"
 
 import { Glyph } from "@/components/glyph"
 import { ModelSpecLabel } from "@/components/model-picker"
@@ -67,6 +71,7 @@ export function Composer({
   const [dragOver, setDragOver] = React.useState(false)
   const ref = React.useRef<HTMLTextAreaElement>(null)
   const fileRef = React.useRef<HTMLInputElement>(null)
+  const cameraRef = React.useRef<HTMLInputElement>(null)
   const dragDepth = React.useRef(0)
   const filesRef = React.useRef(files)
   React.useEffect(() => {
@@ -174,6 +179,7 @@ export function Composer({
     setSending(true)
     try {
       await onSend(value, sendingFiles)
+      hapticTap()
       setText("")
       clearFiles()
     } catch {
@@ -187,7 +193,7 @@ export function Composer({
   const canSend = (text.trim().length > 0 || files.length > 0) && !disabled && !sending
 
   return (
-    <div className="mx-auto w-full max-w-3xl px-4 pb-4 sm:px-6">
+    <div className="xiryn-composer mx-auto w-full max-w-3xl px-4 pb-4 sm:px-6">
       <form
         onSubmit={(event) => {
           event.preventDefault()
@@ -255,6 +261,27 @@ export function Composer({
                 </span>
                 <button
                   type="button"
+                  aria-label={`Share ${item.file.name || "file"}`}
+                  onClick={() => {
+                    const file = item.file
+                    const nav = navigator as Navigator & {
+                      canShare?: (data: { files?: File[] }) => boolean
+                    }
+                    if (nav.share && nav.canShare?.({ files: [file] })) {
+                      void nav.share({ files: [file], title: file.name }).catch(() => {})
+                      return
+                    }
+                    toast.add({
+                      type: "error",
+                      title: "This browser can't share that file.",
+                    })
+                  }}
+                  className="xiryn-share grid size-8 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+                >
+                  <ShareIcon className="size-3.5" />
+                </button>
+                <button
+                  type="button"
                   aria-label={`Remove ${item.file.name || "file"}`}
                   onClick={() => removeFile(item.id)}
                   disabled={sending}
@@ -293,11 +320,12 @@ export function Composer({
             }
           }}
           rows={1}
+          enterKeyHint="send"
           placeholder={placeholder}
           disabled={disabled || sending}
-          className="block [field-sizing:content] max-h-64 min-h-[52px] w-full resize-none bg-transparent px-4 pt-3.5 pb-1 text-[14px] leading-relaxed outline-none placeholder:text-faint disabled:opacity-50"
+          className="block [field-sizing:content] max-h-64 min-h-[52px] w-full resize-none bg-transparent px-4 pt-3.5 pb-1 text-base leading-relaxed outline-none placeholder:text-faint disabled:opacity-50 md:text-[14px]"
         />
-        <div className="flex items-center gap-2 px-2.5 pt-1 pb-2.5">
+        <div className="xiryn-composer-actions flex items-center gap-2 px-2.5 pt-1 pb-2.5">
           <button
             type="button"
             onClick={() => fileRef.current?.click()}
@@ -312,6 +340,28 @@ export function Composer({
             ref={fileRef}
             type="file"
             multiple
+            className="sr-only"
+            tabIndex={-1}
+            aria-hidden
+            onChange={(event) => {
+              addFiles([...(event.target.files ?? [])])
+              event.target.value = ""
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => cameraRef.current?.click()}
+            aria-label="Take a photo"
+            disabled={disabled || sending || busy}
+            className="xiryn-camera grid size-11 place-items-center rounded-lg border bg-background text-muted-foreground active:bg-accent disabled:opacity-30"
+          >
+            <CameraIcon className="size-5" />
+          </button>
+          <input
+            ref={cameraRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
             className="sr-only"
             tabIndex={-1}
             aria-hidden

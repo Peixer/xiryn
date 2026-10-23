@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation"
 import { Toast as ToastPrimitive } from "@base-ui/react/toast"
 import { ArrowRightIcon, HandIcon, SendIcon, XIcon } from "lucide-react"
 
+import { subscribeInstalledPush } from "@/components/app/push-client"
 import { Glyph } from "@/components/glyph"
 import { Button } from "@/components/ui/button"
 import {
@@ -88,6 +89,15 @@ function chime(kind: "done" | "attention" | "error") {
       oscillator.stop(at + 0.65)
     })
   } catch {}
+}
+
+function setBadge(count: number) {
+  const nav = navigator as Navigator & {
+    setAppBadge?: (contents?: number) => Promise<void>
+    clearAppBadge?: () => Promise<void>
+  }
+  if (count > 0) void nav.setAppBadge?.(count).catch(() => {})
+  else void nav.clearAppBadge?.().catch(() => {})
 }
 
 function took(ms: number) {
@@ -254,6 +264,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   // What's on screen right now, read when an event arrives
   const here = React.useRef({ pathname, enabled })
   const listeners = React.useRef(new Set<(event: XirynEvent) => void>())
+  const unseen = React.useRef(new Map<string, string>())
   const listen = React.useCallback((listener: (event: XirynEvent) => void) => {
     listeners.current.add(listener)
     return () => {
@@ -265,9 +276,21 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   }, [pathname, enabled])
 
   React.useEffect(() => {
+    for (const [id, href] of unseen.current) {
+      if (href.split("?")[0] === pathname) unseen.current.delete(id)
+    }
+    setBadge(unseen.current.size)
+  }, [pathname])
+
+  React.useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setEnabled(readPreference())
-    if ("Notification" in window) setPermission(Notification.permission)
+    if ("Notification" in window) {
+      setPermission(Notification.permission)
+      if (Notification.permission === "granted" && readPreference()) {
+        void subscribeInstalledPush().catch(() => {})
+      }
+    }
     // Browsers only allow sound after the page has been interacted with
     const unlock = () => unlockAudio()
     window.addEventListener("pointerdown", unlock, { once: true })
@@ -289,6 +312,13 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
       }
       router.refresh()
       for (const listener of listeners.current) listener(event)
+      if (event.type !== "turn-started") {
+        const looking = document.visibilityState === "visible" && document.hasFocus()
+        const onThread = here.current.pathname === event.href.split("?")[0]
+        if (looking && onThread) unseen.current.delete(event.threadId)
+        else unseen.current.set(event.threadId, event.href)
+        setBadge(unseen.current.size)
+      }
       // A turn starting is news only for the page showing it
       if (event.type === "turn-started" || !here.current.enabled) return
 
@@ -344,7 +374,16 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     if (!next) return
     unlockAudio()
     chime("done")
-    if (askable) void Notification.requestPermission().then(setPermission)
+    if (askable) {
+      void Notification.requestPermission().then((next) => {
+        setPermission(next)
+        if (next === "granted") void subscribeInstalledPush().catch(() => {})
+      })
+      return
+    }
+    if ("Notification" in window && Notification.permission === "granted") {
+      void subscribeInstalledPush().catch(() => {})
+    }
   }, [enabled])
 
   const value = React.useMemo(

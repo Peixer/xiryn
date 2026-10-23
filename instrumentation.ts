@@ -19,6 +19,10 @@ export async function register() {
   const { startNotifyWebhook } = await import("./lib/notify-webhook")
   startNotifyWebhook()
 
+  // Web Push for an installed app. Does nothing until VAPID keys are set.
+  const { startWebPush } = await import("./lib/web-push")
+  startWebPush()
+
   // Routines: tasks agents run on their own, on a schedule
   const { startRoutines } = await import("./lib/routines")
   startRoutines()

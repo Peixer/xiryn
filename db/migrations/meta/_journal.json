@@ -57,6 +57,13 @@
       "when": 1792784564726,
       "tag": "0007_grokbot_routine_schedule",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1792789000000,
+      "tag": "0008_subagent_threads",
+      "breakpoints": true
     }
   ]
 }

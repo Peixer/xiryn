@@ -293,7 +293,7 @@ function UserMessage({
           </ul>
         )}
         {text.trim() ? (
-          <div className="rounded-xl rounded-br-sm border bg-elevated px-3.5 py-2 text-[14px] leading-relaxed whitespace-pre-wrap">
+          <div className="xiryn-user-bubble rounded-xl rounded-br-sm border bg-elevated px-3.5 py-2 text-[14px] leading-relaxed whitespace-pre-wrap">
             {text}
           </div>
         ) : null}
