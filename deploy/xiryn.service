@@ -7,6 +7,9 @@ Wants=network-online.target docker.service
 Type=simple
 User=xiryn
 Group=xiryn
+# Still host-root equivalent. This unit talks to the engine socket directly
+# so existing agent desktops keep working. deploy/deploy.sh does not install
+# the compose socket proxy. See docs/aws.md before changing this line.
 SupplementaryGroups=docker
 WorkingDirectory=/opt/xiryn
 Environment=NODE_ENV=production
@@ -14,7 +17,17 @@ EnvironmentFile=-/opt/xiryn/.env
 ExecStart=/usr/bin/npm run start
 Restart=on-failure
 RestartSec=5
+# Sandbox for the Node process. Applying it on a host that already runs
+# this unit: docs/aws.md. The listed directories must exist and be owned
+# by xiryn before the restart.
 NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/opt/xiryn/data /var/lib/xiryn /opt/xiryn/.next/cache /run/docker.sock /var/run/docker.sock
+UMask=0077
+RestrictSUIDSGID=true
+LockPersonality=true
 
 [Install]
 WantedBy=multi-user.target

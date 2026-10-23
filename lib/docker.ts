@@ -181,11 +181,60 @@ function isMissing(error: unknown) {
   return (error as NodeJS.ErrnoException)?.code === "ENOENT"
 }
 
+// Default process cap for one agent desktop (Chromium, Xvfb, the panel, and
+// a shell). The workstation create call already passes --memory from
+// settings; this default applies only when a create forgets its own limit.
+export const WORKSTATION_PIDS_LIMIT = "512"
+export const WORKSTATION_DEFAULT_MEMORY = "4096m"
+
+function optionValues(args: readonly string[], flag: string) {
+  const values: string[] = []
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i]
+    if (arg === flag) {
+      const next = args[i + 1]
+      if (next && !next.startsWith("--")) values.push(next)
+    } else if (arg.startsWith(`${flag}=`)) {
+      values.push(arg.slice(flag.length + 1))
+    }
+  }
+  return values
+}
+
+// Flags for every `docker create` this process issues (agent workstations).
+// Chromium in the workstation image is already started with --no-sandbox
+// (workstation/rootfs/etc/chromium.d/xiryn), so the desktop does not get
+// CAP_SYS_ADMIN back for Chromium's setuid sandbox. Xvfb, x11vnc, and the
+// panel run as the unprivileged user and need no capabilities.
+// no-new-privileges also blocks setuid, including the image's passwordless
+// sudo. The sudoers file is left unchanged for the separate sudoers change.
+// This set was not executed against a live workstation desktop here.
+export function hardenContainerCreateArgs(args: readonly string[]): string[] {
+  if (args[0] !== "create") return [...args]
+  const extra: string[] = []
+  const security = optionValues(args, "--security-opt")
+  if (!security.some((value) => value.includes("no-new-privileges"))) {
+    extra.push("--security-opt", "no-new-privileges")
+  }
+  if (!optionValues(args, "--cap-drop").includes("ALL")) {
+    extra.push("--cap-drop", "ALL")
+  }
+  if (optionValues(args, "--pids-limit").length === 0) {
+    extra.push("--pids-limit", WORKSTATION_PIDS_LIMIT)
+  }
+  if (optionValues(args, "--memory").length === 0) {
+    extra.push("--memory", WORKSTATION_DEFAULT_MEMORY)
+  }
+  if (extra.length === 0) return [...args]
+  return [args[0], ...extra, ...args.slice(1)]
+}
+
 // Runs `docker <args>` and reports how it went, whatever the exit code
 export async function dockerRaw(args: string[], options: RunOptions = {}) {
+  const command = hardenContainerCreateArgs(args)
   if (shared.binary) {
     try {
-      return await spawnOnce(shared.binary, args, options)
+      return await spawnOnce(shared.binary, command, options)
     } catch (error) {
       if (!isMissing(error)) throw error
       shared.binary = null
@@ -194,7 +243,7 @@ export async function dockerRaw(args: string[], options: RunOptions = {}) {
   for (const binary of ["docker", ...FALLBACK_BINARIES]) {
     if (binary !== "docker" && !fs.existsSync(binary)) continue
     try {
-      const result = await spawnOnce(binary, args, options)
+      const result = await spawnOnce(binary, command, options)
       shared.binary = binary
       return result
     } catch (error) {

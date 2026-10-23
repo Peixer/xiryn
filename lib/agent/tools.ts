@@ -175,7 +175,7 @@ export function createWorkstationTools(env: ToolEnv) {
   return {
     shell: tool({
       description:
-        "Run a shell command on your workstation (Linux, bash, with passwordless sudo). Returns combined output and the exit code. Each call is a fresh shell that starts in your home directory unless `cwd` is given. Programs started in the background keep running.",
+        "Run a shell command on your workstation (Linux, bash). `sudo` does not work: new containers drop every capability. Returns combined output and the exit code. Each call is a fresh shell that starts in your home directory unless `cwd` is given. Programs started in the background keep running.",
       inputSchema: z.object({
         command: z.string().min(1).describe("The command to run"),
         cwd: z.string().optional().describe("Working directory"),

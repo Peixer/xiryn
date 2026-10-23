@@ -117,6 +117,39 @@ The unit runs `npm run start`, which is `next start` on `127.0.0.1:6796`. Build 
 
 On boot the process also listens on `127.0.0.1:6797` and forwards `/desktop/<agent>/websockify` to that agent's container. `XIRYN_DESKTOP_PROXY=off` skips it. `XIRYN_DESKTOP_PROXY_PORT` changes the port; keep the Caddyfile in step.
 
+## What the sandbox changes, and how to apply it
+
+`deploy/xiryn.service` keeps `User=xiryn` (not root) and `SupplementaryGroups=docker`. The docker group is unchanged on purpose. Agent workstations on this host are still created through the engine socket, and `deploy/deploy.sh` does not install a socket proxy and does not copy the unit into `/etc/systemd/system`. Removing the group, or pointing this host at the compose proxy, is not part of a normal deploy. Do that only after an agent desktop has been started successfully with `DOCKER_HOST` set, then drop the group in a follow-up.
+
+The unit adds a sandbox around the Node process:
+
+- `NoNewPrivileges=true` (already present)
+- `PrivateTmp=true`
+- `ProtectSystem=strict`, with write access only to `/opt/xiryn/data` (the database, `XIRYN_DATA_DIR`), `/var/lib/xiryn` (the service home, including `~/.xiryn` for the vault key), `/opt/xiryn/.next/cache` (Next.js runtime cache), and the engine socket (`/run/docker.sock`, `/var/run/docker.sock`)
+- `ProtectHome=read-only`
+- `UMask=0077`
+- `RestrictSUIDSGID=true`
+- `LockPersonality=true`
+
+`ProtectHome=read-only` fits the user created above, whose home is `/var/lib/xiryn` and not under `/home`. If this host's `xiryn` home is under `/home`, that home becomes read-only and the vault key file cannot be created. Move the home to `/var/lib/xiryn`, or remove `ProtectHome=`, then reload.
+
+`UMask=0077` applies to files created after the restart. It does not rewrite the database or the `.env` that are already on disk.
+
+`ProtectSystem=strict` fails the service if a `ReadWritePaths=` entry is missing in a way systemd cannot mount, and a directory systemd creates for a missing path is owned by root. Create them as `xiryn` before restarting:
+
+```bash
+sudo install -d -o xiryn -g xiryn -m 0700 \
+  /opt/xiryn/data /opt/xiryn/.next/cache /var/lib/xiryn/.xiryn
+sudo cp /opt/xiryn/deploy/xiryn.service /etc/systemd/system/xiryn.service
+sudo systemctl daemon-reload
+sudo systemctl restart xiryn
+sudo systemctl status xiryn --no-pager
+```
+
+`deploy/deploy.sh` only fast-forwards, installs, builds, and restarts. After this change it will restart whatever unit is already installed. Copy the unit yourself or the sandbox never lands. If the process then exits because a path is read-only, the journal names the path. Add that path to `ReadWritePaths=` and reload. Do not switch the unit to `User=root` to get past it.
+
+Checked in development with `systemd-analyze verify deploy/xiryn.service`. The only diagnostic was that `/usr/bin/npm` does not exist on that machine (Node there is not installed at the path the unit uses); the verifier did not reject the sandbox directives. Not checked: starting the unit on the EC2 host, a real `next start` under `ProtectSystem=strict`, or opening `/run/docker.sock` from inside the sandbox. The compose socket proxy is a different deployment (`docker-compose.yml`) and is not used by this unit.
+
 ## Caddy
 
 ```bash
@@ -207,4 +240,4 @@ On this host the file key is `/var/lib/xiryn/.xiryn/vault-*.key` unless `XIRYN_V
 sudo /opt/xiryn/deploy/deploy.sh
 ```
 
-It does not touch Caddy or the instance role. If this directory still tracks upstream, fix the remote first (see the top of this page) or the pull will not bring this fork.
+It does not touch Caddy, the instance role, or the installed systemd unit. A pull that changes `deploy/xiryn.service` does not apply until you copy the unit and run `daemon-reload`, as in the sandbox section above. If this directory still tracks upstream, fix the remote first (see the top of this page) or the pull will not bring this fork.
