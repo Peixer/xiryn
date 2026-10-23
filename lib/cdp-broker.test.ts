@@ -11,19 +11,22 @@ import { pageFromTargets } from "./page-origin"
 
 const secret = "s3cr3t-value-not-a-label"
 const brokerPath = path.resolve("workstation/rootfs/usr/local/bin/xiryn-cdp")
+const browserPath = path.resolve("workstation/rootfs/usr/local/bin/browser")
 
 test("chromium flags and the page lookup do not open a debugging port", () => {
   const flags = fs.readFileSync("workstation/rootfs/etc/chromium.d/xiryn", "utf8")
   const workstation = fs.readFileSync("lib/workstation.ts", "utf8")
   const mask = fs.readFileSync("workstation/rootfs/usr/local/bin/xiryn-mask", "utf8")
   const broker = fs.readFileSync(brokerPath, "utf8")
-  for (const source of [flags, workstation, mask, broker]) {
+  const browser = fs.readFileSync(browserPath, "utf8")
+  for (const source of [flags, workstation, mask, broker, browser]) {
     assert.equal(source.includes("9222"), false)
     assert.equal(source.includes("remote-debugging-port"), false)
     assert.equal(source.includes("json/list"), false)
   }
   assert.match(broker, /remote-debugging-pipe/)
   assert.match(workstation, /xiryn-cdp/)
+  assert.match(browser, /xiryn-cdp ping/)
 })
 
 test("the debugging socket reports the focused origin and not a field value", async () => {
@@ -194,6 +197,10 @@ read()
     assert.equal(typeof masked.masked, "number")
     assert.equal(JSON.stringify(masked).includes(secret), false)
 
+    const ping = await ask({ op: "ping" })
+    assert.deepEqual(ping, { ok: true })
+    assert.equal(JSON.stringify(ping).includes(secret), false)
+
     const expressions = fs.readFileSync(exprLog, "utf8").split("\n---\n").filter(Boolean)
     assert.ok(expressions.length >= 2)
     for (const expression of expressions) {
@@ -212,6 +219,153 @@ read()
       new Promise((resolve) => setTimeout(resolve, 1000)),
     ])
     if (broker.exitCode == null) broker.kill("SIGKILL")
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+// A killed broker leaves the socket file behind. /tmp survives `docker stop`,
+// which is how an idle workstation shuts down.
+async function leftoverSocket(sock: string) {
+  const child = spawn(
+    process.execPath,
+    [
+      "-e",
+      `const net = require("net")
+const server = net.createServer()
+server.listen(process.argv[1], () => process.stdout.write("up\\n"))`,
+      sock,
+    ],
+    { stdio: ["ignore", "pipe", "inherit"] }
+  )
+  let out = ""
+  child.stdout?.on("data", (chunk) => {
+    out += chunk.toString()
+  })
+  const started = Date.now()
+  while (!out.includes("up")) {
+    if (child.exitCode != null) throw new Error("socket helper exited")
+    if (Date.now() - started > 2000) throw new Error("socket did not listen")
+    await new Promise((resolve) => setTimeout(resolve, 20))
+  }
+  child.kill("SIGKILL")
+  await once(child, "exit")
+  assert.equal(fs.statSync(sock).isSocket(), true)
+}
+
+function installBrowserFakes(dir: string) {
+  const bin = path.join(dir, "bin")
+  const callLog = path.join(dir, "calls.log")
+  const ready = path.join(dir, "ready")
+  const pidfile = path.join(dir, "broker.pid")
+  fs.mkdirSync(bin)
+  fs.writeFileSync(callLog, "")
+  const cdp = `#!/bin/bash
+printf '%s\\n' "call:\${1:-serve}" >> "$CALL_LOG"
+if [ "\${1:-}" = "ping" ]; then
+  [ -f "$READY" ] && exit 0
+  exit 1
+fi
+echo $$ > "$PIDFILE"
+exec node -e '
+const net = require("net")
+const fs = require("fs")
+const sock = process.env.XIRYN_CDP_SOCK
+const ready = process.env.READY
+try { fs.unlinkSync(sock) } catch {}
+const server = net.createServer((conn) => conn.end())
+server.listen(sock, () => fs.writeFileSync(ready, "1"))
+setInterval(() => {}, 1 << 30)
+'
+`
+  fs.writeFileSync(path.join(bin, "xiryn-cdp"), cdp)
+  fs.writeFileSync(
+    path.join(bin, "chromium"),
+    `#!/bin/bash\nprintf '%s\\n' "chromium:$*" >> "$CALL_LOG"\n`
+  )
+  fs.chmodSync(path.join(bin, "xiryn-cdp"), 0o755)
+  fs.chmodSync(path.join(bin, "chromium"), 0o755)
+  return { bin, callLog, ready, pidfile }
+}
+
+async function runBrowser(dir: string, sock: string, bin: string) {
+  const child = spawn("bash", [browserPath], {
+    env: {
+      ...process.env,
+      PATH: `${bin}:${process.env.PATH ?? ""}`,
+      XIRYN_CDP_SOCK: sock,
+      CALL_LOG: path.join(dir, "calls.log"),
+      READY: path.join(dir, "ready"),
+      PIDFILE: path.join(dir, "broker.pid"),
+    },
+  })
+  const timer = setTimeout(() => child.kill("SIGKILL"), 8000)
+  await once(child, "exit")
+  clearTimeout(timer)
+  assert.equal(child.exitCode, 0)
+}
+
+test("the workstation smoke test checks the broker and keeps port 9222 closed", () => {
+  const ci = fs.readFileSync(".github/workflows/ci.yml", "utf8")
+  assert.match(ci, /xiryn-cdp pages/)
+  assert.match(ci, /9222\/json\/version/)
+  assert.doesNotMatch(ci, /9222\/json\/version && exit 0/)
+  assert.match(ci, /--cap-drop ALL/)
+  assert.match(ci, /no-new-privileges/)
+})
+
+test("browser replaces a leftover debugging socket from a stopped machine", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "xiryn-browser-"))
+  const sock = path.join(dir, "cdp.sock")
+  const { bin, callLog, ready, pidfile } = installBrowserFakes(dir)
+  try {
+    await leftoverSocket(sock)
+    await runBrowser(dir, sock, bin)
+    const calls = fs.readFileSync(callLog, "utf8")
+    assert.match(calls, /call:serve/)
+    assert.equal(calls.includes("chromium:"), false)
+    assert.equal(fs.existsSync(ready), true)
+    assert.equal(fs.statSync(sock).isSocket(), true)
+  } finally {
+    if (fs.existsSync(pidfile)) {
+      const pid = Number(fs.readFileSync(pidfile, "utf8"))
+      if (pid > 0) {
+        try {
+          process.kill(pid, "SIGKILL")
+        } catch {
+          // Already gone.
+        }
+      }
+    }
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test("browser leaves a live debugging socket in place", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "xiryn-browser-live-"))
+  const sock = path.join(dir, "cdp.sock")
+  const { bin, callLog, ready, pidfile } = installBrowserFakes(dir)
+  const server = net.createServer((conn) => conn.end())
+  await new Promise<void>((resolve) => server.listen(sock, () => resolve()))
+  fs.writeFileSync(ready, "1")
+  try {
+    await runBrowser(dir, sock, bin)
+    const calls = fs.readFileSync(callLog, "utf8")
+    assert.match(calls, /call:ping/)
+    assert.equal(calls.includes("call:serve"), false)
+    assert.equal(calls.includes("chromium:"), false)
+    assert.equal(fs.statSync(sock).isSocket(), true)
+  } finally {
+    server.close()
+    if (fs.existsSync(pidfile)) {
+      const pid = Number(fs.readFileSync(pidfile, "utf8"))
+      if (pid > 0) {
+        try {
+          process.kill(pid, "SIGKILL")
+        } catch {
+          // Already gone.
+        }
+      }
+    }
     fs.rmSync(dir, { recursive: true, force: true })
   }
 })

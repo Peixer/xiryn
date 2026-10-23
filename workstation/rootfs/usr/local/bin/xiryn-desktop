@@ -52,6 +52,8 @@ ws=$!
 # open with a "restore pages?" bubble.
 sed -i 's/"exit_type":"Crashed"/"exit_type":"Normal"/' \
   "$HOME/.config/xiryn-browser/Default/Preferences" 2>/dev/null
+# browser drops a leftover debugging socket. /tmp survives a stop, and that
+# file would otherwise look like a broker that is no longer running.
 browser
 
 while sleep 20; do
