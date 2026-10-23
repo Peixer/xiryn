@@ -148,7 +148,17 @@ export default function Page() {
               )}
               {usage.byModel.map((row) => (
                 <div key={row.model} className="flex items-baseline gap-3 px-4 py-2.5">
-                  <span className="min-w-0 flex-1 truncate">{row.model}</span>
+                  <span className="flex min-w-0 flex-1 items-baseline gap-2">
+                    <span className="min-w-0 truncate">{row.model}</span>
+                    {row.priceSource === "estimate" && (
+                      <span
+                        className="shrink-0 font-mono text-[10.5px] text-faint"
+                        title="Estimated from the EU price. The bill may differ."
+                      >
+                        estimate
+                      </span>
+                    )}
+                  </span>
                   <span className="text-muted-foreground">{row.turns} turns</span>
                   <span className="w-24 text-right tabular-nums">
                     {compact.format(row.input)} / {compact.format(row.output)}
