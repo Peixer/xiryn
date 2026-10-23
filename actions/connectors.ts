@@ -59,7 +59,11 @@ export async function decideConnectorAction(
 ) {
   try {
     const answer = answerAction(approvalId, choice)
-    if (choice === "approve" && options?.allowDomain) {
+    if (
+      choice === "approve" &&
+      options?.allowDomain &&
+      parseWebApprovalMode(getSetting("security.webApproval")) === "new-domains"
+    ) {
       const approval = getActionApproval(approvalId)
       const host = approval
         ? webApprovalCardFields({

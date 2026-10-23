@@ -125,7 +125,13 @@ async function toolsForServer(server: McpServerConfig, env: ToolEnv) {
           })
           if (hold) return hold
         }
-        return mcpTool.execute(input)
+        // A thrown message skips toModelOutput, so a server can put the
+        // injection in the error instead of the result. Return it as data.
+        try {
+          return await mcpTool.execute(input)
+        } catch (error) {
+          return { error: error instanceof Error ? error.message : String(error) }
+        }
       },
       toModelOutput: ({ output }) => toUntrustedModelOutput(`mcp:${server.id}`, output),
     })

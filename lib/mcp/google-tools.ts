@@ -260,6 +260,8 @@ export function createGoogleTools(env: ToolEnv) {
           })),
         }
       },
+      toModelOutput: ({ output }) =>
+        toUntrustedModelOutput("calendar_list_events", output),
     })
 
     tools.calendar_create_event = tool({

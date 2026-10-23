@@ -13,6 +13,7 @@ import {
   TurnError,
 } from "@/lib/agent/runtime"
 import type { XirynMessage, SecretRequest } from "@/lib/agent/tools"
+import { actionNoticeText } from "@/lib/agent/untrusted"
 import { getSetting, setSetting } from "@/lib/config"
 import { getApproval, type Approval, type VaultItemView } from "@/lib/vault"
 import { answerAction, getActionApproval, type ActionApproval } from "@/lib/mcp/approval"
@@ -1061,7 +1062,7 @@ export async function notifyAction({
     parse_mode: "HTML",
     text: [
       `<b>${escape(agent.name)}</b> wants to`,
-      escape(approval.summary),
+      escape(actionNoticeText(approval)),
       "",
       "Nothing is sent until you approve.",
       `<a href="${escape(inApp)}">Open in Xiryn</a>`,

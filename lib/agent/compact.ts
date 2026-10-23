@@ -36,10 +36,21 @@ function shrink(output: ToolOutput, keepImage: boolean, keepFull: boolean): Tool
   const raw =
     typeof output.value === "string" ? output.value : JSON.stringify(output.value ?? "")
   if (raw.length <= STUB_CHARS) return output
-  return {
-    type: "text",
-    value: `${raw.slice(0, STUB_CHARS)}… [${raw.length - STUB_CHARS} more characters of an earlier result trimmed]`,
-  }
+  return { type: "text", value: stubText(raw) }
+}
+
+// A wrapped result opens with `<untrusted …>` and closes at the end. Cutting
+// the tail off drops that closer, so everything after the stub looks like
+// more untrusted text. Put the closer back and leave the trim note outside.
+const UNTRUSTED_OPEN = /^<untrusted source="[A-Za-z0-9_.:-]{1,80}">/
+
+function stubText(raw: string) {
+  const note = `… [${raw.length - STUB_CHARS} more characters of an earlier result trimmed]`
+  if (!UNTRUSTED_OPEN.test(raw)) return `${raw.slice(0, STUB_CHARS)}${note}`
+  let head = raw.slice(0, STUB_CHARS)
+  const closer = head.lastIndexOf("</untrusted")
+  if (closer > 0) head = head.slice(0, closer).replace(/\s*$/, "")
+  return `${head}\n</untrusted>\n${note}`
 }
 
 // How many of the newest `total` results stay whole. With chunk 1 this is the

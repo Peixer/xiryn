@@ -441,7 +441,7 @@ Xiryn has no user accounts, so it's built never to be reachable by anyone but yo
 - Telegram answers exactly **one** paired account; pairing codes are single-use and rotate after wrong guesses.
 - Agents execute only inside their own containers — never on your desktop or in your files. Their browsers have password saving and card autofill switched off. MCP stdio servers are the exception: they run on the Xiryn host, and only for commands you listed in `data/mcp.json`.
 - Sending mail or changing a calendar waits for your approval, the same way a payment does. Every send waits.
-- Web pages, mail, search results and MCP output are treated as untrusted data. Settings → Workstations & web can require approval before `web_fetch` leaves for a new domain, or before every web request. The card shows the full URL. `XIRYN_WEB_APPROVAL=off` is the default.
+- Web pages, mail, files, shell output, search results and MCP output are treated as untrusted data. Settings → Workstations & web can require approval before `web_fetch` leaves for a new domain, or before every web request. The card shows the full URL. `XIRYN_WEB_APPROVAL=off` is the default.
 - Saved logins, cards and personal details are encrypted (AES-256-GCM) with a key your operating system's keychain holds. Agents get masked hints only; Xiryn types values into pages itself, logins only on their own site, payment details only after you approve that payment.
 - Each live desktop is published on 127.0.0.1 only and asks for its own random password.
 - No telemetry. No analytics. The only request Xiryn makes on its own is an update check against GitHub's public API when you open Xiryn, sending nothing about you. Switch it off in **Settings → System** or with `XIRYN_UPDATE_CHECK=off`.

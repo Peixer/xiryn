@@ -20,6 +20,7 @@ All notable changes to Xiryn are documented here. The format follows [Keep a Cha
 
 ### Fixed
 
+- Untrusted markers stay closed when fetched text forges a closing tag (including backslash, fullwidth and hidden-character spellings) or when an older result is shortened. Shell output, file reads and calendar events are wrapped with the other external text. A `web_fetch` URL that parsers read differently is requested in its normalized form, and a Telegram approval notice shows the full URL instead of the 300-character summary.
 - Bedrock output tokens follow the model. Nova Pro, Lite and Micro stay at 10,000 (a 16,384 request is rejected) and Llama 3.3 70B at 4,096. Claude still asks for 16,384. Override with `XIRYN_BEDROCK_MAX_OUTPUT`.
 - Next.js 16.4.0 → 16.4.2, including `eslint-config-next`. Closes GHSA-2464-fhr4-w9xw, GHSA-673q-mjm6-r5xr, and CVE-2026-94482 (GHSA-p3m5-59mp-jv5r).
 - Llama 3.3 on Bedrock was answering with a tool call written as text, so the tool never ran. Text-form calls (`type: function`, `name`/`parameters`, `<|python_tag|>`, code fences) are now executed, then the turn continues.
