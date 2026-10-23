@@ -99,6 +99,8 @@ test("connecting stores a sealed token and disconnect revokes that token", async
         access_token: "access-token",
         refresh_token: "refresh-from-google",
         expires_in: 3600,
+        scope:
+          "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/drive.readonly ya29.not-a-scope",
       })
     }
     if (target === "https://oauth2.googleapis.com/revoke") {
@@ -112,11 +114,42 @@ test("connecting stores a sealed token and disconnect revokes that token", async
   const stored = getSetting("google.refreshToken")
   assert.equal(stored?.startsWith("seal1."), true)
   assert.equal(stored?.includes("refresh-from-google"), false)
+  assert.equal(
+    getSetting("google.grantedScopes"),
+    "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/drive.readonly"
+  )
   assert.equal(googleConnected(), true)
   const result = await disconnectGoogle()
   assert.equal(revoked, "refresh-from-google")
   assert.equal(result.revoked, true)
   assert.equal(googleConnected(), false)
+  assert.equal(getSetting("google.grantedScopes"), undefined)
+})
+
+test("Drive is left off the consent URL until the owner turns it on", () => {
+  const readonlyScope = "https://www.googleapis.com/auth/drive.readonly"
+  const fullScope = "https://www.googleapis.com/auth/drive"
+  const off = new URL(googleAuthUrl())
+  assert.equal(off.searchParams.has("include_granted_scopes"), false)
+  const offScopes = off.searchParams.get("scope")?.split(" ") ?? []
+  assert.equal(offScopes.includes(readonlyScope), false)
+  assert.equal(offScopes.includes(fullScope), false)
+  verifyGoogleState(off.searchParams.get("state")!)
+
+  setSetting("connectors.drive", "on")
+  const read = new URL(googleAuthUrl())
+  const readScopes = read.searchParams.get("scope")?.split(" ") ?? []
+  assert.equal(readScopes.includes(readonlyScope), true)
+  assert.equal(readScopes.includes(fullScope), false)
+  assert.equal(read.searchParams.get("code_challenge_method"), "S256")
+  verifyGoogleState(read.searchParams.get("state")!)
+
+  setSetting("connectors.drive.access", "readwrite")
+  const write = new URL(googleAuthUrl())
+  const writeScopes = write.searchParams.get("scope")?.split(" ") ?? []
+  assert.equal(writeScopes.includes(fullScope), true)
+  assert.equal(writeScopes.includes(readonlyScope), false)
+  assert.equal(write.searchParams.has("include_granted_scopes"), false)
 })
 
 test("disconnect keeps an environment refresh token from turning Google back on", async () => {

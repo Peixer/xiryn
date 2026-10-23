@@ -1445,8 +1445,8 @@ export function SettingsForm({
         <Section
           id="connectors"
           kicker="04 · connectors"
-          title="Mail, calendar and MCP"
-          description="Agents can use Gmail, Google Calendar, and any MCP server you list. Sending and other writes wait for your approval."
+          title="Mail, calendar, Drive and MCP"
+          description="Agents can use Gmail, Google Calendar, Google Drive, and any MCP server you list. Sending, Drive changes, and other writes wait for your approval. Drive is read-only until you say otherwise."
         >
           <ConnectorsPanel connectors={data.connectors} />
         </Section>

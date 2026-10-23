@@ -11,9 +11,14 @@ import {
   CircleSlashIcon,
   CreditCardIcon,
   EraserIcon,
+  CopyIcon,
   FileTextIcon,
   FilePenIcon,
+  FolderPlusIcon,
   FolderTreeIcon,
+  HardDriveIcon,
+  Share2Icon,
+  Trash2Icon,
   GlobeIcon,
   KeyboardIcon,
   KeyRoundIcon,
@@ -136,6 +141,48 @@ const META: Record<string, Meta> = {
     summary: (i) => `${str(i.amount)} to ${str(i.merchant)}`,
   },
   request_secret: { icon: KeyRoundIcon, label: "ask", summary: (i) => str(i.reason) },
+  drive_search: {
+    icon: SearchIcon,
+    label: "drive",
+    summary: (i) => clipTool(i.query) || "search",
+  },
+  drive_list_folders: { icon: FolderTreeIcon, label: "folders", summary: () => "Drive" },
+  drive_get: { icon: HardDriveIcon, label: "drive", summary: (i) => clipTool(i.id) },
+  drive_read: { icon: FileTextIcon, label: "drive", summary: (i) => clipTool(i.id) },
+  drive_list_permissions: {
+    icon: Share2Icon,
+    label: "access",
+    summary: (i) => clipTool(i.id),
+  },
+  drive_create_folder: {
+    icon: FolderPlusIcon,
+    label: "folder",
+    summary: (i) => clipTool(i.name),
+  },
+  drive_create_file: {
+    icon: FilePenIcon,
+    label: "upload",
+    summary: (i) => clipTool(i.name),
+  },
+  drive_create_doc: {
+    icon: FilePenIcon,
+    label: "doc",
+    summary: (i) => clipTool(i.name),
+  },
+  drive_update_file: {
+    icon: FilePenIcon,
+    label: "update",
+    summary: (i) => clipTool(i.id),
+  },
+  drive_copy_file: { icon: CopyIcon, label: "copy", summary: (i) => clipTool(i.id) },
+  drive_trash: { icon: Trash2Icon, label: "trash", summary: (i) => clipTool(i.id) },
+  drive_share: { icon: Share2Icon, label: "share", summary: (i) => clipTool(i.id) },
+}
+
+function clipTool(value: unknown) {
+  return str(value)
+    .replace(/[\r\n]+/g, " ")
+    .slice(0, 80)
 }
 
 export function toolName(part: ToolPart) {

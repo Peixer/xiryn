@@ -662,7 +662,25 @@ const TOOL_LABELS: Record<string, (input: Record<string, unknown>) => string> = 
   calendar_create_event: (i) => `creating “${String(i.summary ?? "an event")}”`,
   calendar_update_event: () => "updating an event",
   calendar_delete_event: () => "deleting an event",
+  drive_search: (i) => `searching Drive “${clipDrive(i.query)}”`,
+  drive_list_folders: () => "listing Drive folders",
+  drive_get: () => "reading a Drive file",
+  drive_read: () => "reading a Drive file",
+  drive_list_permissions: () => "checking who can open a Drive file",
+  drive_create_folder: (i) => `creating Drive folder “${clipDrive(i.name)}”`,
+  drive_create_file: (i) => `uploading “${clipDrive(i.name)}” to Drive`,
+  drive_create_doc: (i) => `creating a Google ${i.kind === "sheet" ? "Sheet" : "Doc"}`,
+  drive_update_file: () => "updating a Drive file",
+  drive_copy_file: () => "copying a Drive file",
+  drive_trash: () => "moving a Drive file to trash",
+  drive_share: () => "changing who can open a Drive file",
   delegate: () => "delegating",
+}
+
+function clipDrive(value: unknown) {
+  return String(value ?? "")
+    .replace(/[\r\n]+/g, " ")
+    .slice(0, 80)
 }
 
 async function deliverInbound(

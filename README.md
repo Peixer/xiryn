@@ -438,7 +438,7 @@ Every setting can come from `.env` **or** from **Settings** in the app. Values s
 | `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`, `BEDROCK_BASE_URL` | Amazon Bedrock. Region opts in the instance role; keys are optional. See [docs/providers.md](docs/providers.md) |
 | `XIRYN_BEDROCK_EXTRA_REGIONS`, `XIRYN_BEDROCK_MODEL_REGIONS`, `XIRYN_BEDROCK_MAX_OUTPUT` | Extra Bedrock regions (for example `us-east-2` for Llama 3.3 70B in Ohio), per-model region pins, and per-model output caps |
 | `XIRYN_PROMPT_CACHE` | Prompt cache for Bedrock Claude and Nova, and for Claude sent through OpenRouter. `off` (also `0`, `false`, `no`) turns it off. On when unset |
-| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN`, `XIRYN_GMAIL`, `XIRYN_CALENDAR` | Built-in Gmail and Calendar. See [docs/mcp.md](docs/mcp.md) |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN`, `XIRYN_GMAIL`, `XIRYN_CALENDAR`, `XIRYN_DRIVE`, `XIRYN_DRIVE_ACCESS` | Built-in Gmail, Calendar and Drive. Drive defaults off and read-only. See [docs/mcp.md](docs/mcp.md) |
 | `XIRYN_DESKTOP_PROXY_PORT`, `XIRYN_DESKTOP_PROXY` | Loopback websocket proxy for desktops behind Caddy |
 | `XIRYN_UPDATE_CHECK` | `off` stops the update check and star count |
 | `XIRYN_DESKTOP_NOTIFY` | `off` stops operating-system notifications when no Xiryn tab is open |
@@ -453,7 +453,7 @@ Xiryn has no user accounts, so it's built never to be reachable by anyone but yo
 - A notification webhook, if you set one, receives a short message when a task finishes or needs you. The URL is masked in Settings and is never logged. A reply preview is sent only when you turn that on, and then only the first 140 characters.
 - Telegram answers exactly **one** paired account; pairing codes are single-use and rotate after wrong guesses.
 - Agents execute only inside their own containers — never on your desktop or in your files. Their browsers have password saving and card autofill switched off. New containers drop every capability, so `sudo` inside them does not work. MCP stdio servers are the exception: they run on the Xiryn host, only for an allowlisted launcher you confirmed while saving `data/mcp.json`.
-- Sending mail or changing a calendar waits for your approval, the same way a payment does. Every send waits.
+- Sending mail, changing a calendar, or changing Google Drive waits for your approval, the same way a payment does. Every send waits. Drive is read-only until you opt in. Sharing a file, including a public link, always waits. Trash does not permanently delete.
 - Web pages, mail, files, shell output, search results and MCP output are treated as untrusted data. Settings → Workstations & web can require approval before `web_fetch` leaves for a new domain, or before every web request. The card shows the arguments that will run, including the URL. `XIRYN_WEB_APPROVAL=off` is the default.
 - Saved logins, cards and personal details are encrypted (AES-256-GCM) with a key your operating system's keychain holds. Agents get masked hints only; Xiryn types values into pages itself, logins only on their own site after you approve that fill, payment details only after you approve that payment.
 - Each live desktop is published on 127.0.0.1 only and asks for its own random password.

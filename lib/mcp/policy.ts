@@ -5,8 +5,13 @@
 
 export type ApprovalMode = "writes" | "all" | "none"
 
+// Sharing changes who can open a file. A readOnly list or mode "none" must
+// not skip it. `list_permissions` does not match.
+const PERMISSION_CHANGE =
+  /(?:^|_)share(?:_|$)|(?:^|_)(?:set|update|add|remove|change)_permissions?(?:_|$)/i
+
 const WRITE =
-  /(?:^|_)(send|create|update|delete|remove|trash|reply|forward|insert|patch|write|modify|cancel|move|publish|post|draft|compose|edit|add|set|put|submit)(?:_|$)/i
+  /(?:^|_)(send|create|update|delete|remove|trash|reply|forward|insert|patch|write|modify|cancel|move|publish|post|draft|compose|edit|add|set|put|submit|copy)(?:_|$)/i
 
 export function toolNeedsApproval(
   name: string,
@@ -18,6 +23,7 @@ export function toolNeedsApproval(
     destructiveHint?: boolean
   } = {}
 ) {
+  if (PERMISSION_CHANGE.test(name)) return true
   if (options.approve?.includes(name)) return true
   if (options.readOnly?.includes(name)) return false
   if (options.mode === "all") return true

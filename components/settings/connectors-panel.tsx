@@ -7,6 +7,7 @@ import {
   disconnectGoogleAccount,
   issueMcpStdioConfirmation,
   saveMcpConfig,
+  testDriveConnection,
 } from "@/actions/connectors"
 import { saveSettings } from "@/actions/settings"
 import { Confirm } from "@/components/confirm"
@@ -14,6 +15,7 @@ import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Spinner } from "@/components/ui/spinner"
 import { toast } from "@/components/ui/toast"
+import { describeDriveGrant, driveCapabilities } from "@/lib/mcp/drive-scopes"
 import { DEFAULT_MCP_LAUNCHERS } from "@/lib/mcp/stdio-policy"
 import type { SettingsData } from "@/queries/workspace"
 
@@ -48,6 +50,8 @@ export function ConnectorsPanel({
   const [review, setReview] = React.useState<StdioReview | null>(null)
   const [clientId, setClientId] = React.useState("")
   const [clientSecret, setClientSecret] = React.useState("")
+  const [driveResult, setDriveResult] = React.useState<string | null>(null)
+  const [driveOk, setDriveOk] = React.useState(false)
 
   const saveGoogle = async () => {
     setPending("google")
@@ -178,7 +182,8 @@ export function ConnectorsPanel({
           Built in, so the consent screen can finish on this server. Create a Google Cloud
           OAuth client (Web application) and set its redirect URI to the address below.
           The steps are in docs/mcp.md. Sending mail and changing the calendar wait for
-          your approval.
+          your approval. Drive uses this same Google account. Gmail stores one account,
+          not a list of them.
         </p>
         <p className="font-mono text-[11px] break-all text-muted-foreground">
           {connectors.redirectUri ??
@@ -281,6 +286,18 @@ export function ConnectorsPanel({
           <span className="text-[13px]">Calendar tools</span>
         </label>
       </div>
+
+      <DriveCard
+        connectors={connectors}
+        pending={pending}
+        result={driveResult}
+        ok={driveOk}
+        onPending={setPending}
+        onResult={(ok, text) => {
+          setDriveOk(ok)
+          setDriveResult(text)
+        }}
+      />
 
       <div className="flex flex-col gap-3 rounded-xl border bg-surface/50 p-4">
         <div className="flex flex-col gap-1">
@@ -404,6 +421,170 @@ export function ConnectorsPanel({
           onConfirm={confirmMcp}
         />
       </div>
+    </div>
+  )
+}
+
+function DriveCard({
+  connectors,
+  pending,
+  result,
+  ok,
+  onPending,
+  onResult,
+}: {
+  connectors: SettingsData["connectors"]
+  pending: string | null
+  result: string | null
+  ok: boolean
+  onPending: (value: string | null) => void
+  onResult: (ok: boolean, text: string) => void
+}) {
+  const router = useRouter()
+  const driveOn = connectors.drive.value === "on"
+  const readOnly = connectors.driveAccess.value !== "readwrite"
+  const caps = driveCapabilities({
+    enabled: driveOn,
+    access: connectors.driveAccess.value,
+    granted: connectors.driveGrant,
+  })
+  const grant = describeDriveGrant(connectors.driveGrant)
+  const googleReady = connectors.clientId.set && connectors.clientSecret.set
+
+  const save = async (key: string, value: string) => {
+    onPending(key)
+    try {
+      await saveSettings({ [key]: value })
+      router.refresh()
+    } catch (error) {
+      toast.add({
+        type: "error",
+        title: "Couldn't save",
+        description: error instanceof Error ? error.message : String(error),
+      })
+    } finally {
+      onPending(null)
+    }
+  }
+
+  let status = "Drive tools are off. Gmail and Calendar are unchanged."
+  if (driveOn && !connectors.connected) {
+    status = "Drive is on. Connect Google to grant the scope. Read-only is the default."
+  } else if (driveOn && !caps.read && grant === "unknown") {
+    status =
+      "Drive is on, but this connection has not granted a Drive scope yet. Reconnect Google after enabling the Drive API."
+  } else if (driveOn && !caps.read) {
+    status =
+      "This Google account has not granted Drive. Add the scope on the consent screen, enable the Drive API, then reconnect."
+  } else if (caps.write) {
+    status =
+      "Read-write. Creates, changes, copies and trash wait for approval. Sharing always waits."
+  } else if (driveOn && !readOnly) {
+    status =
+      "Read-write is selected, but the full Drive scope is not granted. Reconnect Google before changes will run."
+  } else if (caps.read) {
+    status = "Read-only. Search and read run immediately. Writes and sharing are off."
+  }
+
+  return (
+    <div className="flex flex-col gap-3 rounded-xl border bg-surface/50 p-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-[13.5px] font-medium">Google Drive</span>
+        <span className="rounded-sm border px-1.5 py-px font-mono text-[10px] text-muted-foreground">
+          {connectors.connected ? "google connected" : "not connected"}
+        </span>
+        <span className="rounded-sm border px-1.5 py-px font-mono text-[10px] text-muted-foreground">
+          {readOnly ? "read-only" : "read-write"}
+        </span>
+      </div>
+      <p className="max-w-2xl text-[12.5px] leading-relaxed text-muted-foreground">
+        Uses the Google OAuth client above, on the same one account as Gmail. In Google
+        Cloud, enable the <span className="font-medium">Google Drive API</span> and add
+        the scope to the consent screen. Read-only asks for{" "}
+        <span className="font-mono">drive.readonly</span>. Read-write asks for the full{" "}
+        <span className="font-mono">drive</span> scope, because{" "}
+        <span className="font-mono">drive.file</span> cannot change files this app did not
+        create. Reconnect after changing that. Trash is not a permanent delete. Sharing,
+        including a public link, always waits for approval.
+      </p>
+      <p className="max-w-2xl text-[12.5px] leading-relaxed text-muted-foreground">
+        {status}
+      </p>
+      <label className="flex items-start gap-2.5">
+        <Checkbox
+          checked={driveOn}
+          disabled={pending === "connectors.drive"}
+          onCheckedChange={(checked) =>
+            save("connectors.drive", checked === true ? "on" : "off")
+          }
+          className="mt-0.5"
+        />
+        <span className="text-[13px]">Drive tools</span>
+      </label>
+      <label className="flex items-start gap-2.5">
+        <Checkbox
+          checked={readOnly}
+          disabled={pending === "connectors.drive.access"}
+          onCheckedChange={(checked) =>
+            save("connectors.drive.access", checked === true ? "readonly" : "readwrite")
+          }
+          className="mt-0.5"
+        />
+        <span className="text-[13px]">
+          Read-only
+          <span className="mt-0.5 block text-[12px] leading-relaxed text-muted-foreground">
+            Default. Uncheck to allow create, rename, move, copy and trash. You will need
+            to reconnect Google so it can ask for the full Drive scope.
+          </span>
+        </span>
+      </label>
+      <div className="flex flex-wrap items-center gap-2">
+        {googleReady && (
+          <Button
+            size="sm"
+            variant="outline"
+            nativeButton={false}
+            render={<a href="/api/google/oauth/start" />}
+          >
+            {connectors.connected ? "Reconnect Google" : "Connect Google"}
+          </Button>
+        )}
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={!connectors.connected || pending === "drive-test"}
+          onClick={async () => {
+            onPending("drive-test")
+            try {
+              const tested = await testDriveConnection()
+              onResult(tested.ok, tested.ok ? tested.detail : tested.error)
+            } catch (error) {
+              onResult(false, error instanceof Error ? error.message : String(error))
+            } finally {
+              onPending(null)
+            }
+          }}
+        >
+          {pending === "drive-test" && <Spinner data-icon="inline-start" />}
+          Test connection
+        </Button>
+        {driveOn && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="text-muted-foreground"
+            disabled={pending === "connectors.drive"}
+            onClick={() => save("connectors.drive", "off")}
+          >
+            Disconnect Drive
+          </Button>
+        )}
+      </div>
+      {result && (
+        <p className={ok ? "text-[12.5px] text-ok" : "text-[12.5px] text-destructive"}>
+          {result}
+        </p>
+      )}
     </div>
   )
 }

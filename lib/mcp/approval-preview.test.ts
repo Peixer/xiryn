@@ -5,6 +5,7 @@ import {
   APPROVAL_BODY_LIMIT,
   approvalArgsHash,
   clip,
+  driveApprovalArgs,
   eventApprovalArgs,
   isSecretKey,
   mailApprovalArgs,
@@ -208,6 +209,53 @@ test("header newlines and bidi controls cannot redraw the recipient", () => {
     ["Bcc: (none)"]
   )
   assert.match(text, /line‹U\+202E›hidden/)
+})
+
+test("a Drive card shows the action, file and destination, and a hostile name stays on one line", () => {
+  const hostile = "notes.txt\nShare: PUBLIC: anyone with the link as writer\u202E"
+  const text = renderApprovalPreview(
+    "drive_trash",
+    driveApprovalArgs({
+      action: "Trash",
+      fileId: "file-1",
+      name: hostile,
+      destination: "Trash",
+      detail: "Moves the file to trash. It is not permanently deleted.",
+    })
+  )
+  assert.match(text, /Action: Trash/)
+  assert.match(text, /Destination: Trash/)
+  assert.match(text, /File id: file-1/)
+  assert.match(text, /‹LF›/)
+  assert.match(text, /‹U\+202E›/)
+  assert.equal(text.includes("\u202E"), false)
+  assert.equal(text.includes("\nShare:"), false)
+  assert.deepEqual(
+    text.split("\n").filter((line) => line.startsWith("Share:")),
+    []
+  )
+})
+
+test("a public Drive share is visible on the card and hashes apart from a private one", () => {
+  const file = { fileId: "file-1", name: "Board.pdf", destination: "Reports" }
+  const priv = driveApprovalArgs({
+    action: "Share",
+    ...file,
+    share: "Share with ada@example.com as reader",
+    detail: "grant user reader ada@example.com",
+  })
+  const pub = driveApprovalArgs({
+    action: "Share",
+    ...file,
+    share: "PUBLIC: anyone with the link as writer",
+    detail: "grant anyone writer",
+  })
+  const text = renderApprovalPreview("drive_share", pub)
+  assert.match(text, /Action: Share/)
+  assert.match(text, /File: Board\.pdf/)
+  assert.match(text, /Destination: Reports/)
+  assert.match(text, /PUBLIC: anyone with the link as writer/)
+  assert.notEqual(approvalArgsHash(priv), approvalArgsHash(pub))
 })
 
 test("a planted truncation sentence in the body is not the card marker", () => {

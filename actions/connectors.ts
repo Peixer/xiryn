@@ -10,7 +10,8 @@ import {
 import { getSetting, setSetting } from "@/lib/config"
 import { answerAction, approvalCardText, getActionApproval } from "@/lib/mcp/approval"
 import { parseMcpConfig, readMcpConfig, writeMcpConfig } from "@/lib/mcp/config"
-import { disconnectGoogle } from "@/lib/mcp/google"
+import { driveAbout } from "@/lib/mcp/drive"
+import { disconnectGoogle, googleAccessToken, googleConnected } from "@/lib/mcp/google"
 import { resetMcpClients } from "@/lib/mcp/load"
 import {
   authorizeStdioSave,
@@ -138,6 +139,21 @@ export async function disconnectGoogleAccount() {
     const { revoked } = await disconnectGoogle()
     revalidatePath("/", "layout")
     return { ok: true as const, revoked }
+  } catch (error) {
+    return { ok: false as const, error: reason(error) }
+  }
+}
+
+export async function testDriveConnection() {
+  try {
+    if (!googleConnected())
+      return { ok: false as const, error: "Google is not connected." }
+    const about = await driveAbout({ token: await googleAccessToken() })
+    const who = about.email || about.displayName
+    return {
+      ok: true as const,
+      detail: who ? `Connected as ${who}` : "Connected",
+    }
   } catch (error) {
     return { ok: false as const, error: reason(error) }
   }

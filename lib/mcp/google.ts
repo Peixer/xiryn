@@ -1,11 +1,17 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto"
 
 import { getSetting, getSettingSource, setSetting } from "@/lib/config"
+import { oauthScopes, sanitizeGrantedScopes } from "@/lib/mcp/drive-scopes"
 import { sealText, unsealText } from "@/lib/vault"
 
-// Built-in Gmail and Calendar. The refresh token is sealed with the vault key.
-// The owner completes Google's consent in a browser at https://<host>; Xiryn
-// never starts a browser of its own, so this works on a headless server.
+// Built-in Gmail, Calendar and Drive. The refresh token is sealed with the
+// vault key. One Google account: Gmail does not store a second refresh token,
+// and Drive uses that same account. The owner completes Google's consent in a
+// browser at https://<host>; Xiryn never starts a browser of its own.
+//
+// The consent URL is bound with PKCE and does not ask Google to keep older
+// scopes. Each connect sends the full list for the connectors that are on.
+// Drive stays off that list until the owner turns it on.
 
 const AAD = "google-refresh"
 const DISCONNECTED = "1"
@@ -33,13 +39,12 @@ function takeVerifier(nonce: string) {
   return row.verifier
 }
 
-const SCOPES = [
-  "https://www.googleapis.com/auth/gmail.readonly",
-  "https://www.googleapis.com/auth/gmail.send",
-  "https://www.googleapis.com/auth/gmail.compose",
-  "https://www.googleapis.com/auth/calendar.readonly",
-  "https://www.googleapis.com/auth/calendar.events",
-]
+export function googleRequestedScopes() {
+  return oauthScopes({
+    driveEnabled: getSetting("connectors.drive") === "on",
+    driveAccess: getSetting("connectors.drive.access"),
+  })
+}
 
 export function googleRedirectUri() {
   const raw = process.env.XIRYN_URL?.trim()
@@ -75,6 +80,15 @@ function clientCredentials() {
   return { clientId, clientSecret }
 }
 
+function redactGoogleText(text: string) {
+  return text
+    .replace(/Bearer\s+\S+/gi, "Bearer [redacted]")
+    .replace(/ya29\.[0-9A-Za-z_\-]+/g, "[redacted]")
+    .replace(/1\/\/[0-9A-Za-z_\-]+/g, "[redacted]")
+    .replace(/[\r\n]+/g, " ")
+    .slice(0, 300)
+}
+
 export function googleAuthUrl() {
   const redirect = googleRedirectUri()
   if (!redirect) {
@@ -96,7 +110,7 @@ export function googleAuthUrl() {
   url.searchParams.set("client_id", clientId)
   url.searchParams.set("redirect_uri", redirect)
   url.searchParams.set("response_type", "code")
-  url.searchParams.set("scope", SCOPES.join(" "))
+  url.searchParams.set("scope", googleRequestedScopes().join(" "))
   url.searchParams.set("access_type", "offline")
   url.searchParams.set("prompt", "consent")
   url.searchParams.set("code_challenge", challenge)
@@ -152,17 +166,26 @@ async function tokenRequest(body: URLSearchParams) {
     access_token?: string
     refresh_token?: string
     expires_in?: number
+    scope?: string
     error?: string
     error_description?: string
   } | null
   if (!response.ok || !json?.access_token) {
     throw new Error(
-      json?.error_description ||
-        json?.error ||
-        `Google token request failed (${response.status}).`
+      redactGoogleText(
+        json?.error_description ||
+          json?.error ||
+          `Google token request failed (${response.status}).`
+      )
     )
   }
   return json
+}
+
+function rememberScopes(scope: string | undefined) {
+  const cleaned = sanitizeGrantedScopes(scope)
+  if (cleaned === null) return
+  setSetting("google.grantedScopes", cleaned || "none")
 }
 
 export async function exchangeGoogleCode(code: string, verifier: string) {
@@ -192,6 +215,7 @@ export async function exchangeGoogleCode(code: string, verifier: string) {
       ? getSetting("google.refreshToken")
       : undefined
   setSetting("google.refreshToken", sealText(AAD, json.refresh_token))
+  rememberScopes(json.scope)
   setSetting("google.disconnected", null)
   invalidateAccess()
   if (!previous) return
@@ -234,9 +258,12 @@ export async function disconnectGoogle() {
   // Drop the local grant before the network call. The flag is written first
   // so a failure of the second write cannot fall back to an env token, and a
   // refresh already in flight cannot cache a new access token afterwards.
+  // Granted scopes go with it, so a later token response that omits `scope`
+  // cannot keep a previous Drive write grant.
   invalidateAccess()
   setSetting("google.disconnected", DISCONNECTED)
   setSetting("google.refreshToken", null)
+  setSetting("google.grantedScopes", null)
   let revoked = !stored
   if (token) revoked = await revokeRefreshToken(token)
   else if (stored) revoked = false
@@ -285,6 +312,7 @@ export async function googleAccessToken() {
     token: json.access_token!,
     expiresAt: Date.now() + (json.expires_in ?? 3600) * 1000,
   }
+  rememberScopes(json.scope)
   return accessCache.token
 }
 
@@ -302,12 +330,16 @@ export async function googleFetch(url: string, init?: RequestInit) {
   const text = await response.text()
   if (!response.ok) {
     throw new Error(
-      `Google ${response.status}: ${text.slice(0, 300) || response.statusText}`
+      `Google ${response.status}: ${redactGoogleText(text) || response.statusText}`
     )
   }
   return text ? (JSON.parse(text) as unknown) : null
 }
 
-export function connectorEnabled(name: "gmail" | "calendar") {
-  return googleConnected() && getSetting(`connectors.${name}`) !== "off"
+export function connectorEnabled(name: "gmail" | "calendar" | "drive") {
+  if (!googleConnected()) return false
+  // Drive defaults off, so only an explicit "on" turns it on. Gmail and
+  // Calendar default on, and "off" is what hides them.
+  if (name === "drive") return getSetting("connectors.drive") === "on"
+  return getSetting(`connectors.${name}`) !== "off"
 }
