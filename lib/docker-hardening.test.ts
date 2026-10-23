@@ -110,6 +110,10 @@ test("compose file does not hand the app the engine socket", () => {
   assert.match(app, /127\.0\.0\.1:6796:6796/)
   assert.match(proxy, /\/var\/run\/docker\.sock:\/var\/run\/docker\.sock:ro/)
   assert.match(proxy, /docker-socket-proxy\.haproxy\.cfg/)
+  assert.match(
+    proxy,
+    /haproxy:3\.4\.2-alpine@sha256:0878b11eb64c433be1b0f578a584b8aca12f6caaa64c8f239b8b556c0dd5eeeb/
+  )
   assert.match(proxy, /user: "0:0"/)
   assert.match(proxy, /no-new-privileges:true/)
   assert.match(proxy, /cap_drop:\n\s+- ALL/)

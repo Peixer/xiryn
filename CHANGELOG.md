@@ -19,6 +19,10 @@ All notable changes to Xiryn are documented here. The format follows [Keep a Cha
 - **MCP connectors**, plus built-in Gmail and Google Calendar. Configure other servers (stdio or streamable HTTP) in `data/mcp.json` or Settings → Connectors. Sends and other writes wait for approval in the thread or on Telegram. Google OAuth finishes at `https://<host>/api/google/oauth/callback`. See [docs/mcp.md](docs/mcp.md).
 - **Server deploy files** in `deploy/` and [docs/aws.md](docs/aws.md): systemd, Caddy with basic auth (including the chat stream and the desktop websocket), and `deploy.sh`.
 
+### Changed
+
+- **Workstation containers drop every capability.** A new machine is created with `--cap-drop ALL`, `no-new-privileges`, and a pid limit. `sudo` inside that container does not work. A container that is already running keeps its old flags until it is recreated.
+
 ### Fixed
 
 - **MCP stdio commands are confirmed and allowlisted.** Saving a new or changed stdio server shows the exact command and arguments and requires a one-time confirmation of that command. Launchers default to npx, uvx, node, python3, python, docker, and bunx; `mcp.allowedCommands` or `XIRYN_MCP_ALLOWED_COMMANDS` adds program names. A command path is accepted only under a standard install location, and `env` cannot set `PATH`, interpreter flags, or a package index. Requests other than GET and HEAD must send an `Origin` for the same host and port. When Xiryn is exposed, Caddy basic auth (or a similar proxy) is still the login; in-app accounts are future work.

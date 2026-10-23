@@ -111,7 +111,7 @@ Name, role, standing orders, and a model of their own. Start from [16 ready-made
 How you want invoices filed, a brief shaped, a checklist followed. Saved as files on the Skills page. The agent sees the name and description, then reads the full text when the task needs it. A skill is instructions you can read first; it is not a script Xiryn runs.
 
 **A workstation per agent**<br>
-A Docker container with a shell, a persistent home folder and a 1280×800 desktop with Chromium — created on first use, stopped when idle, never touching your own files.
+A Docker container with a shell, a persistent home folder and a 1280×800 desktop with Chromium — created on first use, stopped when idle, never touching your own files. New containers drop every capability, so `sudo` inside them does not work.
 
 **Live desktop, take over any time**<br>
 Watch the agent click and type in real time. Hit **Take over** and it pauses; hand it back with a note and it picks up from what you did.

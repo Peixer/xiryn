@@ -32,7 +32,7 @@ services:
   # A data volume created while this service ran as root is owned by root.
   # Once, if the app cannot open its database: chown -R 1000:1000 on that volume.
   docker-socket-proxy:
-    image: haproxy:3.4.2-alpine
+    image: haproxy:3.4.2-alpine@sha256:0878b11eb64c433be1b0f578a584b8aca12f6caaa64c8f239b8b556c0dd5eeeb
     container_name: xiryn-docker-proxy
     restart: unless-stopped
     # The image's default user cannot open a root:docker socket. This
