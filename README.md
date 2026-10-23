@@ -424,7 +424,8 @@ Every setting can come from `.env` **or** from **Settings** in the app. Values s
 | `FIRECRAWL_API_KEY` | Web search and reading |
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_OWNER_ID` | Remote access |
 | `XIRYN_TELEGRAM_NOTIFY` | Telegram notice when a task finishes: `long` (a minute or more, default), `all` or `off` |
-| `XIRYN_DATA_DIR`, `XIRYN_ALLOWED_HOSTS` | Data location; extra hostnames behind your own proxy |
+| `XIRYN_DATA_DIR`, `XIRYN_ALLOWED_HOSTS` | Data location; extra hostnames behind your own authenticating proxy |
+| `XIRYN_MCP_ALLOWED_COMMANDS` | Extra program names for MCP stdio, besides npx, uvx, node, python3, python, docker, bunx |
 | `XIRYN_URL` | Public origin (`https://host`) or the local default. Telegram links, Google OAuth, and the remote desktop stream |
 | `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`, `BEDROCK_BASE_URL` | Amazon Bedrock. Region opts in the instance role; keys are optional. See [docs/providers.md](docs/providers.md) |
 | `XIRYN_BEDROCK_EXTRA_REGIONS`, `XIRYN_BEDROCK_MODEL_REGIONS`, `XIRYN_BEDROCK_MAX_OUTPUT` | Extra Bedrock regions (for example `us-east-2` for Llama 3.3 70B in Ohio), per-model region pins, and per-model output caps |
@@ -439,11 +440,11 @@ Every setting can come from `.env` **or** from **Settings** in the app. Values s
 
 Xiryn has no user accounts, so it's built never to be reachable by anyone but you:
 
-- Binds to **127.0.0.1** only, and refuses any request whose `Host` or `Origin` isn't loopback — which also blocks DNS-rebinding attacks from web pages you visit.
+- Binds to **127.0.0.1** only, and refuses any request whose `Host` isn't loopback — which also blocks DNS-rebinding attacks from web pages you visit. State-changing requests must also send an `Origin` for that same host and port. Exposed servers still rely on Caddy basic auth (or a similar proxy); Xiryn has no in-app accounts.
 - API keys never reach the browser; the UI only sees masked values, and keys are kept out of logs.
 - A notification webhook, if you set one, receives a short message when a task finishes or needs you. The URL is masked in Settings and is never logged. A reply preview is sent only when you turn that on, and then only the first 140 characters.
 - Telegram answers exactly **one** paired account; pairing codes are single-use and rotate after wrong guesses.
-- Agents execute only inside their own containers — never on your desktop or in your files. Their browsers have password saving and card autofill switched off. MCP stdio servers are the exception: they run on the Xiryn host, and only for commands you listed in `data/mcp.json`.
+- Agents execute only inside their own containers — never on your desktop or in your files. Their browsers have password saving and card autofill switched off. MCP stdio servers are the exception: they run on the Xiryn host, only for an allowlisted launcher you confirmed while saving `data/mcp.json`.
 - Sending mail or changing a calendar waits for your approval, the same way a payment does.
 - Saved logins, cards and personal details are encrypted (AES-256-GCM) with a key your operating system's keychain holds. Agents get masked hints only; Xiryn types values into pages itself, logins only on their own site, payment details only after you approve that payment.
 - Each live desktop is published on 127.0.0.1 only and asks for its own random password.

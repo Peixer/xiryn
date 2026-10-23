@@ -147,4 +147,4 @@ The thread shows the name and size. An image thumbnail is loaded from `GET /api/
 
 ## Security boundary
 
-`proxy.ts` runs before every request and refuses any `Host` or `Origin` that isn't loopback (or in `XIRYN_ALLOWED_HOSTS`). Together with binding to `127.0.0.1`, this keeps an account-less app private and blocks DNS rebinding. See [SECURITY.md](../SECURITY.md).
+`proxy.ts` runs before every request and refuses a `Host` that isn't loopback (or in `XIRYN_ALLOWED_HOSTS`). GET and HEAD may omit `Origin`, which covers page loads and the SSE stream at `/api/events`. Every other method must send an `Origin` for that same host and port, so another website, another local port, or a different loopback name cannot post a server action. That check is not a login. On a shared machine, put Caddy basic auth or a similar proxy in front; in-app accounts are a separate future item. See [SECURITY.md](../SECURITY.md) and [aws.md](aws.md).

@@ -21,6 +21,7 @@ All notable changes to Xiryn are documented here. The format follows [Keep a Cha
 
 ### Fixed
 
+- **MCP stdio commands are confirmed and allowlisted.** Saving a new or changed stdio server shows the exact command and arguments and requires a one-time confirmation of that command. Launchers default to npx, uvx, node, python3, python, docker, and bunx; `mcp.allowedCommands` or `XIRYN_MCP_ALLOWED_COMMANDS` adds program names. A command path is accepted only under a standard install location, and `env` cannot set `PATH`, interpreter flags, or a package index. Requests other than GET and HEAD must send an `Origin` for the same host and port. When Xiryn is exposed, Caddy basic auth (or a similar proxy) is still the login; in-app accounts are future work.
 - Bedrock output tokens follow the model. Nova Pro, Lite and Micro stay at 10,000 (a 16,384 request is rejected) and Llama 3.3 70B at 4,096. Claude still asks for 16,384. Override with `XIRYN_BEDROCK_MAX_OUTPUT`.
 - Next.js 16.4.0 → 16.4.2, including `eslint-config-next`. Closes GHSA-2464-fhr4-w9xw, GHSA-673q-mjm6-r5xr, and CVE-2026-94482 (GHSA-p3m5-59mp-jv5r).
 - Llama 3.3 on Bedrock was answering with a tool call written as text, so the tool never ran. Text-form calls (`type: function`, `name`/`parameters`, `<|python_tag|>`, code fences) are now executed, then the turn continues.

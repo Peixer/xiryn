@@ -71,6 +71,9 @@ const integrationSettings = {
   // "off" hides that connector's tools. Default on, once Google is connected.
   "connectors.gmail": { env: "XIRYN_GMAIL", fallback: "on" },
   "connectors.calendar": { env: "XIRYN_CALENDAR", fallback: "on" },
+  // Extra program names allowed to launch MCP stdio servers, comma-separated.
+  // npx, uvx, node, python3, python, docker and bunx are always allowed.
+  "mcp.allowedCommands": { env: "XIRYN_MCP_ALLOWED_COMMANDS" },
   // Bearer token for POST /api/hooks/routines/<id>. Unset, that route is 404.
   "hooks.token": { env: "XIRYN_HOOKS_TOKEN", secret: true },
 } satisfies Record<string, SettingDef>
