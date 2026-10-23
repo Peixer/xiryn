@@ -120,7 +120,7 @@ Watch the agent click and type in real time. Hit **Take over** and it pauses; ha
 <td width="50%" valign="top">
 
 **Long-term memory**<br>
-Agents save what matters about you and your work; every thread sees it. Inspect, add or delete notes any time.
+Agents save what matters about you and your work; every thread sees it. Inspect, add or delete notes any time. Shared notes, which only you can add, edit or delete, are loaded into every agent. Older notes past the prompt budget stay searchable.
 
 **Web research**<br>
 Search and clean page reading through Firecrawl, with cited sources.
