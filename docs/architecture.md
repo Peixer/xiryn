@@ -116,6 +116,8 @@ Everything lives in `data/xiryn.db` (override with `XIRYN_DATA_DIR`). Schema: `d
 
 `lib/config.ts` defines every setting once, with its environment variable and default. A value saved in the UI wins over `.env`, which wins over the default. Secrets are only ever described to the browser in masked form.
 
+`security.webApproval` (`XIRYN_WEB_APPROVAL`) is `off` by default, `new-domains`, or `always`. `off` lets `web_fetch` and `web_search` run as before. `new-domains` asks before `web_fetch` calls a hostname that is not listed in `security.webAllowlist` (`XIRYN_WEB_ALLOWLIST`). `always` asks before every `web_fetch` and `web_search`. The approval card shows the full URL, query string included, and can add that hostname for next time. Search in `new-domains` mode is not host-gated: the query still goes to the configured Firecrawl endpoint. Pages, mail, search snippets and MCP results are handed to the model inside `<untrusted>` markers (`lib/agent/untrusted.ts`); the system prompt tells the agent that text is data, not instructions.
+
 ## Telegram bridge
 
 `lib/telegram/bridge.ts` long-polls `getUpdates` from inside the server process — no inbound connection is needed. Updates are processed per chat in order. Unpaired users get a refusal; the owner's messages start turns through the same runtime with `channel: "telegram"`, progress is reported by editing one status message, and the final reply (including shared screenshots as photos) is sent when the run ends. Threads started from Telegram are ordinary threads in the app.

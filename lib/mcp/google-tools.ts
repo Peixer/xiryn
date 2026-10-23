@@ -1,6 +1,7 @@
 import { tool } from "ai"
 import { z } from "zod"
 
+import { toUntrustedModelOutput } from "@/lib/agent/untrusted"
 import type { ToolEnv } from "@/lib/agent/tools"
 import { connectorEnabled, googleFetch } from "@/lib/mcp/google"
 import { holdOrRun } from "@/lib/mcp/guard"
@@ -96,12 +97,14 @@ export function createGoogleTools(env: ToolEnv) {
           }),
         }
       },
+      toModelOutput: ({ output }) => toUntrustedModelOutput("gmail_search", output),
     })
 
     tools.gmail_read = tool({
       description: "Read one Gmail message by id, including its plain-text body.",
       inputSchema: z.object({ id: z.string().min(1) }),
       execute: async ({ id }) => describeMessage(await gmailGet(id)),
+      toModelOutput: ({ output }) => toUntrustedModelOutput("gmail_read", output),
     })
 
     tools.gmail_draft = tool({

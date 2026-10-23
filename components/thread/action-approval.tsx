@@ -6,6 +6,7 @@ import { CheckIcon, ShieldCheckIcon, XIcon } from "lucide-react"
 import { connectorAction, decideConnectorAction } from "@/actions/connectors"
 import { useTakeover } from "@/components/thread/takeover"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Spinner } from "@/components/ui/spinner"
 import { cn } from "@/lib/utils"
 
@@ -24,6 +25,7 @@ export function ActionApprovalCard({
   const [action, setAction] = React.useState<Action | null | undefined>(undefined)
   const [busy, setBusy] = React.useState<"approve" | "decline" | null>(null)
   const [error, setError] = React.useState<string | null>(null)
+  const [allowDomain, setAllowDomain] = React.useState(false)
 
   const load = React.useCallback(async () => {
     setAction(await connectorAction(approvalId))
@@ -48,7 +50,11 @@ export function ActionApprovalCard({
   const decide = async (choice: "approve" | "decline") => {
     setBusy(choice)
     setError(null)
-    const result = await decideConnectorAction(approvalId, choice)
+    const result = await decideConnectorAction(
+      approvalId,
+      choice,
+      choice === "approve" && allowDomain ? { allowDomain: true } : undefined
+    )
     setBusy(null)
     if (!result.ok) {
       setError(result.error)
@@ -84,9 +90,31 @@ export function ActionApprovalCard({
               ? "wants to do this · nothing happens until you choose"
               : "approval request"}
       </span>
-      <p className="text-[13.5px] leading-relaxed">{action.summary}</p>
+      <p
+        className={cn(
+          "text-[13.5px] leading-relaxed",
+          (action.url || action.query) && "font-mono text-[12px] break-all"
+        )}
+      >
+        {action.display}
+      </p>
       <p className="font-mono text-[10.5px] text-muted-foreground">{action.tool}</p>
       {error && <p className="text-[12px] text-destructive">{error}</p>}
+      {open && action.offerAllowDomain && action.host && (
+        <label className="flex items-start gap-2 text-[12.5px] leading-relaxed">
+          <Checkbox
+            checked={allowDomain}
+            onCheckedChange={(checked) => setAllowDomain(checked === true)}
+            className="mt-0.5"
+          />
+          <span>
+            Allow this domain from now on
+            <span className="mt-0.5 block font-mono text-[11px] text-muted-foreground">
+              {action.host}
+            </span>
+          </span>
+        </label>
+      )}
       {open && (
         <div className="flex flex-wrap gap-2">
           <Button size="sm" disabled={!!busy} onClick={() => decide("approve")}>

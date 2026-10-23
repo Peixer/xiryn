@@ -23,6 +23,7 @@ import { ConnectorsPanel } from "@/components/settings/connectors-panel"
 import { LocalModelsCard } from "@/components/settings/local-models"
 import { VaultPanel } from "@/components/settings/vault-panel"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Textarea } from "@/components/ui/textarea"
 import {
   Collapsible,
   CollapsibleContent,
@@ -1048,6 +1049,80 @@ function ModelSection({ data }: { data: SettingsData }) {
   )
 }
 
+/* ──────────────────────────── web approval ─────────────────────── */
+
+function WebApprovalCard({ data }: { data: SettingsData }) {
+  const { save, pending } = useSave()
+  const modeSetting = data.security.webApproval
+  const listSetting = data.security.webAllowlist
+  const [mode, setMode] = React.useState(modeSetting.value ?? "off")
+  const [hosts, setHosts] = React.useState(listSetting.value ?? "")
+
+  return (
+    <div className="flex flex-col gap-4 rounded-xl border bg-surface/50 p-4">
+      <div className="flex flex-col gap-1">
+        <span className="flex items-center justify-between gap-3">
+          <span className="text-[13px] font-medium">Outbound web approval</span>
+          <SourceBadge setting={modeSetting} />
+        </span>
+        <p className="max-w-2xl text-[12px] leading-relaxed text-muted-foreground">
+          A web address can carry data out in its query string. Off does not ask. New
+          domains asks before <span className="font-mono">web_fetch</span> calls a host
+          that is not on the list below, and the card can add that host. Always asks
+          before every <span className="font-mono">web_fetch</span> and{" "}
+          <span className="font-mono">web_search</span>. The card shows the full URL,
+          including the query string. Sending mail still waits for approval on every
+          message.
+        </p>
+      </div>
+      <label className="flex flex-col gap-1.5">
+        <span className="label-mono">When to ask</span>
+        <select
+          value={mode}
+          onChange={(event) => setMode(event.target.value)}
+          className="h-8 w-full rounded-lg border border-input bg-transparent px-2 text-[13px] outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/40 dark:bg-input/30"
+        >
+          <option value="off">Off</option>
+          <option value="new-domains">New domains</option>
+          <option value="always">Always</option>
+        </select>
+      </label>
+      <label className="flex flex-col gap-1.5">
+        <span className="flex items-center justify-between">
+          <span className="label-mono">Allowed domains</span>
+          <SourceBadge setting={listSetting} unset="none" />
+        </span>
+        <Textarea
+          value={hosts}
+          onChange={(event) => setHosts(event.target.value)}
+          placeholder={"example.com\ndocs.example.com"}
+          spellCheck={false}
+          className="min-h-20 font-mono text-[12px]"
+        />
+        <span className="text-[11.5px] text-muted-foreground">
+          One hostname per line. A listed host does not include its subdomains. The list
+          applies when approval is set to new domains.
+        </span>
+      </label>
+      <div>
+        <Button
+          size="sm"
+          disabled={pending}
+          onClick={() =>
+            save({
+              "security.webApproval": mode,
+              "security.webAllowlist": hosts.trim() ? hosts : null,
+            })
+          }
+        >
+          {pending && <Spinner data-icon="inline-start" />}
+          Save
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 /* ─────────────────────────── updates ───────────────────────────── */
 
 function UpdateCheck({ enabled }: { enabled: boolean }) {
@@ -1196,9 +1271,10 @@ export function SettingsForm({
           id="integrations"
           kicker="05 · integrations"
           title="Workstations & web"
-          description="Agents' machines run in Docker on this computer. Firecrawl is optional: without it agents search and read the web only by browsing."
+          description="Agents' machines run in Docker on this computer. Firecrawl is optional: without it agents search and read the web only by browsing. Outbound web requests can wait for your approval."
         >
           <WorkstationCard data={data} />
+          <WebApprovalCard data={data} />
           <IntegrationCard
             name="Firecrawl"
             kind="firecrawl"

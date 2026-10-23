@@ -2,6 +2,7 @@ import { createMCPClient, type MCPClient } from "@ai-sdk/mcp"
 import { Experimental_StdioMCPTransport } from "@ai-sdk/mcp/mcp-stdio"
 import { tool, type ToolSet } from "ai"
 
+import { toUntrustedModelOutput } from "@/lib/agent/untrusted"
 import type { ToolEnv } from "@/lib/agent/tools"
 import { expandEnv, readMcpConfig, type McpServerConfig } from "@/lib/mcp/config"
 import { createGoogleTools } from "@/lib/mcp/google-tools"
@@ -126,6 +127,7 @@ async function toolsForServer(server: McpServerConfig, env: ToolEnv) {
         }
         return mcpTool.execute(input)
       },
+      toModelOutput: ({ output }) => toUntrustedModelOutput(`mcp:${server.id}`, output),
     })
   }
   return { tools, names }
