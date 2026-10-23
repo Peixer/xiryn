@@ -62,6 +62,7 @@ import { Screen } from "@/components/workbench/screen"
 import { useWorkspace } from "@/components/workspace/context"
 import { useNotifications } from "@/components/workspace/notifier"
 import type { XirynMessage } from "@/lib/agent/tools"
+import type { Attachment } from "@/lib/attachments"
 import { exportFilename, threadToMarkdown } from "@/lib/export"
 import { cn } from "@/lib/utils"
 
@@ -575,10 +576,38 @@ export function ThreadView(props: ThreadViewProps) {
   const addressee = members.find((member) => member.id === addresseeId) ?? members[0]
   const modelSpec = addressee?.model ?? status.defaultModel
 
-  const send = (text: string) => {
+  const send = async (text: string, files: File[] = []) => {
     clearError()
-    sendMessage(
-      { text, metadata: kind === "squad" ? { agentId: addressee.id } : undefined },
+    let attachments: Attachment[] = []
+    if (files.length > 0) {
+      if (!addressee) throw new Error("This thread has no agent to receive the file.")
+      const body = new FormData()
+      for (const file of files) body.append("file", file, file.name)
+      const response = await fetch(
+        `/api/uploads?agentId=${encodeURIComponent(addressee.id)}`,
+        { method: "POST", body }
+      )
+      const payload = (await response.json().catch(() => null)) as {
+        error?: string
+        files?: Attachment[]
+      } | null
+      if (!response.ok || !payload?.files?.length) {
+        const title = payload?.error || "Couldn't attach those files."
+        toast.add({ type: "error", title })
+        throw new Error(title)
+      }
+      attachments = payload.files
+    }
+    const trimmed = text.trim()
+    if (!trimmed && attachments.length === 0) return
+    await sendMessage(
+      {
+        parts: [
+          ...(trimmed ? [{ type: "text" as const, text: trimmed }] : []),
+          ...attachments.map((data) => ({ type: "data-attachment" as const, data })),
+        ],
+        metadata: kind === "squad" ? { agentId: addressee.id } : undefined,
+      },
       { body: { agentId: addressee?.id } }
     )
     // Let the sidebar pick up the new title and the busy indicator

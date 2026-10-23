@@ -45,8 +45,13 @@ import { parseModelSpec } from "@/lib/providers/catalog"
 import { callCost, findPrice, toMicros } from "@/lib/providers/pricing"
 import { createModel, resolveModelSpec } from "@/lib/providers/registry"
 import { budgetBlock, getCustomPrices } from "@/lib/spend"
+import {
+  attachmentSummary,
+  omitImagesForModel,
+  presentAttachments,
+} from "@/lib/attachments"
 import { isWebConfigured } from "@/lib/web"
-import { isWorkstationConfigured } from "@/lib/workstation"
+import { isWorkstationConfigured, readUploadsFile } from "@/lib/workstation"
 
 function bedrockOutputCap(spec: string) {
   const parsed = parseModelSpec(spec)
@@ -381,7 +386,7 @@ export async function startTurn({
     },
   }
   saveMessage(threadId, userMessage)
-  const prompt = textOf(userMessage)
+  const prompt = textOf(userMessage) || attachmentSummary(userMessage.parts)
   db.update(threads)
     .set({
       title: thread.title ?? (prompt.slice(0, 80) || "Untitled"),
@@ -547,10 +552,17 @@ export async function startTurn({
     const result = streamText({
       model: firstModel,
       instructions: buildInstructions(first, capabilities, squadContext(first)),
-      messages: await convertToModelMessages(pruneScreens(frameRoutineRuns(history)), {
-        tools,
-        ignoreIncompleteToolCalls: true,
-      }),
+      messages: await convertToModelMessages(
+        await presentAttachments(
+          pruneScreens(frameRoutineRuns(history)),
+          firstSpec,
+          (agentId, filePath) => readUploadsFile(agentId, filePath).catch(() => null)
+        ),
+        {
+          tools,
+          ignoreIncompleteToolCalls: true,
+        }
+      ),
       tools,
       // The turn also ends when the agent needs the person: its screen,
       // a payment decision or a detail only they have
@@ -566,8 +578,11 @@ export async function startTurn({
       ...bedrockOutputCap(firstSpec),
       abortSignal: run.controller.signal,
       prepareStep: ({ messages: stepMessages, stepNumber }) => {
-        // Long tool loops resend everything each step; keep it lean
-        const compacted = compactContext(stepMessages)
+        // Long tool loops resend everything each step; keep it lean.
+        // Image bytes from an attachment stay only when this step's model
+        // is known to accept them. Screenshots on tool results are untouched.
+        const upcomingSpec = current.id !== appliedAgentId ? specFor(current) : activeSpec
+        const compacted = omitImagesForModel(compactContext(stepMessages), upcomingSpec)
         // The last step answers instead of acting, so a long task always
         // ends with what was found and what's left
         const lastStep = stepNumber === maxSteps - 1

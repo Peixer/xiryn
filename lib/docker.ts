@@ -2,6 +2,7 @@ import { spawn } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
 import { Readable } from "node:stream"
+import type { ReadableStream as NodeReadableStream } from "node:stream/web"
 
 // Xiryn drives Docker through the docker command itself, so whatever it is
 // pointed at (Docker Desktop, Docker Engine, Colima, OrbStack, a context)
@@ -50,13 +51,39 @@ const FALLBACK_BINARIES =
 
 type Result = { exitCode: number | null; stdout: Buffer; stderr: string }
 
+type StreamInput = Readable | ReadableStream<Uint8Array>
+
 export type RunOptions = {
-  // A stream is piped, not buffered, so a large upload is not held in memory
-  input?: string | Buffer | Readable
+  // A stream is piped through and never buffered, so a large upload stays on disk.
+  // Web uploads pass a ReadableStream; Telegram uploads pass a Node Readable.
+  input?: string | Buffer | StreamInput
   timeoutMs?: number
   // Called with each line of output as it arrives (builds)
   onLine?: (line: string) => void
   env?: Record<string, string>
+}
+
+function isWebStream(input: RunOptions["input"]): input is ReadableStream<Uint8Array> {
+  return (
+    typeof input === "object" &&
+    input !== null &&
+    !(input instanceof Readable) &&
+    !Buffer.isBuffer(input) &&
+    typeof (input as ReadableStream<Uint8Array>).getReader === "function"
+  )
+}
+
+// True when the body can be read only once, so a failed exec must not be retried.
+export function isStreamInput(input: RunOptions["input"]): input is StreamInput {
+  return input instanceof Readable || isWebStream(input)
+}
+
+function toNodeStream(input: RunOptions["input"]): Readable | null {
+  if (input instanceof Readable) return input
+  if (isWebStream(input)) {
+    return Readable.fromWeb(input as unknown as NodeReadableStream<Uint8Array>)
+  }
+  return null
 }
 
 const globalForDocker = globalThis as unknown as {
@@ -99,50 +126,55 @@ function spawnOnce(binary: string, args: string[], options: RunOptions) {
       lines(chunk)
     })
 
+    const streamed = toNodeStream(options.input)
     const timer = options.timeoutMs
       ? setTimeout(() => {
-          if (options.input instanceof Readable) options.input.destroy()
+          // Stop a Node Readable (Telegram) or the fromWeb wrapper (composer uploads).
+          streamed?.destroy()
           child.kill()
         }, options.timeoutMs)
       : null
-    child.on("error", (error) => {
+    let settled = false
+    const finish = (fn: () => void) => {
+      if (settled) return
+      settled = true
       if (timer) clearTimeout(timer)
-      reject(error)
+      fn()
+    }
+    child.on("error", (error) => {
+      finish(() => reject(error))
     })
     child.on("close", (exitCode, signal) => {
-      if (timer) clearTimeout(timer)
-      if (pending.trim()) options.onLine?.(pending)
-      resolve({
-        exitCode: signal ? null : exitCode,
-        stdout: Buffer.concat(stdout),
-        stderr: Buffer.concat(stderr).toString("utf8"),
+      finish(() => {
+        if (pending.trim()) options.onLine?.(pending)
+        resolve({
+          exitCode: signal ? null : exitCode,
+          stdout: Buffer.concat(stdout),
+          stderr: Buffer.concat(stderr).toString("utf8"),
+        })
       })
     })
 
-    feedStdin(child, options.input)
+    const stdin = child.stdin
+    if (!stdin) return
+    // The process exiting closes stdin; that EPIPE is not a second failure.
+    stdin.on("error", () => {})
+    if (streamed) {
+      streamed.on("error", (error: NodeJS.ErrnoException) => {
+        // The child closed stdin after reading the file, or the timeout destroyed it.
+        if (error.code === "EPIPE" || error.code === "ERR_STREAM_PREMATURE_CLOSE") return
+        child.kill()
+        finish(() => reject(error))
+      })
+      streamed.pipe(stdin)
+      return
+    }
+    if (typeof options.input === "string" || Buffer.isBuffer(options.input)) {
+      stdin.end(options.input)
+    } else {
+      stdin.end()
+    }
   })
-}
-
-function feedStdin(
-  child: {
-    stdin: NodeJS.WritableStream | null
-    kill: (signal?: NodeJS.Signals) => boolean
-  },
-  input: RunOptions["input"]
-) {
-  const stdin = child.stdin
-  if (!stdin) return
-  if (input instanceof Readable) {
-    input.on("error", (error: NodeJS.ErrnoException) => {
-      // The child closed its stdin after reading the file, or it was killed
-      if (error.code === "EPIPE" || error.code === "ERR_STREAM_PREMATURE_CLOSE") return
-      child.kill()
-    })
-    input.pipe(stdin)
-    return
-  }
-  if (input !== undefined) stdin.end(input)
-  else stdin.end()
 }
 
 function isMissing(error: unknown) {

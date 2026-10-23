@@ -23,6 +23,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
 import type { XirynMessage } from "@/lib/agent/tools"
+import { formatBytes, isImageMedia } from "@/lib/attachments"
 import { estimateCost, formatUsd, isFree } from "@/lib/providers/pricing"
 import { cn } from "@/lib/utils"
 
@@ -178,6 +179,9 @@ function UserMessage({
   const text = message.parts
     .flatMap((part) => (part.type === "text" ? [part.text] : []))
     .join("\n")
+  const files = message.parts.flatMap((part) =>
+    part.type === "data-attachment" ? [part.data] : []
+  )
 
   // Handing the desktop back reads as an event, not a chat bubble
   const handback = message.metadata?.handback
@@ -253,9 +257,46 @@ function UserMessage({
             )}
           </span>
         )}
-        <div className="rounded-xl rounded-br-sm border bg-elevated px-3.5 py-2 text-[14px] leading-relaxed whitespace-pre-wrap">
-          {text}
-        </div>
+        {files.length > 0 && (
+          <ul className="flex max-w-full flex-wrap justify-end gap-1.5">
+            {files.map((file) => {
+              const href = `/api/uploads/${encodeURIComponent(file.agentId)}/${encodeURIComponent(file.storedName)}`
+              const image = isImageMedia(file.mediaType)
+              return (
+                <li key={file.storedName}>
+                  <a
+                    href={href}
+                    download={file.name}
+                    className="flex max-w-full items-center gap-2 rounded-lg border bg-elevated px-1.5 py-1 text-left hover:border-input"
+                  >
+                    {image ? (
+                      // Thumbnail comes from the owner-only download route
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={href}
+                        alt=""
+                        className="size-14 rounded-md object-cover"
+                      />
+                    ) : null}
+                    <span className="min-w-0 pr-1">
+                      <span className="block max-w-48 truncate text-[12.5px]">
+                        {file.name}
+                      </span>
+                      <span className="block font-mono text-[10px] text-faint">
+                        {formatBytes(file.size)}
+                      </span>
+                    </span>
+                  </a>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+        {text.trim() ? (
+          <div className="rounded-xl rounded-br-sm border bg-elevated px-3.5 py-2 text-[14px] leading-relaxed whitespace-pre-wrap">
+            {text}
+          </div>
+        ) : null}
       </div>
     </div>
   )

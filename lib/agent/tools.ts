@@ -1,4 +1,4 @@
-import { tool, type InferUITools, type UIDataTypes, type UIMessage } from "ai"
+import { tool, type InferUITools, type UIMessage } from "ai"
 import { asc, eq } from "drizzle-orm"
 import { z } from "zod"
 
@@ -12,6 +12,7 @@ import {
   type Agent,
   type Routine,
 } from "@/db/schema"
+import type { Attachment } from "@/lib/attachments"
 import { describeSchedule, nextRun } from "@/lib/schedule"
 import { listSkills, readSkill, SkillError } from "@/lib/skills"
 import type { ActionApproval } from "@/lib/mcp/approval"
@@ -844,4 +845,8 @@ export type XirynMetadata = {
   }
 }
 
-export type XirynMessage = UIMessage<XirynMetadata, UIDataTypes, InferUITools<XirynTools>>
+export type XirynMessage = UIMessage<
+  XirynMetadata,
+  { attachment: Attachment },
+  InferUITools<XirynTools>
+>
