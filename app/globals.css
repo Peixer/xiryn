@@ -243,7 +243,11 @@
 
 /* Markdown inside agent replies */
 .prose-xiryn {
-  @apply text-[14px] leading-[1.7] text-foreground;
+  @apply max-w-full min-w-0 text-[14px] leading-[1.7] text-foreground;
+  overflow-wrap: anywhere;
+}
+.prose-xiryn :where(pre, table, .overflow-x-auto) {
+  max-width: 100%;
 }
 .prose-xiryn :where(p, ul, ol, pre, blockquote, table, h1, h2, h3, h4) + :where(*) {
   margin-top: 0.75em;
@@ -335,16 +339,60 @@ html[data-xiryn-app="1"] .xiryn-camera,
 html[data-xiryn-app="1"] .xiryn-share {
   display: grid;
 }
-html[data-xiryn-app="1"] .xiryn-screen-open .xiryn-workbench {
+html[data-xiryn-app="1"] .xiryn-screen-open .xiryn-workbench,
+.xiryn-screen-open .xiryn-workbench {
   position: fixed;
   inset: 0;
-  z-index: 45;
+  /* Stay under the thread header so its close control remains visible. */
+  top: calc(env(safe-area-inset-top) + 3.25rem);
+  z-index: 40;
   display: flex !important;
   width: auto !important;
   height: auto !important;
+  max-width: none !important;
   background: var(--background);
-  padding-top: env(safe-area-inset-top);
   padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* The resizable panel library sizes the outer [data-panel], not the inner
+   element our hide rules used to target. Zero that outer panel or the chat
+   stays at its split width after the workbench contents disappear. */
+html[data-xiryn-app="1"] [data-panel]:has(> .xiryn-workbench),
+html[data-xiryn-app="1"] .xiryn-handle {
+  flex: 0 0 0px !important;
+  width: 0 !important;
+  min-width: 0 !important;
+  max-width: 0 !important;
+  overflow: visible !important;
+  padding: 0 !important;
+  border: 0 !important;
+}
+html[data-xiryn-app="1"] [data-panel]:has(> .xiryn-chat-panel) {
+  flex: 1 1 100% !important;
+  width: 100% !important;
+  max-width: none !important;
+}
+
+@media (max-width: 1099px) {
+  .xiryn-handle,
+  .xiryn-workbench {
+    display: none !important;
+  }
+  [data-panel]:has(> .xiryn-workbench),
+  .xiryn-handle {
+    flex: 0 0 0px !important;
+    width: 0 !important;
+    min-width: 0 !important;
+    max-width: 0 !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    border: 0 !important;
+  }
+  [data-panel]:has(> .xiryn-chat-panel) {
+    flex: 1 1 100% !important;
+    width: 100% !important;
+    max-width: none !important;
+  }
 }
 html[data-xiryn-app="1"],
 html[data-xiryn-app="1"] body {
@@ -374,6 +422,8 @@ html[data-xiryn-app="1"]:has(.xiryn-thread) .xiryn-page {
 }
 html[data-xiryn-app="1"] .xiryn-composer {
   padding-bottom: calc(env(safe-area-inset-bottom) + var(--xiryn-keyboard, 0px));
+  max-height: 100%;
+  min-height: 0;
   background: var(--background);
 }
 html[data-xiryn-app="1"] .xiryn-composer textarea,
@@ -381,9 +431,13 @@ html[data-xiryn-app="1"] .xiryn-app input,
 html[data-xiryn-app="1"] .xiryn-app textarea {
   font-size: 16px;
 }
+html[data-xiryn-app="1"] .xiryn-composer textarea {
+  max-height: min(16rem, 30dvh);
+}
 html[data-xiryn-app="1"] .xiryn-composer-actions button {
   min-width: 44px;
   min-height: 44px;
+  flex-shrink: 0;
 }
 html[data-xiryn-app="1"] .xiryn-user-bubble {
   border: 0;
@@ -392,9 +446,20 @@ html[data-xiryn-app="1"] .xiryn-user-bubble {
   padding: 0.7rem 0.9rem;
   font-size: 16px;
 }
+.xiryn-transcript-scroll {
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  scrollbar-gutter: auto !important;
+}
 html[data-xiryn-app="1"] .xiryn-chat-panel {
   flex: 1 1 auto !important;
   width: 100% !important;
+  overflow: hidden !important;
+}
+@media (max-width: 1099px) {
+  .xiryn-chat-panel {
+    overflow: hidden !important;
+  }
 }
 
 @keyframes xiryn-sheet-in {

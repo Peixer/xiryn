@@ -92,7 +92,7 @@ export function ActionApprovalCard({
       </span>
       <pre
         dir="ltr"
-        className="max-h-96 overflow-auto font-sans text-[13.5px] leading-relaxed break-words whitespace-pre-wrap [unicode-bidi:plaintext]"
+        className="max-h-96 max-w-full overflow-auto font-sans text-[13.5px] leading-relaxed [overflow-wrap:anywhere] whitespace-pre-wrap [unicode-bidi:plaintext]"
       >
         {action.summary}
       </pre>

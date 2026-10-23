@@ -1,4 +1,6 @@
 import assert from "node:assert/strict"
+import fs from "node:fs"
+import path from "node:path"
 import { test } from "node:test"
 
 import {
@@ -7,6 +9,8 @@ import {
   PHONE_MAX_WIDTH,
   shouldOfferInstallGuide,
   wantsAppShell,
+  WORKBENCH_SPLIT_MIN_WIDTH,
+  workbenchPlacement,
 } from "./shell"
 
 test("the app shell is for an installed window or a phone-sized viewport", () => {
@@ -24,6 +28,29 @@ test("the app shell is for an installed window or a phone-sized viewport", () =>
   assert.equal(isThreadPath("/a/agent"), false)
   assert.equal(isThreadPath("/"), false)
   assert.equal(isThreadPath("/agents"), false)
+})
+
+test("the workbench sits beside the chat only on a wide browser window", () => {
+  assert.equal(WORKBENCH_SPLIT_MIN_WIDTH, 1100)
+  assert.equal(workbenchPlacement({ width: 390, appShell: true }), "overlay")
+  assert.equal(workbenchPlacement({ width: 360, appShell: false }), "overlay")
+  assert.equal(workbenchPlacement({ width: 820, appShell: false }), "overlay")
+  assert.equal(workbenchPlacement({ width: 1099, appShell: false }), "overlay")
+  assert.equal(workbenchPlacement({ width: 1100, appShell: false }), "split")
+  assert.equal(workbenchPlacement({ width: 1280, appShell: false }), "split")
+  assert.equal(workbenchPlacement({ width: 1920, appShell: false }), "split")
+  // An installed window uses the app shell even on a desktop monitor.
+  assert.equal(workbenchPlacement({ width: 1440, appShell: true }), "overlay")
+})
+
+test("narrow layout CSS collapses the workbench panel, not only its contents", () => {
+  const css = fs.readFileSync(
+    path.join(import.meta.dirname, "../../app/globals.css"),
+    "utf8"
+  )
+  assert.match(css, /max-width:\s*1099px/)
+  assert.match(css, /\[data-panel\]:has\(> \.xiryn-workbench\)/)
+  assert.match(css, /\[data-panel\]:has\(> \.xiryn-chat-panel\)/)
 })
 
 test("the home-screen guide is only for iOS Safari that is not installed yet", () => {
