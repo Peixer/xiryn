@@ -3,7 +3,7 @@ import http from "node:http"
 import type { AddressInfo } from "node:net"
 import { test } from "node:test"
 
-import { GROKBOT_MAX_BYTES } from "./grokbot-import"
+import { GROKBOT_MAX_BYTES, parseGrokbotValue } from "./grokbot-import"
 import { isBlockedAddress, fetchGrokbotShare, templateFromHtml } from "./grokbot-fetch"
 
 const template = {
@@ -251,6 +251,84 @@ test("Accept application/json is tried when the page has no template", async () 
   } finally {
     await close(server)
   }
+})
+
+test("an x.ai share page is read from the Next.js flight payload", async () => {
+  const card = {
+    id: "SxqbG1NT5qEw7ggmHqQu_",
+    ownerType: "USER",
+    sharerName: null,
+    botName: "Lingxi's Engineer Bot",
+    description:
+      'A hands-off engineering supervisor. Boards work, then says "watch } the PRs".',
+    addHref: "grokbot://app/v1/bot-template?id=SxqbG1NT5qEw7ggmHqQu_",
+    color: "#00BCA6",
+    shape: "wedge",
+  }
+  const flight = `0:{"P":null}\n2d:["$","$L3c",null,{"state":{"mutations":[],"queries":[{"queryKey":["bot-template","SxqbG1NT5qEw7ggmHqQu_"],"state":{"data":${JSON.stringify(card)}}}]}}]`
+  const html = `<!doctype html><html><body><script>self.__next_f.push(${JSON.stringify([1, flight])})</script></body></html>`
+  const direct = templateFromHtml(html)
+  assert.equal(direct.ok, true)
+
+  const { server, port } = await listen((_req, res) => {
+    res.setHeader("content-type", "text/html; charset=utf-8")
+    res.end(html)
+  })
+  try {
+    const result = await fetchGrokbotShare(`http://share.test:${port}/bot/Sxqb`, {
+      allowLoopback: true,
+      resolveHost: async () => ["127.0.0.1"],
+    })
+    assert.equal(result.ok, true)
+    if (!result.ok) return
+    const parsed = parseGrokbotValue(result.value, {
+      takenNames: [],
+      takenSlugs: [],
+      skillRoom: 64,
+    })
+    assert.equal(parsed.ok, true)
+    if (!parsed.ok) return
+    assert.equal(parsed.plan.agent.name, "Lingxi's Engineer Bot")
+    assert.match(parsed.plan.agent.instructions, /watch \} the PRs/)
+    assert.equal(parsed.plan.skills.length, 0)
+    assert.match(
+      parsed.plan.warnings.join("\n"),
+      /share page only includes the name and description/
+    )
+  } finally {
+    await close(server)
+  }
+})
+
+test("a full template on the page is preferred over the public share card", () => {
+  const card = {
+    botName: "Card Bot",
+    description: "Only the public card.",
+    addHref: "grokbot://app/v1/bot-template?id=card",
+  }
+  const flight = `2d:${JSON.stringify({ state: { data: card } })}`
+  const html = `<!doctype html>
+    <script>self.__next_f.push(${JSON.stringify([1, flight])})</script>
+    <script id="__NEXT_DATA__" type="application/json">${JSON.stringify({
+      props: { pageProps: { template } },
+    })}</script>
+    </html>`
+  const direct = templateFromHtml(html)
+  assert.equal(direct.ok, true)
+  if (!direct.ok) return
+  const parsed = parseGrokbotValue(direct.value, {
+    takenNames: [],
+    takenSlugs: [],
+    skillRoom: 64,
+  })
+  assert.equal(parsed.ok, true)
+  if (!parsed.ok) return
+  assert.equal(parsed.plan.agent.name, "Link Bot")
+  assert.equal(parsed.plan.skills.length, 1)
+  assert.doesNotMatch(
+    parsed.plan.warnings.join("\n"),
+    /share page only includes the name and description/
+  )
 })
 
 test("a link with a username or password is refused", async () => {
