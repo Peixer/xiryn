@@ -15,6 +15,10 @@ export async function register() {
   const { syncTelegram } = await import("./lib/telegram/bridge")
   syncTelegram()
 
+  // Notification webhook. Does nothing until a URL is configured.
+  const { startNotifyWebhook } = await import("./lib/notify-webhook")
+  startNotifyWebhook()
+
   // Routines: tasks agents run on their own, on a schedule
   const { startRoutines } = await import("./lib/routines")
   startRoutines()

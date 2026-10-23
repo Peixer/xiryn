@@ -2,6 +2,7 @@ import { asc, eq } from "drizzle-orm"
 
 import { db } from "@/db"
 import { memories, type Agent, type Squad } from "@/db/schema"
+import { formatSkillCatalog, loadSkillCatalog } from "@/lib/skills"
 
 // The system prompt is assembled fresh for every turn (and again when a
 // squad delegates), so edits to an agent and new memories apply at once.
@@ -79,6 +80,7 @@ ${[
       ? "- **Web through your browser.** There are no web search tools (Firecrawl isn't configured), so search and read pages with Chromium on your desktop, or `curl` from the shell for plain pages and APIs."
       : "- **No web access.** Firecrawl is not configured; work from what you know and say when something may be out of date.",
   "- **Memory.** Notes you save with `memory_write` persist across every thread you are part of. Remove stale ones with `memory_forget`.",
+  "- **Skills.** Reusable playbooks from the Skills page are catalogued below. `skill_read` loads one in full. You cannot create or edit them.",
 ].join("\n")}`,
 
     `# Memory
@@ -86,6 +88,8 @@ These are the notes you have saved. They are already loaded — no tool call nee
 ${memoryBlock(agent.id)}
 
 Save a note in the same turn you learn something worth knowing later (who the person is, what they are working on, preferences, decisions, standing instructions), and always when they ask you to remember something. Saying you will remember is not the same as saving. Skip small talk and details that only matter right now.`,
+
+    skillsBlock(),
 
     squad && squadBlock(agent, squad),
 
@@ -135,6 +139,18 @@ export type SquadContext = {
   delegatedFrom: string[]
   // What the last of them asked for when handing over
   brief?: string
+}
+
+function skillsBlock() {
+  try {
+    return formatSkillCatalog(loadSkillCatalog())
+  } catch (error) {
+    console.error(
+      "[xiryn] skills: catalog skipped:",
+      error instanceof Error ? error.message : "unknown error"
+    )
+    return "# Skills\nThe skills library could not be read this turn. Use the Skills page to check it."
+  }
 }
 
 function squadBlock(

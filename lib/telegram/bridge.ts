@@ -608,6 +608,8 @@ const TOOL_LABELS: Record<string, (input: Record<string, unknown>) => string> = 
   key_press: (i) => `key ${String(i.key ?? "")}`,
   web_search: (i) => `search “${String(i.query ?? "")}”`,
   web_fetch: (i) => `read ${String(i.url ?? "").replace(/^https?:\/\//, "")}`,
+  skill_list: () => "listing skills",
+  skill_read: (i) => `reading skill “${String(i.slug ?? "")}”`,
   memory_write: () => "saving to memory",
   memory_forget: () => "forgetting a note",
   routine_create: (i) => `scheduling “${String(i.name ?? "a routine")}”`,

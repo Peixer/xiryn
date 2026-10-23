@@ -29,7 +29,7 @@ graph TB
 
 1. The composer posts the new message to `POST /api/threads/:id/turn`.
 2. `lib/agent/runtime.ts` loads the thread (agent or squad), resolves the model (`lib/providers/registry.ts`), saves the user message, and builds the tool belt for the configured capabilities.
-3. Instructions are assembled per agent (`lib/agent/instructions.ts`): identity, standing orders, capabilities, **memory notes**, squad roster and channel.
+3. Instructions are assembled per agent (`lib/agent/instructions.ts`): identity, standing orders, capabilities, **memory notes**, **skill catalog**, squad roster and channel.
 4. `streamText` runs the tool loop. Its output becomes a UI message stream that is **buffered in a run object** and fanned out to any number of subscribers.
 5. When the stream ends the reply is persisted, the thread preview updated and a row written to the `turns` ledger.
 
@@ -44,12 +44,17 @@ Defined in `lib/agent/tools.ts`. Every tool resolves "the agent holding the turn
 | Workstation | `shell`, `fs_read`, `fs_write`, `fs_list` | `docker exec` into the agent's container |
 | Desktop | `screen_capture`, `screen_share`, `pointer_*`, `key_*` | `scrot` and `xdotool` on the container's X display |
 | Memory | `memory_write`, `memory_forget` | Local SQLite |
+| Skills | `skill_list`, `skill_read` | Files in `data/skills/<slug>/SKILL.md`. Read-only for agents |
 | Routines | `routine_create`, `routine_list`, `routine_delete` | Local SQLite; run by the scheduler (not offered during a routine's own runs) |
 | Web | `web_search`, `web_fetch` | Firecrawl v2 |
 | Squad | `delegate` | Runtime (swaps agent, instructions and model) |
 | Hand-off | `request_takeover` | Runtime (ends the turn) + Telegram notice |
 
 Screenshots are returned to the model as images. Before every step, `prepareStep` compacts the turn's context: only the two most recent screenshots and the six most recent tool outputs are kept in full, older ones are cut to short stubs. A long desktop session therefore costs roughly the same per step at step 40 as at step 4.
+
+## Skills
+
+A skill is a playbook in `data/skills/<slug>/SKILL.md`: YAML frontmatter (`name`, `description`) and a Markdown body. The Skills page creates, edits, deletes, imports and exports them. There is no database table. Each turn, the instructions include a catalog of at most 40 skills (name, slug, description). `skill_read` returns the body. Agents have no tool that writes a skill. The text is prompt text — it is shown on the Skills page before use — and Xiryn never runs a script from the file. A file that fails to parse is skipped and listed as a warning on the page. Each file is capped at 16 KB and the library at 64 skills. Paths resolve inside the skills directory; `..` and symlinks are refused.
 
 ## Take-over and hand-offs
 
@@ -78,6 +83,8 @@ The runtime emits an event when a turn finishes (or fails) and when an agent han
 ## Routines
 
 A routine (`routines` table) is a prompt, an owner (an agent or a squad) and a schedule — daily, weekdays, weekly, every few hours, or once — in the server's local time. `lib/routines.ts` is started from `instrumentation.ts` and checks every 30 seconds for routines that are due. Each run moves `next_run_at` on first (so a failed run never repeats; a one-off switches itself off), then sends the prompt into the routine's own thread through `startTurn` with `routine` set: the message carries `metadata.routine`, the instructions tell the agent nobody is watching, and the routine tools are left out so a run can't schedule more runs. A run missed by up to six hours (the computer slept) still happens; older ones are skipped until the next time. If the thread is busy, it tries again in five minutes.
+
+An external caller can start the same run without moving the schedule: `POST /api/hooks/routines/<id>` (`app/api/hooks/routines/[id]/route.ts`). The secret is `hooks.token` (`XIRYN_HOOKS_TOKEN`), compared in constant time from `Authorization: Bearer` or `X-Xiryn-Token`. With no token configured the route is 404. A wrong token is 401, a body over 64 KB is 413, an unknown routine is 404, a busy agent is 409, and more than about 30 requests in a minute is 429. A start responds 202 with `{threadId}`. The body is appended to the prompt by `routineRunPrompt`, framed as a webhook payload that is data, not instructions. The token and the body are not logged. Tool approvals are the same path as a manual run: nothing is auto-approved because the call came from a webhook. `proxy.ts` is unchanged, so a public hostname still has to be listed in `XIRYN_ALLOWED_HOSTS`. `deploy/Caddyfile` has a commented snippet for skipping basic auth on `/api/hooks/*` only.
 
 `scripts/background.mjs` keeps the server running with no terminal: it builds once per version or commit, starts `next start` detached on 127.0.0.1, records the pid in `data/background.pid` and logs to `data/xiryn.log`. `login` adds an entry the operating system starts at login (a hidden `.vbs` in the Windows Startup folder, a LaunchAgent on macOS, an XDG autostart entry on Linux).
 
