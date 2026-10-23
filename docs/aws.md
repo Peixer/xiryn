@@ -103,7 +103,7 @@ XIRYN_DEFAULT_MODEL=bedrock/eu.anthropic.claude-sonnet-5-5
 
 `XIRYN_URL` is that same origin with `https://`. Telegram links, the Google redirect, and the desktop stream all use it. When it is a public origin, the in-app desktop connects to `wss://<host>/desktop/<agent>/websockify` instead of a loopback port on your laptop.
 
-Optional, so the vault key survives a home-directory change: `XIRYN_VAULT_KEY` as 32 bytes of base64. Otherwise the key file lands in the service user's home (`/var/lib/xiryn/.xiryn/`). Back that file up with the database. Losing it makes sealed Google tokens and vault items unreadable.
+Optional, so the vault key survives a home-directory change: `XIRYN_VAULT_KEY` as 32 bytes of base64. Otherwise the key file lands in the service user's home (`/var/lib/xiryn/.xiryn/`). Losing it makes sealed Google tokens and vault items unreadable. The data-directory backup below does not copy that key unless you ask it to.
 
 ## systemd
 
@@ -160,6 +160,39 @@ curl -sS -u 'monitor:password' https://xiryn.example.com/api/health
 ```
 
 `200` means `status` is `ok` or `degraded`. Docker stopped, missing, or unanswered before the short probe timeout is `degraded` with `200`. `503` means `status` is `down`: SQLite did not answer `select 1`.
+
+## Backup and restore
+
+`npm run backup` writes a consistent copy of `XIRYN_DATA_DIR` (default `data/`) to `data/backups/xiryn-<YYYYMMDD-HHMMSS>/`. The timestamp is UTC. The database is taken with SQLite's online backup, so the live WAL is not copied and the snapshot stays consistent while Xiryn is running. Other files in the data directory, such as `mcp.json`, are included. `manifest.json` records the app version, the timestamp, and a sha256 for each file. The backup directory is excluded from later backups, so they do not nest.
+
+```bash
+cd /opt/xiryn
+sudo -u xiryn npm run backup -- --keep 7
+sudo -u xiryn npm run backup -- verify data/backups/xiryn-20261023-163605
+```
+
+`--out DIR` chooses the parent directory. `--keep N` keeps the N newest `xiryn-*` directories and deletes older ones. Backups hold a full copy of the database, so they use disk; `--keep` is how you cap that. Agent workstation files live in Docker volumes and are not part of this copy.
+
+Check hashes after moving an archive:
+
+```bash
+npm run backup -- verify /path/to/xiryn-20261023-163605
+```
+
+Restore only into an empty directory. It refuses the live data directory, so stop Xiryn and swap the directories yourself:
+
+```bash
+sudo systemctl stop xiryn
+mkdir -p /opt/xiryn/data-restored
+sudo -u xiryn npm run backup -- restore data/backups/xiryn-20261023-163605 --target /opt/xiryn/data-restored
+mv /opt/xiryn/data /opt/xiryn/data.old
+mv /opt/xiryn/data-restored /opt/xiryn/data
+sudo systemctl start xiryn
+```
+
+The vault key is not in the archive by default. The command says so. Without that key, vault items and the Google refresh token in the restored database cannot be decrypted. `--include-vault-key` copies a file-based key (`vault-*.key`) at mode 0600 and warns that the backup is then sensitive. A key in `XIRYN_VAULT_KEY`, the macOS Keychain, Windows DPAPI, or the Linux Secret Service is reported and never written. `.env` is not in the data directory, so it is not in the backup either. Keep it separately.
+
+On this host the file key is `/var/lib/xiryn/.xiryn/vault-*.key` unless `XIRYN_VAULT_KEY` or `XIRYN_VAULT_KEY_DIR` is set. A restored key file is placed in the target directory only. It is not written over the live key. Move it into place, or point `XIRYN_VAULT_KEY_DIR` at it, before starting Xiryn.
 
 ## Updating
 
