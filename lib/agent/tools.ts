@@ -981,7 +981,8 @@ export function createSubagentTools(env: ToolEnv) {
           .describe("Wall-clock timeout per task in seconds. Default: 120."),
       }),
       execute: async ({ tasks, timeoutSeconds = 120 }): Promise<SpawnSubagentOutput> => {
-        const { runSubturn, isSubturnThread } = await import("@/lib/agent/subturn")
+        const { runSubturn, isSubturnThread, MAX_CONCURRENT_PER_AGENT } =
+          await import("@/lib/agent/subturn")
 
         if (isSubturnThread(env.threadId)) {
           return {
@@ -1002,10 +1003,12 @@ export function createSubagentTools(env: ToolEnv) {
         }
 
         const agent = env.current()
-        const timeoutMs = (timeoutSeconds ?? 120) * 1000
+        // Clamp to MAX_CONCURRENT_PER_AGENT so the tool can't exceed the per-agent limit
+        const cappedTasks = tasks.slice(0, MAX_CONCURRENT_PER_AGENT)
+        const timeoutMs = Math.min((timeoutSeconds ?? 120) * 1000, 300_000)
 
         const results = await Promise.all(
-          tasks.map((task) =>
+          cappedTasks.map((task) =>
             runSubturn({ task, agent, parentThreadId: env.threadId, timeoutMs })
               .then((r): SubagentTaskResult => ({
                 task: r.task,
@@ -1020,7 +1023,11 @@ export function createSubagentTools(env: ToolEnv) {
                 task,
                 result: "",
                 ok: false,
-                error: err instanceof Error ? err.message : String(err),
+                // Sanitize: only first line, no paths — keep model output safe
+                error: (err instanceof Error ? err.message : String(err))
+                  .split("\n")[0]
+                  .replace(/\/[^\s]+/g, "[path]")
+                  .slice(0, 200),
                 steps: 0,
                 durationMs: 0,
                 costUsd: null,
