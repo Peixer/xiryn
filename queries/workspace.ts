@@ -1,5 +1,5 @@
 import { format } from "date-fns"
-import { and, asc, desc, eq, gte, isNotNull, sql } from "drizzle-orm"
+import { and, asc, desc, eq, gte, isNotNull, isNull, or, sql } from "drizzle-orm"
 import type { SQLiteTable } from "drizzle-orm/sqlite-core"
 
 import { db, DB_PATH } from "@/db"
@@ -233,7 +233,7 @@ export function getMemories(agentId: string) {
   return db
     .select()
     .from(memories)
-    .where(eq(memories.agentId, agentId))
+    .where(or(eq(memories.agentId, agentId), isNull(memories.agentId)))
     .orderBy(desc(memories.createdAt))
     .all()
 }
