@@ -228,7 +228,8 @@ export const vaultApprovals = sqliteTable(
 )
 
 // A write or send an agent asked to make through a connector (Gmail, Calendar,
-// or any MCP tool marked as a write). The tool does not run until this is approved.
+// Drive, or any MCP tool marked as a write). The tool does not run until this
+// is approved. Drive sharing is one of these, including a public link.
 export const actionApprovals = sqliteTable(
   "action_approvals",
   {

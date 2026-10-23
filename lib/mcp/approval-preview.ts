@@ -238,6 +238,40 @@ export function eventApprovalArgs(
   }
 }
 
+// The arguments that are hashed and shown for a Drive change. Empty strings
+// keep a missing field from hashing differently than an explicit blank.
+export function driveApprovalArgs(input: {
+  action: string
+  fileId?: string
+  name?: string
+  destination?: string
+  detail?: string
+  share?: string
+  content?: string
+  sourcePath?: string
+  mimeType?: string
+  sha256?: string
+  newName?: string
+  addParent?: string
+  removeParents?: string
+}) {
+  return {
+    action: input.action,
+    fileId: input.fileId ?? "",
+    name: input.name ?? "",
+    destination: input.destination ?? "",
+    detail: input.detail ?? "",
+    share: input.share ?? "",
+    content: input.content ?? "",
+    sourcePath: input.sourcePath ?? "",
+    mimeType: input.mimeType ?? "",
+    sha256: input.sha256 ?? "",
+    newName: input.newName ?? "",
+    addParent: input.addParent ?? "",
+    removeParents: input.removeParents ?? "",
+  }
+}
+
 // Google Calendar body derived only from the approved arguments.
 export function calendarWriteBody(
   args: Record<string, unknown>,
@@ -293,6 +327,33 @@ function calendarPreview(args: Record<string, unknown>) {
   return capCard(lines.join("\n"))
 }
 
+function driveLine(label: string, value: unknown) {
+  const text = stringOf(value)
+  if (!text) return null
+  return `${label}: ${shown(oneLine(text), FIELD_LIMIT)}`
+}
+
+function drivePreview(args: Record<string, unknown>) {
+  const lines = [
+    driveLine("Action", args.action),
+    driveLine("File", args.name),
+    driveLine("File id", args.fileId),
+    driveLine("Destination", args.destination),
+    driveLine("New name", args.newName),
+    driveLine("Folder id", args.addParent),
+    driveLine("Remove from", args.removeParents),
+    driveLine("Detail", args.detail),
+    driveLine("Share", args.share),
+    driveLine("Type", args.mimeType),
+    driveLine("Workstation file", args.sourcePath),
+    driveLine("SHA-256", args.sha256),
+  ].filter((item): item is string => item !== null)
+  if (stringOf(args.content)) {
+    lines.push("Content:", shown(visible(stringOf(args.content)), APPROVAL_BODY_LIMIT))
+  }
+  return capCard(lines.join("\n") || "Drive")
+}
+
 function mcpPreview(tool: string, args: unknown) {
   const json = JSON.stringify(maskSecrets(args), null, 2) ?? "null"
   return capCard(
@@ -318,6 +379,7 @@ export function renderApprovalPreview(tool: string, args: unknown) {
     return calendarPreview(record)
   }
   if (tool === "vault_fill") return vaultFillPreview(record)
+  if (tool.startsWith("drive_")) return drivePreview(record)
   return mcpPreview(tool, args)
 }
 

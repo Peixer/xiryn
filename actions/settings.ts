@@ -85,11 +85,20 @@ export async function saveSettings(values: Record<string, string | null>) {
     if (key === "bedrock.modelRegions" && value) parseModelRegionMap(value)
     if (key === "bedrock.maxOutput" && value) parseMaxOutputOverrides(value)
     if (
-      (key === "connectors.gmail" || key === "connectors.calendar") &&
+      (key === "connectors.gmail" ||
+        key === "connectors.calendar" ||
+        key === "connectors.drive") &&
       value &&
       !/^(on|off)$/.test(value.trim())
     ) {
       throw new Error("A connector is either on or off.")
+    }
+    if (
+      key === "connectors.drive.access" &&
+      value &&
+      !/^(readonly|readwrite)$/.test(value.trim())
+    ) {
+      throw new Error("Drive access is read-only or read-write.")
     }
     if (
       key === "security.webApproval" &&

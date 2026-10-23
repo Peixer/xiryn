@@ -315,6 +315,9 @@ export function getSettingsView() {
     connectors: {
       gmail: describeSetting("connectors.gmail"),
       calendar: describeSetting("connectors.calendar"),
+      drive: describeSetting("connectors.drive"),
+      driveAccess: describeSetting("connectors.drive.access"),
+      driveGrant: getSetting("google.grantedScopes") ?? "",
       clientId: describeSetting("google.clientId"),
       clientSecret: describeSetting("google.clientSecret"),
       connected: googleConnected(),

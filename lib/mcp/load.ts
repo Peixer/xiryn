@@ -10,6 +10,8 @@ import { expandEnv, readMcpConfig, type McpServerConfig } from "@/lib/mcp/config
 import { stdioPathRefusal } from "@/lib/mcp/stdio-path"
 import { mcpCommandRefusal, mcpEnvRefusal } from "@/lib/mcp/stdio-policy"
 import { createGoogleTools } from "@/lib/mcp/google-tools"
+import { createDriveTools } from "@/lib/mcp/drive-tools"
+import { driveConnectorSummary } from "@/lib/mcp/drive-scopes"
 import { holdOrRun } from "@/lib/mcp/guard"
 import { connectorEnabled } from "@/lib/mcp/google"
 import { toolNeedsApproval } from "@/lib/mcp/policy"
@@ -153,7 +155,10 @@ async function toolsForServer(server: McpServerConfig, env: ToolEnv) {
 }
 
 export async function loadConnectorTools(env: ToolEnv) {
-  const tools: ToolSet = { ...(createGoogleTools(env) as ToolSet) }
+  const tools: ToolSet = {
+    ...(createGoogleTools(env) as ToolSet),
+    ...(createDriveTools(env) as ToolSet),
+  }
   const lines: string[] = []
   if (connectorEnabled("gmail")) {
     lines.push(
@@ -165,6 +170,12 @@ export async function loadConnectorTools(env: ToolEnv) {
       "Google Calendar is connected: calendar_list_events runs immediately; calendar_create_event, calendar_update_event and calendar_delete_event wait for approval."
     )
   }
+  const driveLine = driveConnectorSummary({
+    enabled: connectorEnabled("drive"),
+    access: getSetting("connectors.drive.access"),
+    granted: getSetting("google.grantedScopes"),
+  })
+  if (driveLine) lines.push(driveLine)
 
   const config = readMcpConfig()
   if (config.error) lines.push(`MCP config was not loaded: ${config.error}`)

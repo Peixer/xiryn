@@ -1,6 +1,6 @@
-# Mail, calendar and MCP
+# Mail, calendar, Drive and MCP
 
-Agents can call tools that live outside their workstation: Gmail, Google Calendar, and any [MCP](https://modelcontextprotocol.io) server you add. Reading runs immediately. Sending mail, saving a draft, replying, and creating, changing or deleting a calendar event stop the turn and wait. Nothing is sent until you approve that exact call, in the thread or with the Telegram buttons. Approving runs the same arguments again; declining tells the agent to stop.
+Agents can call tools that live outside their workstation: Gmail, Google Calendar, Google Drive, and any [MCP](https://modelcontextprotocol.io) server you add. Reading runs immediately. Sending mail, saving a draft, replying, creating or changing a calendar event, and creating, renaming, moving, copying, trashing or sharing a Drive file stop the turn and wait. Nothing is sent until you approve that exact call, in the thread or with the Telegram buttons. Approving runs the same arguments again; declining tells the agent to stop. Sharing a Drive file, including a link anyone can open, always waits. Trash moves a file to the trash. There is no permanent delete.
 
 Secrets stay out of git. Google's refresh token is sealed with the same vault key as saved logins (`lib/vault.ts`). MCP tokens belong in the environment, referenced from the config as `${ENV:NAME}`.
 
@@ -11,7 +11,7 @@ These two are built in. Xiryn talks to Google's APIs itself and finishes OAuth a
 ### 1. Google Cloud project
 
 1. Open [Google Cloud Console](https://console.cloud.google.com/) and create a project, or pick one you already use for this.
-2. **APIs & Services → Library**. Enable **Gmail API** and **Google Calendar API**.
+2. **APIs & Services → Library**. Enable **Gmail API** and **Google Calendar API**. Enable **Google Drive API** as well when you want Drive. Drive is off until you turn it on, so a Gmail-only setup does not need it.
 3. **APIs & Services → OAuth consent screen**.
    - User type: **External** (unless this is a Google Workspace account, in which case Internal is simpler and skips the 7-day limit below).
    - App name: anything, for example `Xiryn`.
@@ -22,6 +22,7 @@ These two are built in. Xiryn talks to Google's APIs itself and finishes OAuth a
      - `https://www.googleapis.com/auth/gmail.compose`
      - `https://www.googleapis.com/auth/calendar.readonly`
      - `https://www.googleapis.com/auth/calendar.events`
+     - and, only if Drive is on, the Drive scope from the next section. Read-only Drive uses `https://www.googleapis.com/auth/drive.readonly`. Read-write Drive uses `https://www.googleapis.com/auth/drive`.
    - Test users: add the Google account you want the agents to use.
 4. Leave the app in **Testing** if you have not gone through Google's verification. Gmail scopes are restricted. In Testing mode, only test users can connect, and Google expires the refresh token after **7 days** — reconnect from Settings when mail starts failing. A Workspace **Internal** app does not have that 7-day expiry. Publishing an External app to Production for these scopes requires Google's verification; don't do that for a one-person server unless you want to go through it.
 
@@ -64,7 +65,30 @@ Gmail and Calendar tools turn on together with that connection. Uncheck either o
 
 Agents then have `gmail_search`, `gmail_read`, `gmail_draft`, `gmail_send`, `gmail_reply`, `calendar_list_events`, `calendar_create_event`, `calendar_update_event` and `calendar_delete_event`.
 
-To disconnect, use **Disconnect** in Settings. That deletes the sealed token.
+To disconnect, use **Disconnect** in Settings. That deletes the sealed token. Gmail keeps one Google account. There is no account picker, and Drive uses that same account.
+
+## Google Drive
+
+Drive is the same OAuth client and the same sealed refresh token. It stays off until you check **Drive tools**, so connecting Gmail does not ask for a Drive scope. The default is read-only.
+
+1. In the same Cloud project, enable **Google Drive API**.
+2. On the OAuth consent screen, add the scope you are about to grant:
+   - Read-only: `https://www.googleapis.com/auth/drive.readonly`
+   - Read-write: `https://www.googleapis.com/auth/drive`
+3. In **Settings → Connectors**, on the Google Drive card, turn **Drive tools** on. Leave **Read-only** checked unless you want changes.
+4. Click **Connect Google** or **Reconnect Google**, then **Test connection**. The test calls Drive's `about` endpoint and shows the account email. It does not log the token.
+
+`drive.file` is not used. It can only see files this app created or that you opened with it, so a search of your existing Drive would miss them, and rename, move, copy, trash and share would fail. `drive.readonly` can see and download existing files and cannot change them. That is the read-only scope. Changing a file you already have needs the full `drive` scope, and only the read-write setting asks for it. Both Drive scopes are restricted, like Gmail: in Testing mode the refresh token expires after 7 days unless the app is a Workspace internal app.
+
+Read tools run immediately: `drive_search`, `drive_list_folders`, `drive_get`, `drive_read`, `drive_list_permissions`. Search takes text, a folder and a mime type, and returns one page (at most 20) plus a page token. It does not walk every page by itself. `drive_read` exports a Google Doc to markdown (plain text if markdown is refused), a Sheet to csv, and Slides to plain text. `pdf-text` is that plain-text export, not a parsed PDF. Text is capped. A binary file returns metadata unless the agent passes a workstation path, and then only if it is under 8 MB. Names and contents are wrapped as untrusted data.
+
+These wait for approval, and only exist after you uncheck Read-only and reconnect so the full scope is on the token: `drive_create_folder`, `drive_create_file`, `drive_create_doc`, `drive_update_file`, `drive_copy_file`, `drive_trash`. The card shows the action, the file name, and the destination folder. A hostile name cannot draw a second line on the card. `drive_create_doc` imports text into a Google Doc, or csv into a Google Sheet. `drive_trash` sets `trashed: true`. Xiryn does not call Drive's permanent delete.
+
+`drive_share` always waits, even if some other policy would skip a write. The card says who gains access. A public link is marked `PUBLIC`. The grant sets `allowFileDiscovery` to false and does not ask Google to email anyone. Listing permissions does not wait.
+
+File names and file contents from Drive are untrusted data, the same way a mail body is. Disconnect Drive hides the tools and leaves Gmail connected. Disconnect Google on the first card deletes the refresh token for all three.
+
+`XIRYN_DRIVE` stays `off` until you set it to `on`. `XIRYN_DRIVE_ACCESS` stays `readonly` until you set it to `readwrite`.
 
 ## Other MCP servers
 

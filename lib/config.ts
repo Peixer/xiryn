@@ -67,14 +67,24 @@ const integrationSettings = {
   "telegram.pairCode": { env: null, internal: true },
   // JSON: which agent/squad and thread Telegram messages go to
   "telegram.target": { env: null, internal: true },
-  // Google OAuth for the built-in Gmail and Calendar connectors
+  // Google OAuth for the built-in Gmail, Calendar and Drive connectors
   "google.clientId": { env: "GOOGLE_CLIENT_ID" },
   "google.clientSecret": { env: "GOOGLE_CLIENT_SECRET", secret: true },
   // Sealed refresh token written by the OAuth callback, or a raw token in env
   "google.refreshToken": { env: "GOOGLE_REFRESH_TOKEN", secret: true, internal: true },
-  // "off" hides that connector's tools. Default on, once Google is connected.
+  // Space-separated scopes Google returned. Not a secret. "none" means we asked
+  // and Drive was not among them. Unset means this token has not been refreshed
+  // since Drive was added, so Drive stays off until a reconnect.
+  "google.grantedScopes": { env: null, internal: true },
+  // "off" hides that connector's tools. Gmail and Calendar default on, once
+  // Google is connected. Drive defaults off so an existing Gmail consent is
+  // not asked for a new scope until the owner turns Drive on.
   "connectors.gmail": { env: "XIRYN_GMAIL", fallback: "on" },
   "connectors.calendar": { env: "XIRYN_CALENDAR", fallback: "on" },
+  "connectors.drive": { env: "XIRYN_DRIVE", fallback: "off" },
+  // "readonly" (default) or "readwrite". Read-write asks for the full Drive
+  // scope on the next connect. See lib/mcp/drive-scopes.ts.
+  "connectors.drive.access": { env: "XIRYN_DRIVE_ACCESS", fallback: "readonly" },
   // Extra program names allowed to launch MCP stdio servers, comma-separated.
   // npx, uvx, node, python3, python, docker and bunx are always allowed.
   "mcp.allowedCommands": { env: "XIRYN_MCP_ALLOWED_COMMANDS" },

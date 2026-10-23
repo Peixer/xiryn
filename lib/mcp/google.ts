@@ -1,20 +1,22 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto"
 
 import { getSetting, setSetting } from "@/lib/config"
+import { oauthScopes, sanitizeGrantedScopes } from "@/lib/mcp/drive-scopes"
 import { sealText, unsealText } from "@/lib/vault"
 
-// Built-in Gmail and Calendar. The refresh token is sealed with the vault key.
-// The owner completes Google's consent in a browser at https://<host>; Xiryn
-// never starts a browser of its own, so this works on a headless server.
+// Built-in Gmail, Calendar and Drive. The refresh token is sealed with the
+// vault key. One Google account: Gmail does not store a second refresh token,
+// and Drive uses that same account. The owner completes Google's consent in a
+// browser at https://<host>; Xiryn never starts a browser of its own.
 
 const AAD = "google-refresh"
-const SCOPES = [
-  "https://www.googleapis.com/auth/gmail.readonly",
-  "https://www.googleapis.com/auth/gmail.send",
-  "https://www.googleapis.com/auth/gmail.compose",
-  "https://www.googleapis.com/auth/calendar.readonly",
-  "https://www.googleapis.com/auth/calendar.events",
-]
+
+export function googleRequestedScopes() {
+  return oauthScopes({
+    driveEnabled: getSetting("connectors.drive") === "on",
+    driveAccess: getSetting("connectors.drive.access"),
+  })
+}
 
 export function googleRedirectUri() {
   const raw = process.env.XIRYN_URL?.trim()
@@ -63,7 +65,7 @@ export function googleAuthUrl() {
   url.searchParams.set("client_id", clientId)
   url.searchParams.set("redirect_uri", redirect)
   url.searchParams.set("response_type", "code")
-  url.searchParams.set("scope", SCOPES.join(" "))
+  url.searchParams.set("scope", googleRequestedScopes().join(" "))
   url.searchParams.set("access_type", "offline")
   url.searchParams.set("prompt", "consent")
   url.searchParams.set("include_granted_scopes", "true")
@@ -104,6 +106,7 @@ async function tokenRequest(body: URLSearchParams) {
     access_token?: string
     refresh_token?: string
     expires_in?: number
+    scope?: string
     error?: string
     error_description?: string
   } | null
@@ -136,11 +139,19 @@ export async function exchangeGoogleCode(code: string) {
     )
   }
   setSetting("google.refreshToken", sealText(AAD, json.refresh_token))
+  rememberScopes(json.scope)
   accessCache = null
+}
+
+function rememberScopes(scope: string | undefined) {
+  const cleaned = sanitizeGrantedScopes(scope)
+  if (cleaned === null) return
+  setSetting("google.grantedScopes", cleaned || "none")
 }
 
 export function disconnectGoogle() {
   setSetting("google.refreshToken", null)
+  setSetting("google.grantedScopes", null)
   accessCache = null
 }
 
@@ -150,7 +161,7 @@ async function refreshToken() {
   const stored = getSetting("google.refreshToken")
   if (!stored) {
     throw new Error(
-      "Google is not connected. Open Settings → Connectors and connect Gmail and Calendar."
+      "Google is not connected. Open Settings → Connectors and connect Google."
     )
   }
   return unsealText(AAD, stored)
@@ -171,6 +182,7 @@ export async function googleAccessToken() {
     token: json.access_token!,
     expiresAt: Date.now() + (json.expires_in ?? 3600) * 1000,
   }
+  rememberScopes(json.scope)
   return accessCache.token
 }
 
@@ -194,6 +206,10 @@ export async function googleFetch(url: string, init?: RequestInit) {
   return text ? (JSON.parse(text) as unknown) : null
 }
 
-export function connectorEnabled(name: "gmail" | "calendar") {
-  return googleConnected() && getSetting(`connectors.${name}`) !== "off"
+export function connectorEnabled(name: "gmail" | "calendar" | "drive") {
+  if (!googleConnected()) return false
+  // Drive defaults off, so only an explicit "on" turns it on. Gmail and
+  // Calendar default on, and "off" is what hides them.
+  if (name === "drive") return getSetting("connectors.drive") === "on"
+  return getSetting(`connectors.${name}`) !== "off"
 }
