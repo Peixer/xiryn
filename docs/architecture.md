@@ -98,6 +98,10 @@ Each agent's workstation is a Docker container named `xiryn-ws-<agent id>`, run 
 - **Commands.** `shell` runs `xiryn-run`, which writes output to a file, so a program left running in the background can't hold the call open, and returns the beginning and end of very long output.
 - **Live desktop.** noVNC listens on port 6080 inside the container, published on `127.0.0.1` with a random host port. The browser connects there directly with the container's random VNC password, which only the server hands out. For phone take-overs, `xiryn-tunnel` starts a Cloudflare quick tunnel inside the container that closes itself after 30 minutes.
 
+## Portable agents
+
+`lib/agent-portable.ts` writes a versioned JSON file (`version: 1`, `kind: "xiryn-agent"`) with only an agent's name, role, standing orders, model and glyph. Import checks the file — 256 KB, a known version, and the same length limits as the agent form — shows the prompt, and after confirmation inserts a new row through `actions/agents.ts`. A taken name is saved with a " (2)" suffix. A model whose provider isn't configured here is dropped so the agent uses the workspace default. Memory, threads, routines, vault items, secrets, workstation files and the usage ledger are not in the file, and the import doesn't send it anywhere. Standing orders from a file are untrusted prompt text; the preview is there so you can read them first.
+
 ## Data
 
 Everything lives in `data/xiryn.db` (override with `XIRYN_DATA_DIR`). Schema: `db/schema.ts`; migrations in `db/migrations` run automatically at boot.

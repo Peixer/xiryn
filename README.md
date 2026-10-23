@@ -102,7 +102,7 @@ $env:XIRYN_LOCAL="1"; irm https://raw.githubusercontent.com/SouravBeraAkaSpeed/x
 <td width="50%" valign="top">
 
 **Agents with a job**<br>
-Name, role, standing orders, and a model of their own. Start from [16 ready-made agents and 4 squads](#ready-made-agents) or write your own.
+Name, role, standing orders, and a model of their own. Start from [16 ready-made agents and 4 squads](#ready-made-agents) or write your own. [Export one as a JSON file](#sharing-an-agent) and import it on another install — you read the prompt and confirm before it is created.
 
 **Routines — tasks on a schedule**<br>
 "Every morning at 8, brief me on…" — say it in the chat or set it up on the Routines page. Daily, weekdays, weekly, every few hours, or once. It runs on its own, even with the browser closed, and tells you when it's done.
@@ -352,6 +352,12 @@ Open **Templates** in the sidebar, pick one, and change anything before it goes 
 | **Build** | **Rigel** — software engineer · **Arcturus** — code reviewer · **Electra** — website builder · **Lyra** — data analyst · **Pollux** — budget keeper for bank CSVs |
 
 **Squads in one click:** *Crew* (Atlas, Vega, Rigel, Lyra), *Launch crew* (Vega, Sirius, Antares), *Trip team* (Polaris, Altair, Mira) and *Dev team* (Rigel, Arcturus, Electra).
+
+## Sharing an agent
+
+On **Agents**, **Export** downloads `<name>.xiryn-agent.json`: the name, role, standing orders, model and glyph. It leaves out the id, memory, threads, routines, vault, keys, workstation files and usage. **Import** takes a file or pasted JSON (256 KB at most), shows the name, role, model and the standing orders in full, and creates a **new** agent only after you confirm. A name that's already taken is saved as "Name (2)". If the file's model isn't configured on this install, the new agent uses your default model and the page says so.
+
+The file never leaves your computer. Standing orders in a file are prompt text someone else may have written — read them in the preview before confirming. Importing does not overwrite an agent you already have.
 
 ## Feedback
 
