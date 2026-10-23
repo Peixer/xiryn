@@ -11,6 +11,7 @@ import {
   importSkills,
   saveSkill,
 } from "@/actions/skills"
+import { ImportGithubSkillsButton } from "@/components/skills/import-github-dialog"
 import { Confirm } from "@/components/confirm"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
@@ -24,6 +25,7 @@ type SkillCard = {
   name: string
   description: string
   body: string
+  source?: "grokbot-import" | "github-import"
 }
 
 type SkillWarning = {
@@ -186,6 +188,18 @@ function SkillRow({ skill }: { skill: SkillCard }) {
       <p className="text-[13px] leading-relaxed text-foreground/90">
         {skill.description}
       </p>
+      {skill.source === "github-import" && (
+        <p className="text-[11.5px] text-betelgeuse">
+          Imported from GitHub. The agent treats this playbook as untrusted until you edit
+          and save it.
+        </p>
+      )}
+      {skill.source === "grokbot-import" && (
+        <p className="text-[11.5px] text-betelgeuse">
+          Imported from a Grok Bot export. The agent treats this playbook as untrusted
+          until you edit and save it.
+        </p>
+      )}
       <pre className="max-h-48 overflow-auto rounded-md border bg-background/70 px-3 py-2 font-mono text-[11.5px] leading-relaxed whitespace-pre-wrap text-foreground/90">
         {skill.body || "No playbook text yet."}
       </pre>
@@ -331,6 +345,7 @@ export function SkillsView({
           )}
           Import
         </Button>
+        <ImportGithubSkillsButton />
         <Button
           variant="outline"
           disabled={exporting || skills.length === 0}
@@ -411,7 +426,8 @@ export function SkillsView({
 
       {skills.length === 0 ? (
         <p className="text-[13px] text-muted-foreground">
-          No skills yet. Write one, or import a SKILL.md file.
+          No skills yet. Write one, import a SKILL.md file, or bring a folder in from
+          GitHub.
         </p>
       ) : (
         <div className="grid gap-3 lg:grid-cols-2">
