@@ -68,7 +68,16 @@ jobs:
       # Boots the desktop and proves the tools agents rely on all work
       - name: Smoke test
         run: |
-          docker run -d --name ws -e XIRYN_VNC_PASSWORD=ci-check xiryn-workstation:ci
+          # Same confinement as a workstation Xiryn creates: no capabilities,
+          # no new privileges, a pid limit, and a memory cap (lib/docker.ts).
+          docker run -d --name ws \
+            --cap-drop ALL \
+            --security-opt no-new-privileges \
+            --pids-limit 512 \
+            --memory 4096m \
+            --shm-size 1g \
+            -e XIRYN_VNC_PASSWORD=ci-check \
+            xiryn-workstation:ci
           docker exec ws xiryn-ready
           docker exec ws xiryn-run 30 'node --version && npm --version && python --version && git --version && cloudflared --version'
           docker exec ws xdotool mousemove 10 10 click 1
@@ -78,5 +87,8 @@ jobs:
           docker stop --time 5 ws
           docker start ws
           docker exec ws xiryn-ready
-          # The browser's debugging port, which tells Xiryn which site a page is on
-          docker exec ws sh -c 'for i in $(seq 30); do curl -sf -o /dev/null http://127.0.0.1:9222/json/version && exit 0; sleep 1; done; exit 1'
+          # The page origin comes from xiryn-cdp's socket, which appears only
+          # after Chromium answers on the debugging pipe. TCP 9222 stays closed
+          # so a shell cannot read a filled password by curling a well-known port.
+          docker exec ws sh -c 'for i in $(seq 30); do out=$(xiryn-cdp pages 2>/dev/null) || { sleep 1; continue; }; printf "%s\n" "$out" | grep -q "\"pages\"" && exit 0; sleep 1; done; echo "xiryn-cdp did not answer" >&2; exit 1'
+          docker exec ws sh -c '! curl -sf --max-time 2 -o /dev/null http://127.0.0.1:9222/json/version'
