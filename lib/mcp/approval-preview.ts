@@ -11,6 +11,18 @@ const CARD_LIMIT = 3_000
 const SECRET_KEY =
   /token|password|passwd|secret|credential|(^|[_\-.])(api[_\-.]?)?keys?$/i
 
+// Our marker, and only ours. A payload that contains the same sentence must
+// not be parsed as a previous truncation or look like the card stopped.
+const MARKER_RE = /\n… truncated, (\d+) more chars$/
+const MARKER_PHRASE = "… truncated,"
+
+// Bidi controls reorder the card. The other characters here are invisible or
+// start a new line, so a value can look like a different recipient or field.
+const CONTROLS =
+  /[\u0000-\u0008\u000B\u000C\u000D\u000E-\u001F\u007F-\u009F\u00AD\u061C\u180E\u200B\u200E\u200F\u2028\u2029\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF]/g
+// Joiners are legitimate in a body (emoji, Arabic) and invisible in an address.
+const HEADER_INVISIBLE = /[\u200C\u200D]/g
+
 export function isSecretKey(name: string) {
   return SECRET_KEY.test(name)
 }
@@ -28,10 +40,38 @@ export function approvalHeadline(text: string) {
   return `${line.slice(0, 180)}… truncated, ${omitted} more chars`
 }
 
-function clip(text: string, limit: number) {
+function marker(omitted: number) {
+  return `\n… truncated, ${omitted} more chars`
+}
+
+// Shorten `text` to `limit` characters of content and append a marker.
+// A marker already at the end is carried forward, so a second cut cannot
+// replace "98000 more chars" with a few hundred and hide the rest.
+export function clip(text: string, limit: number) {
   if (text.length <= limit) return text
-  const omitted = text.length - limit
-  return `${text.slice(0, limit)}\n… truncated, ${omitted} more chars`
+  const existing = MARKER_RE.exec(text)
+  const prior = existing ? Number(existing[1]) : 0
+  const base = existing ? text.slice(0, existing.index) : text
+  const omitted = prior + Math.max(0, base.length - limit)
+  return `${base.slice(0, limit)}${marker(omitted)}`
+}
+
+function visible(text: string) {
+  return text.replaceAll(MARKER_PHRASE, "… \\truncated,").replace(CONTROLS, (char) => {
+    const code = char.codePointAt(0) ?? 0
+    return `‹U+${code.toString(16).toUpperCase().padStart(4, "0")}›`
+  })
+}
+
+// Header fields stay on one line. A newline inside To/Cc/Bcc/Subject would
+// otherwise draw a fake field, and a bidi override would reverse the address.
+function oneLine(text: string) {
+  return visible(text)
+    .replace(HEADER_INVISIBLE, (char) => {
+      const code = char.codePointAt(0) ?? 0
+      return `‹U+${code.toString(16).toUpperCase().padStart(4, "0")}›`
+    })
+    .replace(/[\n\t]/g, (char) => (char === "\n" ? "‹LF›" : "‹TAB›"))
 }
 
 function shown(text: string, limit: number) {
@@ -46,12 +86,18 @@ function capCard(text: string) {
   return clip(text, CARD_LIMIT)
 }
 
+function masked(value: unknown) {
+  const size =
+    typeof value === "string" ? value.length : (JSON.stringify(value)?.length ?? 0)
+  return `•••• (${size} chars)`
+}
+
 export function maskSecrets(value: unknown): unknown {
   if (Array.isArray(value)) return value.map((item) => maskSecrets(item))
   if (!value || typeof value !== "object") return value
   const out: Record<string, unknown> = {}
   for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
-    out[key] = isSecretKey(key) ? "••••" : maskSecrets(item)
+    out[key] = isSecretKey(key) ? masked(item) : maskSecrets(item)
   }
   return out
 }
@@ -213,12 +259,12 @@ export function calendarWriteBody(
 function gmailPreview(args: Record<string, unknown>) {
   return capCard(
     [
-      `To: ${shown(stringOf(args.to), FIELD_LIMIT)}`,
-      `Cc: ${shown(stringOf(args.cc), FIELD_LIMIT)}`,
-      `Bcc: ${shown(stringOf(args.bcc), FIELD_LIMIT)}`,
-      `Subject: ${shown(stringOf(args.subject), FIELD_LIMIT)}`,
+      `To: ${shown(oneLine(stringOf(args.to)), FIELD_LIMIT)}`,
+      `Cc: ${shown(oneLine(stringOf(args.cc)), FIELD_LIMIT)}`,
+      `Bcc: ${shown(oneLine(stringOf(args.bcc)), FIELD_LIMIT)}`,
+      `Subject: ${shown(oneLine(stringOf(args.subject)), FIELD_LIMIT)}`,
       "Body:",
-      shown(stringOf(args.body), APPROVAL_BODY_LIMIT),
+      shown(visible(stringOf(args.body)), APPROVAL_BODY_LIMIT),
     ].join("\n")
   )
 }
@@ -229,22 +275,29 @@ function calendarPreview(args: Record<string, unknown>) {
   const when = start && end ? `${start} – ${end}` : start || end
   const attendees = attendeeEmails(args.attendees)
   const lines = [
-    `Title: ${shown(stringOf(args.summary), FIELD_LIMIT)}`,
-    `When: ${shown(when, FIELD_LIMIT)}`,
-    `Attendees: ${shown(attendees.join(", "), FIELD_LIMIT)}`,
+    `Title: ${shown(oneLine(stringOf(args.summary)), FIELD_LIMIT)}`,
+    `When: ${shown(oneLine(when), FIELD_LIMIT)}`,
+    `Attendees: ${shown(oneLine(attendees.join(", ")), FIELD_LIMIT)}`,
   ]
   if (stringOf(args.location))
-    lines.push(`Location: ${shown(stringOf(args.location), FIELD_LIMIT)}`)
+    lines.push(`Location: ${shown(oneLine(stringOf(args.location)), FIELD_LIMIT)}`)
   if (stringOf(args.description)) {
-    lines.push("Description:", shown(stringOf(args.description), APPROVAL_BODY_LIMIT))
+    lines.push(
+      "Description:",
+      shown(visible(stringOf(args.description)), APPROVAL_BODY_LIMIT)
+    )
   }
-  if (stringOf(args.id)) lines.push(`Event: ${shown(stringOf(args.id), FIELD_LIMIT)}`)
+  if (stringOf(args.id)) {
+    lines.push(`Event: ${shown(oneLine(stringOf(args.id)), FIELD_LIMIT)}`)
+  }
   return capCard(lines.join("\n"))
 }
 
 function mcpPreview(tool: string, args: unknown) {
   const json = JSON.stringify(maskSecrets(args), null, 2) ?? "null"
-  return capCard(`Tool: ${tool}\nArguments:\n${clip(json, APPROVAL_BODY_LIMIT)}`)
+  return capCard(
+    `Tool: ${oneLine(tool)}\nArguments:\n${clip(visible(json), APPROVAL_BODY_LIMIT)}`
+  )
 }
 
 // Text shown on the approval card and in the Telegram approval message.

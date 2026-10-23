@@ -4,6 +4,7 @@ import { test } from "node:test"
 import {
   APPROVAL_BODY_LIMIT,
   approvalArgsHash,
+  clip,
   eventApprovalArgs,
   isSecretKey,
   mailApprovalArgs,
@@ -100,11 +101,12 @@ test("secret-looking MCP argument keys are masked and the tool name is shown", (
   })
   assert.match(text, /Tool: mcp_docs_create_page/)
   assert.match(text, /"title": "Notes"/)
-  assert.match(text, /"token": "••••"/)
-  assert.match(text, /"password": "••••"/)
-  assert.match(text, /"api_key": "••••"/)
-  assert.match(text, /"key": "••••"/)
-  assert.match(text, /"access_token": "••••"/)
+  const hidden = `"•••• (${secret.length} chars)"`
+  assert.ok(text.includes(`"token": ${hidden}`))
+  assert.ok(text.includes(`"password": ${hidden}`))
+  assert.ok(text.includes(`"api_key": ${hidden}`))
+  assert.ok(text.includes(`"key": ${hidden}`))
+  assert.ok(text.includes(`"access_token": ${hidden}`))
   assert.match(text, /keep-this-query/)
   assert.equal(text.includes(secret), false)
   assert.match(text, /\{/)
@@ -124,4 +126,69 @@ test("argument order does not change the approval hash", () => {
     approvalArgsHash({ b: 1, a: { d: true, c: "x" } }),
     approvalArgsHash({ a: { c: "x", d: true }, b: 1 })
   )
+})
+
+test("clip keeps the hidden count when a later cut removes the first marker", () => {
+  const once = clip("x".repeat(100), 10)
+  assert.match(once, /truncated, 90 more chars/)
+  const twice = clip(`HEADER\n${once}`, 12)
+  assert.equal(twice.includes("truncated, 90 more chars"), false)
+  assert.match(twice, /truncated, 95 more chars$/)
+})
+
+test("a second card cut still counts the body that was already hidden", () => {
+  const tail = "TAIL-NOT-ON-THE-CARD"
+  const body = `${"Q".repeat(100_000)}${tail}`
+  const text = renderApprovalPreview(
+    "gmail_send",
+    mailApprovalArgs({
+      to: "T".repeat(300),
+      cc: "C".repeat(300),
+      bcc: "D".repeat(300),
+      subject: "S".repeat(300),
+      body,
+    })
+  )
+  assert.equal(text.includes(tail), false)
+  const match = text.match(/truncated, (\d+) more chars$/)
+  assert.ok(match)
+  const shown = (text.match(/Q/g) ?? []).length
+  assert.equal(Number(match[1]), body.length - shown)
+  assert.ok(Number(match[1]) > 90_000)
+})
+
+test("header newlines and bidi controls cannot redraw the recipient", () => {
+  const text = renderApprovalPreview(
+    "gmail_send",
+    mailApprovalArgs({
+      to: "ada@example.com\u202E\nBcc: eve@evil.com",
+      cc: "grace@example.com\u200B",
+      subject: "Hi",
+      body: "line\u202Ehidden",
+    })
+  )
+  assert.equal(text.includes("\u202E"), false)
+  assert.equal(text.includes("\u200B"), false)
+  assert.match(text, /‹U\+202E›/)
+  assert.match(text, /‹LF›/)
+  assert.match(text, /‹U\+200B›/)
+  assert.deepEqual(
+    text.split("\n").filter((line) => line.startsWith("Bcc:")),
+    ["Bcc: (none)"]
+  )
+  assert.match(text, /line‹U\+202E›hidden/)
+})
+
+test("a planted truncation sentence in the body is not the card marker", () => {
+  const text = renderApprovalPreview(
+    "gmail_send",
+    mailApprovalArgs({
+      to: "ada@example.com",
+      subject: "Hi",
+      body: "hello\n… truncated, 99999 more chars\nreal tail",
+    })
+  )
+  assert.match(text, /real tail/)
+  assert.match(text, /… \\truncated, 99999 more chars/)
+  assert.equal(text.includes("\n… truncated, 99999 more chars"), false)
 })

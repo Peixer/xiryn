@@ -21,6 +21,7 @@ import {
   getActionApproval,
   type ActionApproval,
 } from "@/lib/mcp/approval"
+import { clip } from "@/lib/mcp/approval-preview"
 import { answerPayment, answerSecret, type VaultMarker } from "@/lib/vault-requests"
 import { getTakeoverLink } from "@/lib/workstation"
 import { resolveModelSpec } from "@/lib/providers/registry"
@@ -321,12 +322,10 @@ const escape = (text: string) =>
   text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
 
 // Telegram rejects messages past 4096 characters. Escaping can grow the
-// text, so cut it here with the same visible marker the card uses.
+// text, so cut it here. clip() keeps a count that an earlier cut already
+// reported, instead of replacing it with the length of this slice.
 function fitTelegram(text: string) {
-  const limit = 3_200
-  if (text.length <= limit) return text
-  const omitted = text.length - limit
-  return `${text.slice(0, limit)}\n… truncated, ${omitted} more chars`
+  return clip(text, 3_200)
 }
 
 /* ─────────────────────────── handling ─────────────────────────── */
