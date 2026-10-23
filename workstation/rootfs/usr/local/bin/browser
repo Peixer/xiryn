@@ -2,20 +2,33 @@
 # browser [url]: opens Chromium on the desktop without tying up the shell.
 # The first window is started by xiryn-cdp, which keeps remote debugging on a
 # pipe. A later call with a URL opens a tab in that window.
+#
+# A stopped machine keeps /tmp. The socket file is still a socket after the
+# broker was killed, so a connection is what tells a live broker from that
+# leftover. The leftover is removed and the broker started again; otherwise
+# Chromium never comes back and a login fill cannot see the page.
+SOCK="${XIRYN_CDP_SOCK:-/tmp/xiryn/cdp.sock}"
+
 setsid_chromium() {
   setsid -f chromium "$@" >/dev/null 2>&1 </dev/null
 }
 
-if [ ! -S /tmp/xiryn/cdp.sock ]; then
-  mkdir -p /tmp/xiryn
-  setsid -f xiryn-cdp >>/tmp/xiryn/cdp.log 2>&1 </dev/null || true
+broker_up() {
+  [ -S "$SOCK" ] || return 1
+  xiryn-cdp ping >/dev/null 2>&1
+}
+
+if ! broker_up; then
+  rm -f "$SOCK"
+  mkdir -p "$(dirname "$SOCK")"
+  setsid -f xiryn-cdp >>"$(dirname "$SOCK")/cdp.log" 2>&1 </dev/null || true
   for _ in $(seq 50); do
-    [ -S /tmp/xiryn/cdp.sock ] && break
+    broker_up && break
     sleep 0.1
   done
 fi
 
-if [ ! -S /tmp/xiryn/cdp.sock ] && [ "$#" -eq 0 ]; then
+if ! broker_up && [ "$#" -eq 0 ]; then
   # The broker did not come up. Still open a window, with no debugging port,
   # so the desktop works. A login fill then refuses: the page origin is unknown.
   setsid_chromium
