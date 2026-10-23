@@ -308,6 +308,8 @@ git pull
 docker compose up -d --build
 ```
 
+The app container runs as `node` and uses `DOCKER_HOST` to reach a socket proxy. It does not mount `/var/run/docker.sock`. A data volume left from a previous root container has to be `chown`ed to uid 1000 once, or the database will not open.
+
 </details>
 
 Your data — `data/xiryn.db`, the vault and the agents' home folders — is untouched by updates.
