@@ -21,6 +21,8 @@ const integrationSettings = {
   "agent.maxSteps": { env: "XIRYN_MAX_STEPS", fallback: "40" },
   // US dollars a month; once reached, turns on paid models wait for next month
   "usage.monthlyBudget": { env: "XIRYN_MONTHLY_BUDGET" },
+  // JSON: optional USD monthly limit per agent id. Written from the Usage page.
+  "usage.agentBudgets": { env: null, internal: true },
   // Operating-system notifications when no Xiryn tab is open: "on" or "off"
   "notify.desktop": { env: "XIRYN_DESKTOP_NOTIFY", fallback: "on" },
   // JSON: prices the person set for models Xiryn doesn't know, by model spec
