@@ -71,6 +71,8 @@ const integrationSettings = {
   // "off" hides that connector's tools. Default on, once Google is connected.
   "connectors.gmail": { env: "XIRYN_GMAIL", fallback: "on" },
   "connectors.calendar": { env: "XIRYN_CALENDAR", fallback: "on" },
+  // Bearer token for POST /api/hooks/routines/<id>. Unset, that route is 404.
+  "hooks.token": { env: "XIRYN_HOOKS_TOKEN", secret: true },
 } satisfies Record<string, SettingDef>
 
 // Bedrock does not use one API key. These sit beside the generic apiKey/baseUrl

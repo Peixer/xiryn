@@ -339,6 +339,7 @@ Tasks your agents do on their own, on a schedule — while you sleep, with the b
 - **Or set it up** on the **Routines** page: who does it, what to do each time, and when — every day, weekdays, one day a week, every few hours, or just once. Start from ideas like a morning news brief, job alerts, a price watch, a weekly research digest or a plan for the week.
 - **Results come to you.** Each routine has its own thread. When a run finishes you get an in-app notification, a desktop notification when no tab is open, and a Telegram message if it's paired — reply there to follow up.
 - **Runs on your computer.** Times are your computer's local time, and Xiryn has to be running: `npm run background -- login` keeps it that way. A run missed while the computer slept still happens if it's back within a few hours.
+- **Start one from outside.** Set `XIRYN_HOOKS_TOKEN`, then `POST /api/hooks/routines/<id>` with `Authorization: Bearer <token>` or the `X-Xiryn-Token` header. The JSON or text body (64 KB at most) is passed to the agent as data, not as instructions, and anything it writes still waits for your approval. The path is shown on each routine. Until the token is set, that URL answers 404. Behind a public hostname, add it to `XIRYN_ALLOWED_HOSTS`.
 
 ## Ready-made agents
 
