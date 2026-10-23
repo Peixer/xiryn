@@ -53,7 +53,8 @@ export function nextRun(schedule: RoutineSchedule, from = new Date()): Date | nu
   return new Date(from.getTime() + 86_400_000)
 }
 
-export function describeSchedule(schedule: RoutineSchedule) {
+export function describeSchedule(schedule: RoutineSchedule | null) {
+  if (!schedule) return "No schedule"
   switch (schedule.kind) {
     case "daily":
       return `Every day at ${schedule.time}`

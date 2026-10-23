@@ -45,6 +45,7 @@ export function ConnectorsPanel({
   const router = useRouter()
   const [text, setText] = React.useState(connectors.mcpText)
   const [allowed, setAllowed] = React.useState(connectors.allowedCommands.value ?? "")
+  const [importHosts, setImportHosts] = React.useState(connectors.importHosts.value ?? "")
   const [pending, setPending] = React.useState<string | null>(null)
   const [review, setReview] = React.useState<StdioReview | null>(null)
   const [clientId, setClientId] = React.useState("")
@@ -63,6 +64,25 @@ export function ConnectorsPanel({
       setClientId("")
       setClientSecret("")
       toast.add({ type: "success", title: "Google app saved" })
+      router.refresh()
+    } catch (error) {
+      toast.add({
+        type: "error",
+        title: "Couldn't save",
+        description: error instanceof Error ? error.message : String(error),
+      })
+    } finally {
+      setPending(null)
+    }
+  }
+
+  const saveImportHosts = async () => {
+    setPending("hosts")
+    try {
+      await saveSettings({
+        "grokbot.importHosts": importHosts.trim() ? importHosts.trim() : null,
+      })
+      toast.add({ type: "success", title: "Import hosts saved" })
       router.refresh()
     } catch (error) {
       toast.add({
@@ -305,7 +325,26 @@ export function ConnectorsPanel({
             className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 font-mono text-[12px] outline-none placeholder:text-faint focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/40"
           />
         </label>
-        <div>
+        <label className="flex flex-col gap-1.5">
+          <span className="label-mono">
+            Grok Bot import hosts · XIRYN_GROKBOT_IMPORT_HOSTS
+          </span>
+          <textarea
+            value={importHosts}
+            onChange={(event) => setImportHosts(event.target.value)}
+            placeholder="empty = any public https host"
+            spellCheck={false}
+            rows={3}
+            className="w-full rounded-lg border border-input bg-transparent px-3 py-2 font-mono text-[12px] leading-relaxed outline-none placeholder:text-faint focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/40"
+          />
+          <span className="text-[12px] leading-relaxed text-muted-foreground">
+            Hostnames allowed when importing a Grok Bot from a share link. One per line. A
+            listed host does not include its subdomains. Leave this empty to allow any
+            public https host. Private and link-local addresses are never fetched. The
+            preview shows the host before anything is saved.
+          </span>
+        </label>
+        <div className="flex flex-wrap gap-2">
           <Button
             size="sm"
             variant="outline"
@@ -314,6 +353,15 @@ export function ConnectorsPanel({
           >
             {pending === "allow" && <Spinner data-icon="inline-start" />}
             Save extra programs
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={pending === "hosts"}
+            onClick={saveImportHosts}
+          >
+            {pending === "hosts" && <Spinner data-icon="inline-start" />}
+            Save import hosts
           </Button>
         </div>
         {connectors.servers.length > 0 && (

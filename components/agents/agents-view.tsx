@@ -23,6 +23,7 @@ import {
 } from "@/actions/workstation"
 import { reportDeletion } from "@/components/agents/delete-feedback"
 import { ImportAgentButton } from "@/components/agents/import-agent-dialog"
+import { ImportGrokbotButton } from "@/components/agents/import-grokbot-dialog"
 import { Confirm } from "@/components/confirm"
 import { Glyph } from "@/components/glyph"
 import { Button } from "@/components/ui/button"
@@ -391,6 +392,7 @@ export function AgentsView({ agents }: { agents: AgentOverview[] }) {
             Create your first agent
           </Button>
           <ImportAgentButton takenNames={[]} />
+          <ImportGrokbotButton />
         </span>
       </div>
     )
@@ -404,6 +406,7 @@ export function AgentsView({ agents }: { agents: AgentOverview[] }) {
           New agent
         </Button>
         <ImportAgentButton takenNames={agents.map((agent) => agent.name)} />
+        <ImportGrokbotButton />
         <Button
           size="sm"
           variant="ghost"

@@ -161,7 +161,9 @@ export const routines = sqliteTable(
     agentId: text().references(() => agents.id, { onDelete: "cascade" }),
     squadId: text().references(() => squads.id, { onDelete: "cascade" }),
     prompt: text().notNull(),
-    schedule: text({ mode: "json" }).notNull().$type<RoutineSchedule>(),
+    // Null when a routine was imported without a schedule Xiryn can run.
+    // It stays off until someone edits it and sets one.
+    schedule: text({ mode: "json" }).$type<RoutineSchedule | null>(),
     enabled: integer({ mode: "boolean" }).notNull().default(true),
     threadId: text().references(() => threads.id, { onDelete: "set null" }),
     nextRunAt: integer({ mode: "timestamp_ms" }),
