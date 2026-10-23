@@ -32,7 +32,7 @@ export function AppThreadHeader({
 }) {
   const status = !online ? "Offline" : busy ? "Working" : subtitle
   return (
-    <header className="xiryn-only-app z-20 shrink-0 items-center gap-1 bg-background/90 px-2 pt-[env(safe-area-inset-top)] backdrop-blur-xl">
+    <header className="xiryn-only-app relative z-50 shrink-0 items-center gap-1 bg-background/90 px-2 pt-[env(safe-area-inset-top)] backdrop-blur-xl">
       <Link
         href="/"
         aria-label="Back to chats"

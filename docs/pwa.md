@@ -7,8 +7,9 @@ without the browser's address bar.
 On a phone-sized window, and whenever the site is installed
 (`display-mode: standalone`, fullscreen, or minimal-ui), Xiryn uses an app
 shell: a chat list, a full-screen conversation, and a bottom tab bar (Chat,
-Agents, Routines, Settings). The desktop workbench is unchanged in a wide
-browser window.
+Agents, Routines, Settings). Below 1100px the workstation does not sit beside
+the thread; the workbench button opens it over the conversation. The
+side-by-side workbench is unchanged in a wider browser window.
 
 ## Offline
 

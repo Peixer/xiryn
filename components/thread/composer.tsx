@@ -325,14 +325,14 @@ export function Composer({
           disabled={disabled || sending}
           className="block [field-sizing:content] max-h-64 min-h-[52px] w-full resize-none bg-transparent px-4 pt-3.5 pb-1 text-base leading-relaxed outline-none placeholder:text-faint disabled:opacity-50 md:text-[14px]"
         />
-        <div className="xiryn-composer-actions flex items-center gap-2 px-2.5 pt-1 pb-2.5">
+        <div className="xiryn-composer-actions flex min-w-0 items-center gap-1.5 px-2 pt-1 pb-2 sm:gap-2 sm:px-2.5 sm:pb-2.5">
           <button
             type="button"
             onClick={() => fileRef.current?.click()}
             aria-label="Attach files"
             title="Attach files"
             disabled={disabled || sending}
-            className="grid size-8 place-items-center rounded-lg border bg-background text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-30"
+            className="grid size-8 shrink-0 place-items-center rounded-lg border bg-background text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-30"
           >
             <PaperclipIcon className="size-4" />
           </button>
@@ -353,7 +353,7 @@ export function Composer({
             onClick={() => cameraRef.current?.click()}
             aria-label="Take a photo"
             disabled={disabled || sending || busy}
-            className="xiryn-camera grid size-11 place-items-center rounded-lg border bg-background text-muted-foreground active:bg-accent disabled:opacity-30"
+            className="xiryn-camera grid size-11 shrink-0 place-items-center rounded-lg border bg-background text-muted-foreground active:bg-accent disabled:opacity-30"
           >
             <CameraIcon className="size-5" />
           </button>
@@ -372,10 +372,10 @@ export function Composer({
           />
           {members && addressee && onAddresseeChange ? (
             <DropdownMenu>
-              <DropdownMenuTrigger className="flex h-7 items-center gap-1.5 rounded-md border bg-background/50 px-2 text-[12px] hover:bg-accent">
+              <DropdownMenuTrigger className="flex h-7 max-w-36 min-w-0 shrink items-center gap-1.5 rounded-md border bg-background/50 px-2 text-[12px] hover:bg-accent">
                 <span className="font-mono text-[10.5px] text-muted-foreground">to</span>
-                <Glyph seed={addressee.glyph} className="size-4 rounded-[4px]" />
-                {addressee.name}
+                <Glyph seed={addressee.glyph} className="size-4 shrink-0 rounded-[4px]" />
+                <span className="truncate">{addressee.name}</span>
                 <ChevronDownIcon className="size-3 text-muted-foreground" />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="w-56">
@@ -399,7 +399,7 @@ export function Composer({
           {modelSpec && (
             <ModelSpecLabel
               spec={modelSpec}
-              className="max-w-56 px-1 text-[11px] text-muted-foreground"
+              className="hidden max-w-56 min-w-0 overflow-hidden px-1 text-[11px] text-muted-foreground sm:inline-flex"
             />
           )}
           {listening ? (
@@ -424,7 +424,7 @@ export function Composer({
               title={listening ? "Stop voice typing" : "Speak your message"}
               disabled={disabled || sending}
               className={cn(
-                "relative grid size-8 place-items-center rounded-lg border transition-colors disabled:opacity-30",
+                "relative grid size-8 shrink-0 place-items-center rounded-lg border transition-colors disabled:opacity-30",
                 listening
                   ? "border-destructive/40 bg-destructive/10 text-destructive"
                   : "bg-background text-muted-foreground hover:bg-accent hover:text-foreground"
@@ -441,7 +441,7 @@ export function Composer({
               type="button"
               onClick={onStop}
               aria-label="Stop the agent"
-              className="grid size-8 place-items-center rounded-lg border bg-background text-foreground transition-colors hover:bg-accent"
+              className="grid size-8 shrink-0 place-items-center rounded-lg border bg-background text-foreground transition-colors hover:bg-accent"
             >
               <SquareIcon className="size-3 fill-current" />
             </button>
@@ -450,7 +450,7 @@ export function Composer({
               type="submit"
               aria-label="Send"
               disabled={!canSend}
-              className="grid size-8 place-items-center rounded-lg bg-primary text-primary-foreground transition-opacity disabled:opacity-30"
+              className="grid size-8 shrink-0 place-items-center rounded-lg bg-primary text-primary-foreground transition-opacity disabled:opacity-30"
             >
               <ArrowUpIcon className="size-4" />
             </button>

@@ -215,25 +215,25 @@ function UserMessage({
       provided: "you added to the vault",
     }[vault.action]
     return (
-      <div className="flex w-full items-center gap-3">
-        <span className="h-px flex-1 bg-ok/25" />
+      <div className="flex w-full min-w-0 items-center gap-3">
+        <span className="h-px min-w-4 flex-1 bg-ok/25" />
         <span
           className={cn(
-            "flex items-center gap-1.5 font-mono text-[11px]",
+            "flex max-w-[min(100%,36rem)] min-w-0 items-center gap-1.5 text-center font-mono text-[11px] [overflow-wrap:anywhere]",
             vault.action === "declined" ? "text-muted-foreground" : "text-ok"
           )}
         >
-          <ShieldCheckIcon className="size-3.5" />
+          <ShieldCheckIcon className="size-3.5 shrink-0" />
           {said} · {vault.summary}
         </span>
-        <span className="h-px flex-1 bg-ok/25" />
+        <span className="h-px min-w-4 flex-1 bg-ok/25" />
       </div>
     )
   }
 
   return (
-    <div className="flex justify-end">
-      <div className="flex max-w-[85%] flex-col items-end gap-1">
+    <div className="flex min-w-0 justify-end">
+      <div className="flex w-fit max-w-[min(85%,36rem)] min-w-0 flex-col items-end gap-1">
         {(addressee ||
           message.metadata?.via === "telegram" ||
           message.metadata?.routine) && (
@@ -263,7 +263,7 @@ function UserMessage({
               const href = `/api/uploads/${encodeURIComponent(file.agentId)}/${encodeURIComponent(file.storedName)}`
               const image = isImageMedia(file.mediaType)
               return (
-                <li key={file.storedName}>
+                <li key={file.storedName} className="max-w-full min-w-0">
                   <a
                     href={href}
                     download={file.name}
@@ -293,7 +293,7 @@ function UserMessage({
           </ul>
         )}
         {text.trim() ? (
-          <div className="xiryn-user-bubble rounded-xl rounded-br-sm border bg-elevated px-3.5 py-2 text-[14px] leading-relaxed whitespace-pre-wrap">
+          <div className="xiryn-user-bubble max-w-full rounded-xl rounded-br-sm border bg-elevated px-3.5 py-2 text-[14px] leading-relaxed [overflow-wrap:anywhere] whitespace-pre-wrap">
             {text}
           </div>
         ) : null}
@@ -321,7 +321,7 @@ function AgentMessage({
     parts.every((segment) => segment.parts.every((p) => p.type === "step-start"))
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex min-w-0 flex-col gap-4">
       {parts.map((segment, i) => (
         <div key={i} className="flex flex-col gap-2.5">
           {segment.via && (
@@ -338,7 +338,7 @@ function AgentMessage({
               {segment.author.role}
             </span>
           </div>
-          <div className="pl-[30px]">
+          <div className="min-w-0 pl-[30px]">
             {working && i === 0 ? (
               <span className="shimmer-text font-mono text-[12px]">working…</span>
             ) : (
@@ -403,8 +403,11 @@ export function Transcript({
   const last = messages[messages.length - 1]
 
   return (
-    <StickToBottom className="relative min-h-0 flex-1" resize="smooth" initial="instant">
-      <StickToBottom.Content className="mx-auto flex w-full max-w-3xl flex-col gap-7 px-4 py-8 sm:px-6">
+    <StickToBottom className="relative min-h-0 flex-1" resize="instant" initial="instant">
+      <StickToBottom.Content
+        scrollClassName="xiryn-transcript-scroll"
+        className="mx-auto flex w-full max-w-3xl min-w-0 flex-col gap-7 px-4 py-8 sm:px-6"
+      >
         {messages.length === 0 && empty}
         {messages.map((message) =>
           message.role === "user" ? (
