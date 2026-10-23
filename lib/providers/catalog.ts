@@ -193,3 +193,94 @@ export function parseModelSpec(spec: string) {
 export function formatModelSpec(provider: ProviderId, model: string) {
   return `${provider}/${model}`
 }
+
+// Image parts are only sent when the model is known to accept them. Unknown
+// providers and models stay false: a path note is enough, and a vision part
+// on a text model fails the turn.
+//
+// Allowed: OpenAI GPT-4o, GPT-4.1, GPT-4 Turbo, GPT-5, GPT-6, o1/o3/o4
+// (not o1-mini) and ChatGPT-4o; Anthropic Claude 3 and later; Google Gemini
+// chat models; xAI Grok 4 and Grok vision models; Mistral Pixtral; the same
+// ids via OpenRouter; Bedrock Claude 3+ and Amazon Nova Pro, Lite and Premier.
+export function supportsImageInput(spec: string | null | undefined) {
+  const parsed = spec ? parseModelSpec(spec) : null
+  if (!parsed) return false
+  return providerAcceptsImages(parsed.provider, parsed.model)
+}
+
+function providerAcceptsImages(provider: ProviderId, model: string) {
+  switch (provider) {
+    case "openai":
+      return openaiVision(model)
+    case "anthropic":
+      return anthropicVision(model)
+    case "google":
+      return googleVision(model)
+    case "xai":
+      return xaiVision(model)
+    case "mistral":
+      return mistralVision(model)
+    case "openrouter":
+      return openRouterVision(model)
+    case "bedrock":
+      return bedrockVision(model)
+    default:
+      return false
+  }
+}
+
+function openaiVision(model: string) {
+  const id = model.toLowerCase()
+  if (/(embed|whisper|tts|transcri|dall-e|realtime|moderation|sora|audio)/.test(id)) {
+    return false
+  }
+  if (id.startsWith("gpt-3.5")) return false
+  if (id.startsWith("o1-mini")) return false
+  if (id.startsWith("gpt-4o") || id.startsWith("chatgpt-4o")) return true
+  if (id.startsWith("gpt-4.1") || id.startsWith("gpt-4-turbo")) return true
+  if (id.startsWith("gpt-5") || id.startsWith("gpt-6")) return true
+  return /^o[134](?:-|$)/.test(id)
+}
+
+function anthropicVision(model: string) {
+  const id = model.toLowerCase()
+  if (id.startsWith("claude-instant") || id.startsWith("claude-2")) return false
+  if (id.startsWith("claude-3")) return true
+  return /^claude-(opus|sonnet|haiku)-/.test(id)
+}
+
+function googleVision(model: string) {
+  const id = model.toLowerCase()
+  if (!id.startsWith("gemini")) return false
+  return !/(embed|imagen|veo|tts|aqa)/.test(id)
+}
+
+function xaiVision(model: string) {
+  const id = model.toLowerCase()
+  if (id.includes("vision")) return true
+  return id.startsWith("grok-4")
+}
+
+function mistralVision(model: string) {
+  return model.toLowerCase().startsWith("pixtral")
+}
+
+function openRouterVision(model: string) {
+  const slash = model.indexOf("/")
+  if (slash <= 0) return false
+  const vendor = model.slice(0, slash).toLowerCase()
+  const id = model.slice(slash + 1)
+  if (vendor === "openai") return openaiVision(id)
+  if (vendor === "anthropic") return anthropicVision(id)
+  if (vendor === "google") return googleVision(id)
+  if (vendor === "xai" || vendor === "x-ai") return xaiVision(id)
+  if (vendor === "mistral" || vendor === "mistralai") return mistralVision(id)
+  return false
+}
+
+function bedrockVision(model: string) {
+  const id = model.toLowerCase()
+  if (id.includes("nova-micro")) return false
+  if (/anthropic\.claude-(3|opus|sonnet|haiku)/.test(id)) return true
+  return /amazon\.nova-(pro|lite|premier)/.test(id)
+}

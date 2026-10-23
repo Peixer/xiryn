@@ -102,10 +102,13 @@ $env:XIRYN_LOCAL="1"; irm https://raw.githubusercontent.com/SouravBeraAkaSpeed/x
 <td width="50%" valign="top">
 
 **Agents with a job**<br>
-Name, role, standing orders, and a model of their own. Start from [16 ready-made agents and 4 squads](#ready-made-agents) or write your own.
+Name, role, standing orders, and a model of their own. Start from [16 ready-made agents and 4 squads](#ready-made-agents) or write your own. [Export one as a JSON file](#sharing-an-agent) and import it on another install — you read the prompt and confirm before it is created.
 
 **Routines — tasks on a schedule**<br>
 "Every morning at 8, brief me on…" — say it in the chat or set it up on the Routines page. Daily, weekdays, weekly, every few hours, or once. It runs on its own, even with the browser closed, and tells you when it's done.
+
+**Skills — playbooks on demand**<br>
+How you want invoices filed, a brief shaped, a checklist followed. Saved as files on the Skills page. The agent sees the name and description, then reads the full text when the task needs it. A skill is instructions you can read first; it is not a script Xiryn runs.
 
 **A workstation per agent**<br>
 A Docker container with a shell, a persistent home folder and a 1280×800 desktop with Chromium — created on first use, stopped when idle, never touching your own files.
@@ -117,7 +120,7 @@ Watch the agent click and type in real time. Hit **Take over** and it pauses; ha
 <td width="50%" valign="top">
 
 **Long-term memory**<br>
-Agents save what matters about you and your work; every thread sees it. Inspect, add or delete notes any time.
+Agents save what matters about you and your work; every thread sees it. Inspect, add or delete notes any time. Shared notes, which only you can add, edit or delete, are loaded into every agent. Older notes past the prompt budget stay searchable.
 
 **Web research**<br>
 Search and clean page reading through Firecrawl, with cited sources.
@@ -339,6 +342,15 @@ Tasks your agents do on their own, on a schedule — while you sleep, with the b
 - **Or set it up** on the **Routines** page: who does it, what to do each time, and when — every day, weekdays, one day a week, every few hours, or just once. Start from ideas like a morning news brief, job alerts, a price watch, a weekly research digest or a plan for the week.
 - **Results come to you.** Each routine has its own thread. When a run finishes you get an in-app notification, a desktop notification when no tab is open, and a Telegram message if it's paired — reply there to follow up.
 - **Runs on your computer.** Times are your computer's local time, and Xiryn has to be running: `npm run background -- login` keeps it that way. A run missed while the computer slept still happens if it's back within a few hours.
+- **Start one from outside.** Set `XIRYN_HOOKS_TOKEN`, then `POST /api/hooks/routines/<id>` with `Authorization: Bearer <token>` or the `X-Xiryn-Token` header. The JSON or text body (64 KB at most) is passed to the agent as data, not as instructions, and anything it writes still waits for your approval. The path is shown on each routine. Until the token is set, that URL answers 404. Behind a public hostname, add it to `XIRYN_ALLOWED_HOSTS`.
+
+## Skills
+
+Playbooks you want an agent to follow the same way every time — how invoices get filed, how a weekly brief is shaped.
+
+- **On the Skills page.** Create, edit, delete, import and export them. Each one is a `SKILL.md` file in `data/skills` on this computer.
+- **The agent reads them.** The next message sees a short catalog (the name and description, up to 40). It loads the full text with `skill_read` when the task needs it. It cannot create or change skills.
+- **They are instructions, not programs.** A skill is prompt text. Read it on the Skills page before you rely on it. Xiryn does not run a script because a skill mentions one.
 
 ## Ready-made agents
 
@@ -352,6 +364,12 @@ Open **Templates** in the sidebar, pick one, and change anything before it goes 
 | **Build** | **Rigel** — software engineer · **Arcturus** — code reviewer · **Electra** — website builder · **Lyra** — data analyst · **Pollux** — budget keeper for bank CSVs |
 
 **Squads in one click:** *Crew* (Atlas, Vega, Rigel, Lyra), *Launch crew* (Vega, Sirius, Antares), *Trip team* (Polaris, Altair, Mira) and *Dev team* (Rigel, Arcturus, Electra).
+
+## Sharing an agent
+
+On **Agents**, **Export** downloads `<name>.xiryn-agent.json`: the name, role, standing orders, model and glyph. It leaves out the id, memory, threads, routines, vault, keys, workstation files and usage. **Import** takes a file or pasted JSON (256 KB at most), shows the name, role, model and the standing orders in full, and creates a **new** agent only after you confirm. A name that's already taken is saved as "Name (2)". If the file's model isn't configured on this install, the new agent uses your default model and the page says so.
+
+The file never leaves your computer. Standing orders in a file are prompt text someone else may have written — read them in the preview before confirming. Importing does not overwrite an agent you already have.
 
 ## Feedback
 
@@ -416,6 +434,7 @@ Every setting can come from `.env` **or** from **Settings** in the app. Values s
 | `XIRYN_DESKTOP_PROXY_PORT`, `XIRYN_DESKTOP_PROXY` | Loopback websocket proxy for desktops behind Caddy |
 | `XIRYN_UPDATE_CHECK` | `off` stops the update check and star count |
 | `XIRYN_DESKTOP_NOTIFY` | `off` stops operating-system notifications when no Xiryn tab is open |
+| `XIRYN_NOTIFY_WEBHOOK_URL`, `XIRYN_NOTIFY_WEBHOOK_FORMAT`, `XIRYN_NOTIFY_WEBHOOK_TRIGGERS`, `XIRYN_NOTIFY_WEBHOOK_PREVIEW` | POST a short notice when a task finishes or needs you. Format is `ntfy`, `slack`, or `json`. Preview is off unless set to `on`, and then capped at 140 characters. The URL is http(s) only and is never logged |
 
 ## Security & privacy
 
@@ -423,6 +442,7 @@ Xiryn has no user accounts, so it's built never to be reachable by anyone but yo
 
 - Binds to **127.0.0.1** only, and refuses any request whose `Host` isn't loopback — which also blocks DNS-rebinding attacks from web pages you visit. State-changing requests must also send an `Origin` for that same host and port. Exposed servers still rely on Caddy basic auth (or a similar proxy); Xiryn has no in-app accounts.
 - API keys never reach the browser; the UI only sees masked values, and keys are kept out of logs.
+- A notification webhook, if you set one, receives a short message when a task finishes or needs you. The URL is masked in Settings and is never logged. A reply preview is sent only when you turn that on, and then only the first 140 characters.
 - Telegram answers exactly **one** paired account; pairing codes are single-use and rotate after wrong guesses.
 - Agents execute only inside their own containers — never on your desktop or in your files. Their browsers have password saving and card autofill switched off. MCP stdio servers are the exception: they run on the Xiryn host, only for an allowlisted launcher you confirmed while saving `data/mcp.json`.
 - Sending mail or changing a calendar waits for your approval, the same way a payment does.
@@ -445,6 +465,9 @@ Hover it under **Recent threads** in the sidebar and click the trash icon, or op
 
 **Where is my data?**
 In `data/xiryn.db` on your disk. Back it up by copying the file; erase everything by deleting it.
+
+**Can I attach a file?**
+Yes. Use the paperclip on the composer, drop files onto it, or paste an image. Up to 10 files per message, 25 MB each. They are stored in that agent's workstation at `~/uploads` (inside its container, not on your desktop). The agent is told the path and can read the file. Images are shown to the model only when that model is known to accept image input; otherwise it gets the path.
 
 **Does it work without Docker or Firecrawl?**
 Without Docker, agents chat, remember and (with Firecrawl) research, but can't run code or use a desktop. Without Firecrawl, they search and read the web with their own browser. The app tells you what's missing.

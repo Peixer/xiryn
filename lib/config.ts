@@ -21,8 +21,20 @@ const integrationSettings = {
   "agent.maxSteps": { env: "XIRYN_MAX_STEPS", fallback: "40" },
   // US dollars a month; once reached, turns on paid models wait for next month
   "usage.monthlyBudget": { env: "XIRYN_MONTHLY_BUDGET" },
+  // JSON: optional USD monthly limit per agent id. Written from the Usage page.
+  "usage.agentBudgets": { env: null, internal: true },
   // Operating-system notifications when no Xiryn tab is open: "on" or "off"
   "notify.desktop": { env: "XIRYN_DESKTOP_NOTIFY", fallback: "on" },
+  // POST a short notice when a task finishes or needs you. The URL is a secret.
+  // Format: ntfy, slack, or json. Triggers: finished, failed, approval,
+  // takeover, secret — or "none". Preview text is off unless set to "on".
+  "notify.webhookUrl": { env: "XIRYN_NOTIFY_WEBHOOK_URL", secret: true },
+  "notify.webhookFormat": { env: "XIRYN_NOTIFY_WEBHOOK_FORMAT", fallback: "json" },
+  "notify.webhookTriggers": {
+    env: "XIRYN_NOTIFY_WEBHOOK_TRIGGERS",
+    fallback: "finished,failed,approval,takeover,secret",
+  },
+  "notify.webhookPreview": { env: "XIRYN_NOTIFY_WEBHOOK_PREVIEW", fallback: "off" },
   // JSON: prices the person set for models Xiryn doesn't know, by model spec
   "pricing.custom": { env: null, internal: true },
   // Limits for each agent's workstation container
@@ -62,6 +74,8 @@ const integrationSettings = {
   // Extra program names allowed to launch MCP stdio servers, comma-separated.
   // npx, uvx, node, python3, python, docker and bunx are always allowed.
   "mcp.allowedCommands": { env: "XIRYN_MCP_ALLOWED_COMMANDS" },
+  // Bearer token for POST /api/hooks/routines/<id>. Unset, that route is 404.
+  "hooks.token": { env: "XIRYN_HOOKS_TOKEN", secret: true },
 } satisfies Record<string, SettingDef>
 
 // Bedrock does not use one API key. These sit beside the generic apiKey/baseUrl

@@ -5,6 +5,12 @@ import { revalidatePath } from "next/cache"
 import { isWritableSetting, setSetting } from "@/lib/config"
 import { extensionNames } from "@/lib/mcp/stdio-policy"
 import {
+  assertWebhookFormat,
+  assertWebhookPreview,
+  assertWebhookTriggers,
+  assertWebhookUrl,
+} from "@/lib/notify-webhook"
+import {
   parseExtraRegions,
   parseMaxOutputOverrides,
   parseModelRegionMap,
@@ -49,6 +55,10 @@ export async function saveSettings(values: Record<string, string | null>) {
     if (key === "notify.desktop" && value && !/^(on|off)$/.test(value.trim())) {
       throw new Error("Desktop notifications are either on or off.")
     }
+    if (key === "notify.webhookUrl" && value?.trim()) assertWebhookUrl(value)
+    if (key === "notify.webhookFormat" && value?.trim()) assertWebhookFormat(value)
+    if (key === "notify.webhookTriggers" && value?.trim()) assertWebhookTriggers(value)
+    if (key === "notify.webhookPreview" && value?.trim()) assertWebhookPreview(value)
     if (key === "updates.check" && value && !/^(on|off)$/.test(value.trim())) {
       throw new Error("The update check is either on or off.")
     }

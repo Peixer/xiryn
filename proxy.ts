@@ -66,8 +66,16 @@ export function proxy(request: NextRequest) {
     })
   }
 
-  if (request.method !== "GET" && request.method !== "HEAD") {
-    const origin = request.headers.get("origin")
+  // Routine webhooks are scripts and GitHub, not a browser. They send no
+  // Origin. The bearer token on the route is the credential. A present
+  // Origin still has to match, and Host is checked above.
+  const origin = request.headers.get("origin")
+  const routineHook = request.nextUrl.pathname.startsWith("/api/hooks/")
+  if (
+    request.method !== "GET" &&
+    request.method !== "HEAD" &&
+    !(routineHook && !origin)
+  ) {
     if (!origin || !originMatchesHost(host, origin)) {
       return new NextResponse(
         origin
@@ -82,5 +90,9 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
+  // /manifest.webmanifest and the home-screen PNGs are ordinary GETs. They
+  // stay on this matcher: a foreign Host is still refused, and an allowed
+  // Host can install the app. Do not exempt them. Do not add a service
+  // worker — it would cache authenticated pages.
   matcher: ["/((?!_next/static|_next/image|favicon.ico|icon.svg).*)"],
 }

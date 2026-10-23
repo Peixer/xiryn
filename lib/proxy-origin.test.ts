@@ -156,3 +156,44 @@ test("XIRYN_ALLOWED_HOSTS still admits that https host, and a bad Host is refuse
   const ipv6 = call("http://[::1]:6796/", "GET")
   assert.notEqual(ipv6.status, 403)
 })
+
+test("uploads keep the Origin check, and the PWA manifest stays a normal GET", async () => {
+  const upload = call("http://127.0.0.1:6796/api/uploads?agentId=agent_1", "POST", {
+    origin: "http://127.0.0.1:6796",
+    "content-type": "multipart/form-data; boundary=----x",
+  })
+  assert.notEqual(upload.status, 403)
+
+  const uploadMissing = call("http://127.0.0.1:6796/api/uploads?agentId=agent_1", "POST")
+  assert.equal(uploadMissing.status, 403)
+
+  const uploadCross = call("http://127.0.0.1:6796/api/uploads?agentId=agent_1", "POST", {
+    origin: "http://127.0.0.1:3000",
+  })
+  assert.equal(uploadCross.status, 403)
+
+  const manifest = call("http://127.0.0.1:6796/manifest.webmanifest", "GET")
+  assert.notEqual(manifest.status, 403)
+
+  const manifestOrigin = call("http://127.0.0.1:6796/manifest.webmanifest", "GET", {
+    origin: "http://127.0.0.1:6796",
+  })
+  assert.notEqual(manifestOrigin.status, 403)
+
+  const icon = call("http://127.0.0.1:6796/icon-192.png", "GET")
+  assert.notEqual(icon.status, 403)
+
+  const foreignManifest = call("http://evil.example/manifest.webmanifest", "GET")
+  assert.equal(foreignManifest.status, 403)
+
+  const hook = call("http://127.0.0.1:6796/api/hooks/routines/routine_1", "POST")
+  assert.notEqual(hook.status, 403)
+
+  const hookCross = call("http://127.0.0.1:6796/api/hooks/routines/routine_1", "POST", {
+    origin: "https://evil.example",
+  })
+  assert.equal(hookCross.status, 403)
+
+  const hookForeign = call("http://evil.example/api/hooks/routines/routine_1", "POST")
+  assert.equal(hookForeign.status, 403)
+})
