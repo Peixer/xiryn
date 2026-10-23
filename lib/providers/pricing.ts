@@ -132,10 +132,15 @@ const catalog: Record<string, Entry> = {
   "google/gemini-2.5-flash": { input: 0.3, cached: 0.03, output: 2.5 },
   "google/gemini-2.5-flash-lite": { input: 0.1, cached: 0.01, output: 0.4 },
 
-  // Amazon Bedrock, EU geographic profiles called from eu-west-3.
-  // Claude is billed through AWS Marketplace. These rows match the Anthropic
-  // rates already in this file (published prices as of 20 October 2026).
-  // Confirm the geographic premium, if any, on the AWS pricing page.
+  // Amazon Bedrock. Checked 23 October 2026 against
+  // https://aws.amazon.com/bedrock/pricing/ and the public price list
+  // published 2026-10-16 (the pricing page's Anthropic tables do not list
+  // current Claude token rates; Claude is billed through AWS Marketplace).
+  //
+  // The eu. Claude rows match the Anthropic rates already in this file.
+  // A us., global., apac., or unprefixed id of the same model reuses that
+  // row as an estimate (findPrice source "estimate"). A geographic premium
+  // is not in the public list, so none is invented here.
   "bedrock/eu.anthropic.claude-sonnet-5-5": { input: 2, cached: 0.1, output: 10 },
   "bedrock/eu.anthropic.claude-sonnet-5": { input: 2, cached: 0.2, output: 10 },
   "bedrock/eu.anthropic.claude-sonnet-4-6": { input: 3, cached: 0.3, output: 15 },
@@ -150,19 +155,27 @@ const catalog: Record<string, Entry> = {
     output: 0.5,
     long: { above: 100_000, input: 0.5, cached: 0.05, output: 2.5 },
   },
-  // Nova, standard on-demand in EU (Paris), from the public Amazon Bedrock
-  // price list for eu-west-3 published 16 October 2026. Dollars per million
-  // tokens (the list quotes per 1,000).
+  // Nova, standard on-demand, dollars per million tokens (the list quotes
+  // per 1,000). eu. rows are EU (Paris) / eu-west-3. us. rows are the US
+  // geographic profile: us-east-1, us-east-2, and us-west-2 publish the
+  // same rates on that list, and they differ from Paris, so they are exact
+  // rows rather than an estimate of the eu. price. Asia Pacific regions
+  // differ from each other and from Paris, and Nova 1 has no global
+  // cross-region SKU, so those ids stay unpriced.
   "bedrock/eu.amazon.nova-pro-v1:0": { input: 1.18, cached: 0.295, output: 4.72 },
   "bedrock/eu.amazon.nova-lite-v1:0": { input: 0.088, cached: 0.022, output: 0.352 },
   "bedrock/eu.amazon.nova-micro-v1:0": { input: 0.052, cached: 0.013, output: 0.208 },
+  "bedrock/us.amazon.nova-pro-v1:0": { input: 0.8, cached: 0.2, output: 3.2 },
+  "bedrock/us.amazon.nova-lite-v1:0": { input: 0.06, cached: 0.015, output: 0.24 },
+  "bedrock/us.amazon.nova-micro-v1:0": { input: 0.035, cached: 0.00875, output: 0.14 },
 }
 
 // Prices the person set themselves, by model spec
 export type CustomPrices = Record<string, Rate>
 
 export type Price =
-  { kind: "local" } | { kind: "priced"; source: "catalog" | "custom"; price: Priced }
+  | { kind: "local" }
+  | { kind: "priced"; source: "catalog" | "custom" | "estimate"; price: Priced }
 
 function pick(entry: Entry, at: Date): Priced {
   if (!Array.isArray(entry)) return entry
@@ -179,6 +192,29 @@ function variants(model: string) {
   const bare = model.replace(/-(\d{8}|\d{4}-\d{2}-\d{2}|latest)$/, "")
   if (bare !== model) out.push(bare)
   return out
+}
+
+// Inference-profile prefixes. `us-gov.` does not match `us.` because of the dot.
+const BEDROCK_GEO_PREFIX = /^(us|eu|apac|global)\./
+
+// Non-eu ids of these models are not the eu-west-3 rate. Explicit catalog
+// rows still win; anything else stays unpriced instead of borrowing Paris.
+const BEDROCK_NO_EU_ESTIMATE = new Set([
+  "amazon.nova-pro-v1:0",
+  "amazon.nova-lite-v1:0",
+  "amazon.nova-micro-v1:0",
+])
+
+function bedrockEuEstimate(model: string, at: Date): Priced | null {
+  const prefixed = BEDROCK_GEO_PREFIX.exec(model)
+  if (prefixed?.[1] === "eu") return null
+  const base = prefixed ? model.slice(prefixed[0].length) : model
+  for (const id of variants(base)) {
+    if (BEDROCK_NO_EU_ESTIMATE.has(id)) return null
+    const entry = catalog[`bedrock/eu.${id}`]
+    if (entry) return pick(entry, at)
+  }
+  return null
 }
 
 function lookup(provider: string, model: string, custom: CustomPrices, at: Date) {
@@ -202,6 +238,13 @@ export function findPrice(
 
   const own = lookup(parsed.provider, parsed.model, custom, at)
   if (own) return { kind: "priced", ...own }
+
+  // us., global., apac., and unprefixed Bedrock ids of a known eu. model.
+  // Exact catalog and custom rows already returned above.
+  if (parsed.provider === "bedrock") {
+    const estimated = bedrockEuEstimate(parsed.model, at)
+    if (estimated) return { kind: "priced", source: "estimate", price: estimated }
+  }
 
   // OpenRouter passes most models through at their maker's price:
   // "openrouter/anthropic/claude-sonnet-5.5" costs what claude-sonnet-5-5 does
