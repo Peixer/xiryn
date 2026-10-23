@@ -1,5 +1,6 @@
 import type { Agent, Squad } from "@/db/schema"
 import { memoryPrompt } from "@/lib/memory"
+import { formatSkillCatalog, loadSkillCatalog } from "@/lib/skills"
 
 // The system prompt is assembled fresh for every turn (and again when a
 // squad delegates), so edits to an agent and new memories apply at once.
@@ -45,6 +46,7 @@ ${[
       ? "- **Web through your browser.** There are no web search tools (Firecrawl isn't configured), so search and read pages with Chromium on your desktop, or `curl` from the shell for plain pages and APIs."
       : "- **No web access.** Firecrawl is not configured; work from what you know and say when something may be out of date.",
   "- **Memory.** Notes you save with `memory_write` persist across every thread you are part of. Remove stale ones of yours with `memory_forget`. Search older notes, including shared notes, with `memory_search`. Shared notes are written by the person; you cannot create, edit, or delete them.",
+  "- **Skills.** Reusable playbooks from the Skills page are catalogued below. `skill_read` loads one in full. You cannot create or edit them.",
 ].join("\n")}`,
 
     `# Memory
@@ -52,6 +54,8 @@ These are the notes already loaded — no tool call needed to read the ones belo
 ${memoryPrompt(agent.id)}
 
 Save a note in the same turn you learn something worth knowing later (who the person is, what they are working on, preferences, decisions, standing instructions), and always when they ask you to remember something. Saying you will remember is not the same as saving. Skip small talk and details that only matter right now. A note you save is yours alone. Shared notes apply to every agent, and only the person can add, edit, or delete those from the Memory panel.`,
+
+    skillsBlock(),
 
     squad && squadBlock(agent, squad),
 
@@ -101,6 +105,18 @@ export type SquadContext = {
   delegatedFrom: string[]
   // What the last of them asked for when handing over
   brief?: string
+}
+
+function skillsBlock() {
+  try {
+    return formatSkillCatalog(loadSkillCatalog())
+  } catch (error) {
+    console.error(
+      "[xiryn] skills: catalog skipped:",
+      error instanceof Error ? error.message : "unknown error"
+    )
+    return "# Skills\nThe skills library could not be read this turn. Use the Skills page to check it."
+  }
 }
 
 function squadBlock(

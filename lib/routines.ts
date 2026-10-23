@@ -5,6 +5,7 @@ import { db } from "@/db"
 import { routines, threads, type Routine } from "@/db/schema"
 import { startTurn, subscribe, TurnError } from "@/lib/agent/runtime"
 import type { XirynMessage } from "@/lib/agent/tools"
+import { routineRunPrompt } from "@/lib/hooks"
 import { nextRun } from "@/lib/schedule"
 
 // Runs routines when they're due. Xiryn has to be running for that: a run
@@ -53,8 +54,12 @@ export function threadHref(routine: Pick<Routine, "agentId" | "squadId" | "threa
 }
 
 // Starts a run and returns its thread once the agent is on it; the run
-// itself carries on in the background
-export async function runRoutine(routine: Routine, { manual = false } = {}) {
+// itself carries on in the background. `payload` is raw webhook data; it is
+// appended as untrusted text and does not move the schedule (pass manual).
+export async function runRoutine(
+  routine: Routine,
+  { manual = false, payload }: { manual?: boolean; payload?: string } = {}
+) {
   if (state.running.has(routine.id)) {
     throw new TurnError("This routine is already running.", 409)
   }
@@ -70,7 +75,7 @@ export async function runRoutine(routine: Routine, { manual = false } = {}) {
   const message = {
     id: nanoid(),
     role: "user",
-    parts: [{ type: "text", text: routine.prompt }],
+    parts: [{ type: "text", text: routineRunPrompt(routine.prompt, payload) }],
   } as XirynMessage
 
   let run

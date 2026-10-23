@@ -334,6 +334,13 @@ export const monthlyBudgetSchema = z
   .trim()
   .regex(/^(\d{1,6}(\.\d{1,2})?)?$/, "Use a dollar amount, e.g. 20 or 7.50.")
 
+// One agent's optional monthly cap. The amount uses the same rules as the
+// global budget: empty or 0 clears it.
+export const agentBudgetSchema = z.object({
+  agentId: z.string().trim().min(1, "Choose an agent.").max(64),
+  amount: monthlyBudgetSchema,
+})
+
 const clock = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Use a time like 08:30.")
 
 export const routineScheduleSchema = z.discriminatedUnion("kind", [

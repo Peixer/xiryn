@@ -3,6 +3,7 @@
 import * as React from "react"
 import {
   AlarmClockIcon,
+  BookOpenIcon,
   BrainIcon,
   CameraIcon,
   CheckIcon,
@@ -99,6 +100,12 @@ const META: Record<string, Meta> = {
     summary: (i) => str(i.url).replace(/^https?:\/\/(www\.)?/, ""),
   },
   memory_search: { icon: SearchIcon, label: "recall", summary: (i) => str(i.query) },
+  skill_list: {
+    icon: BookOpenIcon,
+    label: "skills",
+    summary: () => "list playbooks",
+  },
+  skill_read: { icon: BookOpenIcon, label: "skill", summary: (i) => str(i.slug) },
   memory_write: { icon: BrainIcon, label: "remember", summary: (i) => str(i.note) },
   memory_forget: { icon: EraserIcon, label: "forget", summary: (i) => str(i.id) },
   routine_create: {
@@ -333,6 +340,33 @@ function Details({ part }: { part: ToolPart }) {
         </ul>
       )
     }
+    case "skill_list": {
+      const listed = Array.isArray(output?.skills)
+        ? (output.skills as { name?: string; slug?: string }[])
+        : []
+      return output ? (
+        <ul className="flex flex-col gap-1">
+          {listed.map((skill) => (
+            <li key={str(skill.slug)} className="text-[13px]">
+              {str(skill.name)}{" "}
+              <span className="font-mono text-[10.5px] text-muted-foreground">
+                {str(skill.slug)}
+              </span>
+            </li>
+          ))}
+          {listed.length === 0 && (
+            <li className="text-[13px] text-muted-foreground">No skills saved.</li>
+          )}
+        </ul>
+      ) : null
+    }
+    case "skill_read":
+      return output ? (
+        <div className="flex flex-col gap-2">
+          <span className="text-[13px] font-medium">{str(output.name)}</span>
+          <Pre>{str(output.body).slice(0, 4000)}</Pre>
+        </div>
+      ) : null
     case "memory_write":
       return <p className="text-[13px]">{str(input.note)}</p>
     case "routine_create":
