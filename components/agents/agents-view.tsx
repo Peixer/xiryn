@@ -119,7 +119,9 @@ function DeletionNotice({ agent, machine }: { agent: AgentOverview; machine: Mac
           its workstation: the Docker container, its desktop and every file in its home
           folder
           {machine.state === "no-docker" &&
-            " (Docker isn't running, so it's removed in the background once Docker is back)"}
+            (machine.reason === "missing"
+              ? " (Docker isn't installed, so it's removed in the background once Docker is available)"
+              : " (Docker isn't running, so it's removed in the background once Docker is back)")}
           {machine.state === "unprovisioned" && " (it hasn't been created yet)"}
         </li>
       </ul>
