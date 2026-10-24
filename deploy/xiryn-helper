@@ -1,0 +1,20 @@
+#!/bin/bash
+# Root-owned entrypoint for the oneshot. The app never calls this and never
+# gets sudo: xiryn-deploy.path starts it when a request file appears.
+set -euo pipefail
+
+if [[ $# -ne 0 ]]; then
+  echo "xiryn-helper takes no arguments" >&2
+  exit 2
+fi
+
+helper=/usr/local/lib/xiryn/xiryn-helper.ts
+for root in /opt/xiryn-blue /opt/xiryn-green /opt/xiryn; do
+  tsx="$root/node_modules/.bin/tsx"
+  if [[ -x "$tsx" && -f "$helper" ]]; then
+    exec "$tsx" "$helper"
+  fi
+done
+
+echo "tsx is not installed in a Xiryn colour, or the helper is not installed" >&2
+exit 1

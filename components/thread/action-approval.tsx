@@ -115,7 +115,12 @@ export function ActionApprovalCard({
       )}
       {open && (
         <div className="flex flex-wrap gap-2">
-          <Button size="sm" disabled={!!busy} onClick={() => decide("approve")}>
+          <Button
+            size="sm"
+            className="min-h-11"
+            disabled={!!busy}
+            onClick={() => decide("approve")}
+          >
             {busy === "approve" ? (
               <Spinner data-icon="inline-start" />
             ) : (
@@ -126,6 +131,7 @@ export function ActionApprovalCard({
           <Button
             size="sm"
             variant="outline"
+            className="min-h-11"
             disabled={!!busy}
             onClick={() => decide("decline")}
           >

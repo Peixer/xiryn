@@ -1,0 +1,36 @@
+[Unit]
+Description=Xiryn (green)
+After=network-online.target docker.service
+Wants=network-online.target docker.service
+
+[Service]
+Type=simple
+User=xiryn
+Group=xiryn
+SupplementaryGroups=docker
+WorkingDirectory=/opt/xiryn-green
+Environment=NODE_ENV=production
+Environment=XIRYN_PORT=6896
+Environment=XIRYN_DESKTOP_PROXY_PORT=6897
+Environment=XIRYN_DATA_DIR=/var/lib/xiryn/colours/green
+Environment=XIRYN_VAULT_KEY_DIR=/etc/xiryn/vault
+Environment=XIRYN_DEPLOY_DIR=/var/lib/xiryn/deploy
+EnvironmentFile=-/etc/xiryn/shared.env
+Environment=XIRYN_PORT=6896
+Environment=XIRYN_DESKTOP_PROXY_PORT=6897
+Environment=XIRYN_DATA_DIR=/var/lib/xiryn/colours/green
+Environment=XIRYN_VAULT_KEY_DIR=/etc/xiryn/vault
+ExecStart=/usr/bin/npm run start
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/var/lib/xiryn/colours/green /var/lib/xiryn/deploy /opt/xiryn-green/.next/cache /run/docker.sock /var/run/docker.sock
+UMask=0077
+RestrictSUIDSGID=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

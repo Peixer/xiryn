@@ -675,6 +675,14 @@ const TOOL_LABELS: Record<string, (input: Record<string, unknown>) => string> = 
   drive_trash: () => "moving a Drive file to trash",
   drive_share: () => "changing who can open a Drive file",
   delegate: () => "delegating",
+  request_self_update: (i) => {
+    const action = String(i.action ?? "update")
+    return action === "switch"
+      ? "asking to switch version"
+      : action === "rollback"
+        ? "asking to roll back"
+        : "asking to update Xiryn"
+  },
 }
 
 function clipDrive(value: unknown) {

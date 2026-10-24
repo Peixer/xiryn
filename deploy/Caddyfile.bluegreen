@@ -1,0 +1,40 @@
+# HTTPS and basic auth in front of a blue/green Xiryn.
+# 1. Replace the hostname.
+# 2. Replace the hash: `caddy hash-password`.
+# 3. sudo cp deploy/Caddyfile.bluegreen /etc/caddy/Caddyfile
+# 4. The helper rewrites /etc/caddy/xiryn-upstreams.caddy and reloads Caddy.
+#
+# :443 serves the active colour. :8443 serves the inactive colour with the
+# same basic auth, so you can open the new build before switching. Allow
+# TCP 8443 from your IP if you want that page on the public hostname.
+# Both app ports stay on 127.0.0.1.
+
+import /etc/caddy/xiryn-upstreams.caddy
+
+xiryn.example.com {
+	basic_auth {
+		xiryn $2a$14$ReplaceThisWithTheOutputOfCaddyHashPassword
+	}
+
+	handle /desktop/* {
+		import xiryn_desktop
+	}
+
+	handle {
+		import xiryn_active
+	}
+}
+
+:8443 {
+	basic_auth {
+		xiryn $2a$14$ReplaceThisWithTheOutputOfCaddyHashPassword
+	}
+
+	handle /desktop/* {
+		import xiryn_standby_desktop
+	}
+
+	handle {
+		import xiryn_standby
+	}
+}

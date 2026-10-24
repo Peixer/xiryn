@@ -234,7 +234,7 @@ On this host the file key is `/var/lib/xiryn/.xiryn/vault-*.key` unless `XIRYN_V
 
 ## Updating
 
-`deploy/deploy.sh` fast-forwards the checkout, installs, builds, and restarts `xiryn`. Run it from a user who can `sudo systemctl`:
+A second copy can be built and switched from Settings without stopping the one that is serving. The one-time conversion, the approval gate, and the rollback are in [self-update.md](self-update.md). Until that script has been run, `deploy/deploy.sh` is still the external update: it fast-forwards the checkout, installs, builds, and restarts `xiryn`. Run it from a user who can `sudo systemctl`:
 
 ```bash
 sudo /opt/xiryn/deploy/deploy.sh

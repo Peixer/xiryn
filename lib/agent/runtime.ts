@@ -36,6 +36,7 @@ import {
   type ToolEnv,
 } from "@/lib/agent/tools"
 import { getMaxSteps } from "@/lib/config"
+import { createSelfUpdateTools } from "@/lib/self-update/tool"
 import { approvalHeadline } from "@/lib/mcp/approval-preview"
 import { loadConnectorTools } from "@/lib/mcp/load"
 import { isApprovalHold } from "@/lib/mcp/policy"
@@ -486,6 +487,7 @@ export async function startTurn({
     ...(capabilities.web ? createWebTools(env) : {}),
     // A routine's own runs don't schedule more routines
     ...(routine ? {} : createRoutineTools(env)),
+    ...createSelfUpdateTools(env),
     // Subagent spawning — disabled inside subturns (depth guard in subturn.ts)
     ...createSubagentTools(env),
     ...connectors.tools,

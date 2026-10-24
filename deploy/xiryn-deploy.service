@@ -1,0 +1,13 @@
+[Unit]
+Description=Xiryn blue/green deploy helper
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+ExecStart=/usr/local/sbin/xiryn-helper
+Nice=10
+NoNewPrivileges=true
+ProtectHome=read-only
+PrivateTmp=true

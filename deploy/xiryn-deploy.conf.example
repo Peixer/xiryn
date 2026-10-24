@@ -1,0 +1,23 @@
+# Read by the deploy helper. No secrets. The shared env and the vault key
+# live in /etc/xiryn/ and are not listed here.
+BRANCH=main
+REMOTE=https://github.com/Peixer/xiryn.git
+MIRROR=/var/lib/xiryn-pin.git
+BLUE_DIR=/opt/xiryn-blue
+GREEN_DIR=/opt/xiryn-green
+BLUE_DATA=/var/lib/xiryn/colours/blue
+GREEN_DATA=/var/lib/xiryn/colours/green
+BLUE_PORT=6796
+GREEN_PORT=6896
+BLUE_DESKTOP_PORT=6797
+GREEN_DESKTOP_PORT=6897
+BACKUP_DIR=/var/backups/xiryn
+DEPLOY_DIR=/var/lib/xiryn/deploy
+CADDYFILE=/etc/caddy/Caddyfile
+CADDY_SNIPPET=/etc/caddy/xiryn-upstreams.caddy
+SHARED_ENV=/etc/xiryn/shared.env
+VAULT_DIR=/etc/xiryn/vault
+MAINTENANCE_FILE=/etc/xiryn/maintenance
+# Public https origin of the inactive colour, no userinfo. Empty until you
+# publish the standby port. Example: https://xiryn.example.com:8443
+# STANDBY_URL=https://xiryn.example.com:8443
