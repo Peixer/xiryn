@@ -292,9 +292,8 @@ nextjs-portal {
   display: none !important;
 }
 
-/* Phone and installed app. The desktop workbench stays in the tree and is
-   hidden here. A blocking script in the root layout sets data-xiryn-app
-   before first paint; the width query covers the same screens if it does not. */
+/* Phone and installed app chrome. Workbench layout follows viewport width,
+   independently of the installed app flag set before first paint. */
 .xiryn-app,
 .xiryn-only-app,
 .xiryn-camera,
@@ -323,13 +322,14 @@ nextjs-portal {
     width: 0 !important;
     min-width: 0 !important;
     max-width: 0 !important;
-    overflow: visible !important;
+    overflow: hidden !important;
     padding: 0 !important;
     border: 0 !important;
   }
   [data-panel]:has(> .xiryn-chat-panel) {
     flex: 1 1 100% !important;
     width: 100% !important;
+    min-width: 0 !important;
     max-width: none !important;
   }
   .xiryn-chat-panel {
@@ -367,25 +367,27 @@ html[data-xiryn-app="1"] .xiryn-app {
 html[data-xiryn-app="1"] .xiryn-only-app {
   display: flex !important;
 }
-html[data-xiryn-app="1"] .xiryn-only-desktop,
-html[data-xiryn-app="1"] .xiryn-handle,
-html[data-xiryn-app="1"] .xiryn-workbench {
+/* Installed desktop windows retain the split; only the phone query above
+   hides and collapses the workbench and its resize handle. */
+html[data-xiryn-app="1"] .xiryn-only-desktop {
   display: none !important;
 }
 html[data-xiryn-app="1"] .xiryn-camera,
 html[data-xiryn-app="1"] .xiryn-share {
   display: grid;
 }
-html[data-xiryn-app="1"] .xiryn-screen-open .xiryn-workbench {
-  position: fixed;
-  inset: 0;
-  z-index: 45;
-  display: flex !important;
-  width: auto !important;
-  height: auto !important;
-  background: var(--background);
-  padding-top: env(safe-area-inset-top);
-  padding-bottom: env(safe-area-inset-bottom);
+@media (max-width: 767px) {
+  html[data-xiryn-app="1"] .xiryn-screen-open .xiryn-workbench {
+    position: fixed;
+    inset: 0;
+    z-index: 45;
+    display: flex !important;
+    width: auto !important;
+    height: auto !important;
+    background: var(--background);
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
 }
 html[data-xiryn-app="1"],
 html[data-xiryn-app="1"] body {

@@ -124,7 +124,7 @@ function Workbench({
   // A take-over always happens on the screen
   const tab = takeover ? "screen" : chosenTab
   return (
-    <div className="flex h-full min-h-0 flex-col bg-surface/40">
+    <div className="flex h-full min-h-0 min-w-0 flex-col bg-surface/40">
       <div className="hairline-b flex h-10 shrink-0 items-stretch gap-1 px-2">
         {TABS.map(({ id, label, icon: Icon }) => (
           <button
@@ -806,7 +806,7 @@ export function ThreadView(props: ThreadViewProps) {
   }
 
   const chat = (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex h-full min-h-0 min-w-0 flex-col">
       <Transcript
         messages={messages}
         members={members}
@@ -855,7 +855,7 @@ export function ThreadView(props: ThreadViewProps) {
     <TakeoverContext value={takeoverControl}>
       <div
         className={cn(
-          "xiryn-thread flex min-h-0 flex-1 flex-col",
+          "xiryn-thread flex min-h-0 min-w-0 flex-1 flex-col",
           screenOpen && "xiryn-screen-open"
         )}
       >
@@ -885,7 +885,10 @@ export function ThreadView(props: ThreadViewProps) {
           onToggleWorkbench={kind === "agent" ? toggleWorkbench : undefined}
         />
         {kind === "agent" && workbenchOpen ? (
-          <ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1">
+          <ResizablePanelGroup
+            orientation="horizontal"
+            className="min-h-0 min-w-0 flex-1"
+          >
             <ResizablePanel id="chat" className="xiryn-chat-panel" minSize="35%">
               {chat}
             </ResizablePanel>
@@ -910,7 +913,7 @@ export function ThreadView(props: ThreadViewProps) {
             </ResizablePanel>
           </ResizablePanelGroup>
         ) : (
-          <div className="min-h-0 flex-1">{chat}</div>
+          <div className="min-h-0 min-w-0 flex-1">{chat}</div>
         )}
       </div>
     </TakeoverContext>
