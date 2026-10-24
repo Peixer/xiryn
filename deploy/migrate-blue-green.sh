@@ -58,6 +58,42 @@ read_vault_account() {
   sed -n 's/^XIRYN_VAULT_ACCOUNT=\([0-9a-f]\{16\}\)$/\1/p' "$1" | head -1
 }
 
+# dotenv quotes are not part of the path. Node hashed the path it opened.
+unquote() {
+  local value="$1"
+  value="${value#"${value%%[![:space:]]*}"}"
+  value="${value%"${value##*[![:space:]]}"}"
+  local len=${#value}
+  if [[ "$len" -ge 2 ]]; then
+    local first="${value:0:1}" last="${value: -1}"
+    if [[ "$first" == "$last" && ( "$first" == '"' || "$first" == "'" ) ]]; then
+      value="${value:1:len-2}"
+    fi
+  fi
+  printf '%s' "$value"
+}
+
+read_data_dir() {
+  local file="$1"
+  [[ -f "$file" ]] || return 0
+  local raw
+  raw="$(
+    awk '
+      {
+        line = $0
+        sub(/\r$/, "", line)
+        sub(/^[[:space:]]*export[[:space:]]+/, "", line)
+        sub(/^[[:space:]]+/, "", line)
+        if (index(line, "XIRYN_DATA_DIR=") == 1) {
+          print substr(line, length("XIRYN_DATA_DIR=") + 1)
+          exit
+        }
+      }
+    ' "$file"
+  )"
+  unquote "$raw"
+}
+
 # Copy the colour env templates and pin XIRYN_VAULT_ACCOUNT. A later run keeps
 # an account that is already written, so a second pass cannot rename the key.
 write_colour_env() {
@@ -69,7 +105,7 @@ write_colour_env() {
   if [[ ! "$account" =~ ^[0-9a-f]{16}$ ]]; then
     old="${data_dir:-}"
     if [[ -z "$old" && -f "$SHARED" ]]; then
-      old="$(sed -n 's/^XIRYN_DATA_DIR=//p' "$SHARED" | head -1)"
+      old="$(read_data_dir "$SHARED")"
     fi
     old="${old:-${ROOT}/data}"
     old="${old%/}/xiryn.db"
@@ -87,13 +123,14 @@ write_colour_env() {
   chmod 644 "$BLUE_ENV" "$GREEN_ENV"
 }
 
+# Root reads a tree owned by xiryn. Without safe.directory, git 2.47 exits 128
+# and the caller would record an empty commit after the copy.
 deployed_sha() {
   local tree="$1"
-  local sha=""
-  if [[ -n "$tree" && -e "$tree/.git" ]]; then
-    sha="$(git -C "$tree" rev-parse --verify HEAD 2>/dev/null || true)"
+  if [[ -z "$tree" || ! -e "$tree/.git" ]]; then
+    return 0
   fi
-  printf '%s\n' "$sha"
+  git -c "safe.directory=${tree}" -C "$tree" rev-parse --verify HEAD
 }
 
 # state.json is what the Update screen reads for "This commit". Re-running
@@ -284,6 +321,14 @@ if [[ ! -d "$ROOT" ]]; then
   exit 1
 fi
 
+# Name the commit before anything is copied or restarted. An empty SHA here
+# used to surface only after the tree was already duplicated.
+sha="$(deployed_sha "$ROOT")"
+if [[ ! "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+  echo "The deployed tree has no commit, so the update screen cannot name it." >&2
+  exit 1
+fi
+
 install -d -m 0755 /etc/xiryn /usr/local/lib/xiryn /usr/local/sbin
 install -d -o xiryn -g xiryn -m 0700 "$BLUE_DATA" "$GREEN_DATA" "$VAULT"
 install_runtime_dirs
@@ -335,7 +380,7 @@ chown -R xiryn:xiryn "$BLUE"
 install -d -o xiryn -g xiryn -m 0755 "$GREEN"
 
 # Read the old data directory before strip_colour_env removes XIRYN_DATA_DIR.
-data_dir="$(sed -n 's/^XIRYN_DATA_DIR=//p' "$SHARED" | head -1)"
+data_dir="$(read_data_dir "$SHARED")"
 data_dir="${data_dir:-$ROOT/data}"
 if [[ -f "$data_dir/xiryn.db" ]]; then
   vault_rows="$(
@@ -371,10 +416,6 @@ install -m 0644 "$SRC/../scripts/self-update-snapshot.mjs" /usr/local/lib/xiryn/
 install -m 0644 "$SRC/../scripts/self-update-migrate.mjs" /usr/local/lib/xiryn/self-update-migrate.mjs
 install -m 0644 "$SRC/../scripts/self-update-approval.mjs" /usr/local/lib/xiryn/self-update-approval.mjs
 install_colour_files
-sha="$(deployed_sha "$BLUE")"
-if [[ ! "$sha" =~ ^[0-9a-f]{40}$ ]]; then
-  sha="$(deployed_sha "$ROOT")"
-fi
 write_install_state "$sha" blue
 install -m 0644 "$SRC/xiryn-deploy.service" /etc/systemd/system/xiryn-deploy.service
 install -m 0644 "$SRC/xiryn-deploy.path" /etc/systemd/system/xiryn-deploy.path

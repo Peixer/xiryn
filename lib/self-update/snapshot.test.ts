@@ -16,8 +16,12 @@ test("snapshot copies subdirectories and leaves backups, keys, and links behind"
   try {
     fs.mkdirSync(path.join(from, "skills", "demo", "extra"), { recursive: true })
     fs.mkdirSync(path.join(from, "backups"), { recursive: true })
+    fs.mkdirSync(path.join(from, "skills", "vault-kit"), { recursive: true })
     fs.writeFileSync(path.join(from, "skills", "demo", "SKILL.md"), "hello\n")
     fs.writeFileSync(path.join(from, "skills", "demo", "extra", "note.txt"), "nested\n")
+    fs.writeFileSync(path.join(from, "skills", "demo", "token.key"), "nested-key\n")
+    fs.writeFileSync(path.join(from, "skills", "vault-kit", "SKILL.md"), "kit\n")
+    fs.symlinkSync("SKILL.md", path.join(from, "skills", "demo", "alias.md"))
     fs.writeFileSync(path.join(from, "backups", "old.db"), "nope")
     fs.writeFileSync(path.join(from, "vault-live.key"), "secret")
     fs.writeFileSync(path.join(from, ".env"), "TOKEN=1\n")
@@ -54,6 +58,17 @@ test("snapshot copies subdirectories and leaves backups, keys, and links behind"
     assert.equal(fs.existsSync(path.join(to, ".env")), false)
     assert.equal(fs.existsSync(path.join(to, "linked.txt")), false)
     assert.equal(fs.existsSync(path.join(to, "skills-link")), false)
+    assert.equal(
+      fs.readFileSync(path.join(to, "skills", "vault-kit", "SKILL.md"), "utf8"),
+      "kit\n"
+    )
+    assert.equal(
+      fs.readFileSync(path.join(to, "skills", "demo", "token.key"), "utf8"),
+      "nested-key\n"
+    )
+    const alias = path.join(to, "skills", "demo", "alias.md")
+    assert.equal(fs.lstatSync(alias).isSymbolicLink(), true)
+    assert.equal(fs.readlinkSync(alias), "SKILL.md")
     const copy = new Database(path.join(to, "xiryn.db"), { readonly: true })
     const row = copy.prepare("select count(*) as n from t").get() as { n: number }
     copy.close()

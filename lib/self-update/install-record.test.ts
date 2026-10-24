@@ -124,3 +124,32 @@ test("the installer records the deployed commit and does not replace it", () => 
     fs.rmSync(root, { recursive: true, force: true })
   }
 })
+
+test("a quoted data directory still hashes the path inside the quotes", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "xirynquote"))
+  const data = path.join(root, "opt", "xiryn", "data")
+  const shared = path.join(root, "shared.env")
+  const blue = path.join(root, "blue.env")
+  const green = path.join(root, "green.env")
+  fs.writeFileSync(shared, `export XIRYN_DATA_DIR="${data}"\nTOKEN=1\n`)
+  const account = vaultAccount(path.join(data, "xiryn.db"))
+  try {
+    const result = runInstaller({
+      XIRYN_COLOUR_ENV_ONLY: "1",
+      XIRYN_SHARED_ENV: shared,
+      XIRYN_BLUE_ENV: blue,
+      XIRYN_GREEN_ENV: green,
+    })
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`)
+    const line = `XIRYN_VAULT_ACCOUNT=${account}`
+    for (const file of [blue, green]) {
+      const lines = fs
+        .readFileSync(file, "utf8")
+        .split("\n")
+        .filter((row) => row.startsWith("XIRYN_VAULT_ACCOUNT="))
+      assert.deepEqual(lines, [line], file)
+    }
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})
