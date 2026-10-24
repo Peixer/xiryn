@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process"
-import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto"
+import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
@@ -9,6 +9,7 @@ import { z } from "zod"
 
 import { db, DATA_DIR, DB_PATH } from "@/db"
 import { vaultApprovals, vaultItems } from "@/db/schema"
+import { vaultAccount } from "@/lib/vault-account"
 
 // The person's vault: saved logins, cards, UPI IDs and personal details.
 //
@@ -23,8 +24,9 @@ export type VaultKind = "card" | "upi" | "login" | "identity" | "code"
 /* ───────────────────────────── the key ───────────────────────────── */
 
 const SERVICE = "xiryn-vault"
-// One key per installation, so two copies of Xiryn don't share one
-const ACCOUNT = createHash("sha256").update(DB_PATH).digest("hex").slice(0, 16)
+// One key per installation. XIRYN_VAULT_ACCOUNT keeps the name stable when
+// the database moves from /opt/xiryn/data to a colour directory.
+const ACCOUNT = vaultAccount(DB_PATH, process.env.XIRYN_VAULT_ACCOUNT)
 
 export type KeySource = "env" | "keychain" | "dpapi" | "secret-service" | "file"
 

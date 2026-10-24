@@ -8,10 +8,13 @@ BLUE=/opt/xiryn-blue
 GREEN=/opt/xiryn-green
 BLUE_DATA=/var/lib/xiryn/colours/blue
 GREEN_DATA=/var/lib/xiryn/colours/green
-# Tests point this at a temp file. A real run uses /etc/xiryn/shared.env.
+# Tests point these at temp files. A real run uses /etc/xiryn.
 SHARED="${XIRYN_SHARED_ENV:-/etc/xiryn/shared.env}"
+BLUE_ENV="${XIRYN_BLUE_ENV:-/etc/xiryn/blue.env}"
+GREEN_ENV="${XIRYN_GREEN_ENV:-/etc/xiryn/green.env}"
 VAULT=/etc/xiryn/vault
 DEPLOY=/var/lib/xiryn/deploy
+STATE_FILE="${XIRYN_STATE_FILE:-$DEPLOY/state.json}"
 CONF=/etc/xiryn-deploy.conf
 ACTIVE=/etc/xiryn/active
 SRC="$(cd "$(dirname "$0")" && pwd)"
@@ -44,8 +47,129 @@ strip_colour_env() {
   mv -f "$tmp" "$SHARED"
 }
 
+# sha256 of the old database path, first 16 hex digits. Same input Node uses
+# for vault-${account}.key when XIRYN_VAULT_ACCOUNT is unset. No newline.
+vault_account_of() {
+  printf '%s' "$1" | sha256sum | awk 'NR == 1 { print substr($1, 1, 16) }'
+}
+
+read_vault_account() {
+  [[ -f "$1" ]] || return 0
+  sed -n 's/^XIRYN_VAULT_ACCOUNT=\([0-9a-f]\{16\}\)$/\1/p' "$1" | head -1
+}
+
+# Copy the colour env templates and pin XIRYN_VAULT_ACCOUNT. A later run keeps
+# an account that is already written, so a second pass cannot rename the key.
+write_colour_env() {
+  local account old
+  account="$(read_vault_account "$BLUE_ENV")"
+  if [[ ! "$account" =~ ^[0-9a-f]{16}$ ]]; then
+    account="$(read_vault_account "$GREEN_ENV")"
+  fi
+  if [[ ! "$account" =~ ^[0-9a-f]{16}$ ]]; then
+    old="${data_dir:-}"
+    if [[ -z "$old" && -f "$SHARED" ]]; then
+      old="$(sed -n 's/^XIRYN_DATA_DIR=//p' "$SHARED" | head -1)"
+    fi
+    old="${old:-${ROOT}/data}"
+    old="${old%/}/xiryn.db"
+    account="$(vault_account_of "$old")"
+  fi
+  if [[ ! "$account" =~ ^[0-9a-f]{16}$ ]]; then
+    echo "Could not name the vault account." >&2
+    exit 1
+  fi
+  install -d -m 0755 "$(dirname "$BLUE_ENV")" "$(dirname "$GREEN_ENV")"
+  install -m 0644 "$SRC/xiryn-blue.env" "$BLUE_ENV"
+  install -m 0644 "$SRC/xiryn-green.env" "$GREEN_ENV"
+  printf 'XIRYN_VAULT_ACCOUNT=%s\n' "$account" >> "$BLUE_ENV"
+  printf 'XIRYN_VAULT_ACCOUNT=%s\n' "$account" >> "$GREEN_ENV"
+  chmod 644 "$BLUE_ENV" "$GREEN_ENV"
+}
+
+deployed_sha() {
+  local tree="$1"
+  local sha=""
+  if [[ -n "$tree" && -e "$tree/.git" ]]; then
+    sha="$(git -C "$tree" rev-parse --verify HEAD 2>/dev/null || true)"
+  fi
+  printf '%s\n' "$sha"
+}
+
+# state.json is what the Update screen reads for "This commit". Re-running
+# leaves a file that already names a commit, so a later prepare is not reset.
+write_install_state() {
+  local sha="$1"
+  local colour="$2"
+  local file="${STATE_FILE}"
+  if [[ -f "$file" ]] && grep -Eq '"activeSha"[[:space:]]*:[[:space:]]*"[0-9a-f]{40}"' "$file"; then
+    return 0
+  fi
+  if [[ ! "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+    echo "The deployed tree has no commit, so the update screen cannot name it." >&2
+    return 1
+  fi
+  if [[ "$colour" != "blue" && "$colour" != "green" ]]; then
+    echo "The active colour is not blue or green." >&2
+    return 1
+  fi
+  local name dir tmp
+  name="${branch:-main}"
+  if [[ ! "$name" =~ ^[A-Za-z0-9._/-]+$ || "$name" == *..* ]]; then
+    echo "BRANCH is not a single branch name." >&2
+    return 1
+  fi
+  dir="$(dirname "$file")"
+  if [[ ! -d "$dir" ]]; then
+    if [[ "$(id -u)" -eq 0 ]] && id xiryn >/dev/null 2>&1; then
+      install -d -o xiryn -g xiryn -m 0700 "$dir"
+    else
+      install -d -m 0700 "$dir"
+    fi
+  fi
+  tmp="$(mktemp "$dir/.state.json.XXXXXX")"
+  cat > "$tmp" <<EOF
+{
+  "phase": "active",
+  "active": "${colour}",
+  "activeSha": "${sha}",
+  "previous": null,
+  "previousSha": null,
+  "candidate": null,
+  "candidateSha": null,
+  "branch": "${name}",
+  "error": null,
+  "maintenance": false,
+  "baseline": "active",
+  "operation": null
+}
+EOF
+  if [[ "$(id -u)" -eq 0 ]] && id xiryn >/dev/null 2>&1; then
+    chown xiryn:xiryn "$tmp"
+  fi
+  chmod 644 "$tmp"
+  mv -f "$tmp" "$file"
+}
+
 if [[ "${XIRYN_STRIP_ONLY:-}" == "1" ]]; then
   strip_colour_env
+  exit 0
+fi
+
+if [[ "${XIRYN_COLOUR_ENV_ONLY:-}" == "1" ]]; then
+  data_dir="${XIRYN_OLD_DATA:-${data_dir:-}}"
+  write_colour_env
+  exit 0
+fi
+
+if [[ "${XIRYN_STATE_ONLY:-}" == "1" ]]; then
+  branch="${XIRYN_STATE_BRANCH:-${branch:-main}}"
+  write_install_state "${XIRYN_STATE_SHA:-}" "${XIRYN_STATE_COLOUR:-blue}"
+  exit $?
+fi
+
+if [[ "${XIRYN_SHA_ONLY:-}" == "1" ]]; then
+  deployed_sha "${XIRYN_SHA_TREE:-}"
   exit 0
 fi
 
@@ -120,8 +244,7 @@ install_runtime_dirs() {
 
 install_colour_files() {
   install -d -m 0755 /etc/xiryn
-  install -m 0644 "$SRC/xiryn-blue.env" /etc/xiryn/blue.env
-  install -m 0644 "$SRC/xiryn-green.env" /etc/xiryn/green.env
+  write_colour_env
   install -m 0644 "$SRC/xiryn-blue.service" /etc/systemd/system/xiryn-blue.service
   install -m 0644 "$SRC/xiryn-green.service" /etc/systemd/system/xiryn-green.service
   strip_colour_env
@@ -134,8 +257,19 @@ if [[ -f "$ACTIVE" && -d "$BLUE" && -f /etc/systemd/system/xiryn-blue.service ]]
   install_runtime_dirs
   install_colour_files
   install -m 0644 "$SRC/xiryn-deploy.service" /etc/systemd/system/xiryn-deploy.service
-  systemctl daemon-reload
   active="$(tr -d '[:space:]' < "$ACTIVE")"
+  tree="$BLUE"
+  if [[ "$active" == "green" ]]; then
+    tree="$GREEN"
+  fi
+  if [[ "$active" != "blue" && "$active" != "green" ]]; then
+    active=blue
+    tree="$BLUE"
+  fi
+  if ! write_install_state "$(deployed_sha "$tree")" "$active"; then
+    echo "The update screen still has no commit. The colour was left running." >&2
+  fi
+  systemctl daemon-reload
   echo "Blue/green is already installed (active: ${active})."
   if [[ "$active" == "blue" || "$active" == "green" ]]; then
     echo "Restart the serving colour so it loads its env file: systemctl restart xiryn-${active}.service"
@@ -237,6 +371,11 @@ install -m 0644 "$SRC/../scripts/self-update-snapshot.mjs" /usr/local/lib/xiryn/
 install -m 0644 "$SRC/../scripts/self-update-migrate.mjs" /usr/local/lib/xiryn/self-update-migrate.mjs
 install -m 0644 "$SRC/../scripts/self-update-approval.mjs" /usr/local/lib/xiryn/self-update-approval.mjs
 install_colour_files
+sha="$(deployed_sha "$BLUE")"
+if [[ ! "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+  sha="$(deployed_sha "$ROOT")"
+fi
+write_install_state "$sha" blue
 install -m 0644 "$SRC/xiryn-deploy.service" /etc/systemd/system/xiryn-deploy.service
 install -m 0644 "$SRC/xiryn-deploy.path" /etc/systemd/system/xiryn-deploy.path
 

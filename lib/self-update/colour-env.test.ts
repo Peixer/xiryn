@@ -113,6 +113,7 @@ test("the installer strips per-colour keys from shared.env without printing them
       "XIRYN_DESKTOP_PROXY_PORT=6797",
       "  XIRYN_VAULT_KEY_DIR=/opt/xiryn/.xiryn",
       "XIRYN_DATA_DIR_EXTRA=stay",
+      "XIRYN_VAULT_ACCOUNT=0123456789abcdef",
       "OTHER=1",
       "",
     ].join("\n"),
@@ -141,6 +142,7 @@ test("the installer strips per-colour keys from shared.env without printing them
     assert.match(next, /^# keep$/m)
     assert.match(next, new RegExp(`^OPENAI_API_KEY=${secret}$`, "m"))
     assert.match(next, /^XIRYN_DATA_DIR_EXTRA=stay$/m)
+    assert.match(next, /^XIRYN_VAULT_ACCOUNT=0123456789abcdef$/m)
     assert.match(next, /^OTHER=1$/m)
     assert.equal(fs.statSync(file).mode & 0o777, 0o640)
   } finally {

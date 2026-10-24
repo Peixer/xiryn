@@ -80,8 +80,10 @@ function asState(value: unknown): DeployState | null {
   }
 }
 
-function git(args: string[]) {
-  return execFileSync("git", args, {
+function git(mirror: string, args: string[]) {
+  // The pin mirror is root-owned. The app runs as the service user, and git
+  // refuses that tree as dubious ownership unless this directory is named.
+  return execFileSync("git", ["-c", `safe.directory=${mirror}`, ...args], {
     encoding: "utf8",
     timeout: 8000,
     env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
@@ -172,7 +174,7 @@ export function loadSelfUpdateView(): SelfUpdateView {
     migrations = summary.migrations
   } else if (fs.existsSync(layout.mirror)) {
     try {
-      const tip = git([
+      const tip = git(layout.mirror, [
         "--git-dir",
         layout.mirror,
         "rev-parse",
@@ -181,14 +183,14 @@ export function loadSelfUpdateView(): SelfUpdateView {
       if (isSha(tip)) {
         tipSha = tip
         if (state.activeSha && state.activeSha !== tip) {
-          const log = git([
+          const log = git(layout.mirror, [
             "--git-dir",
             layout.mirror,
             "log",
             "--format=%H%x09%s",
             `${state.activeSha}..${tip}`,
           ])
-          const diff = git([
+          const diff = git(layout.mirror, [
             "--git-dir",
             layout.mirror,
             "diff",
