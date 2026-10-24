@@ -54,6 +54,51 @@ function ownService(target: string) {
   ownTree(target, account.uid, account.gid)
 }
 
+// Caches and the backup staging directory. The oneshot keeps ProtectHome
+// read-only, so npm and next must not write under the service user's home.
+function serviceDirs(layout: Layout) {
+  const root = layout.deployDir
+  return {
+    root,
+    npmCache: path.join(root, "npm-cache"),
+    xdgCache: path.join(root, "cache"),
+    xdgConfig: path.join(root, "config"),
+    staging: path.join(root, "staging"),
+  }
+}
+
+function ensureServiceDirs(layout: Layout) {
+  const dirs = serviceDirs(layout)
+  const account = serviceAccount()
+  fs.mkdirSync(dirs.root, { recursive: true, mode: 0o700 })
+  // Root-owned 0700 would hide every cache inside it from the service user.
+  if (fs.statSync(dirs.root).uid === 0) fs.chownSync(dirs.root, account.uid, account.gid)
+  for (const dir of [dirs.npmCache, dirs.xdgCache, dirs.xdgConfig, dirs.staging]) {
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 })
+    ownTree(dir, account.uid, account.gid)
+  }
+  return dirs
+}
+
+function serviceEnv(layout: Layout): NodeJS.ProcessEnv {
+  const account = serviceAccount()
+  const dirs = ensureServiceDirs(layout)
+  return {
+    PATH: process.env.PATH ?? "/usr/bin:/bin",
+    HOME: account.home,
+    USER: account.name,
+    LOGNAME: account.name,
+    GIT_TERMINAL_PROMPT: "0",
+    npm_config_fund: "false",
+    npm_config_audit: "false",
+    npm_config_cache: dirs.npmCache,
+    XDG_CACHE_HOME: dirs.xdgCache,
+    XDG_CONFIG_HOME: dirs.xdgConfig,
+    NEXT_TELEMETRY_DISABLED: "1",
+    NODE_ENV: "production",
+  }
+}
+
 function runRoot(layout: Layout, argv: readonly string[]) {
   if (!commandAllowed(argv, layout, serviceUserName())) {
     throw new Error("Refusing a command outside the helper allow-list.")
@@ -82,20 +127,10 @@ function runAsService(layout: Layout, argv: readonly string[]) {
   if (!commandAllowed(wrapped, layout, account.name)) {
     throw new Error("Refusing a command outside the helper allow-list.")
   }
-  const env: NodeJS.ProcessEnv = {
-    PATH: process.env.PATH ?? "/usr/bin:/bin",
-    HOME: account.home,
-    USER: account.name,
-    LOGNAME: account.name,
-    GIT_TERMINAL_PROMPT: "0",
-    npm_config_fund: "false",
-    npm_config_audit: "false",
-    NODE_ENV: "production",
-  }
   return execFileSync(wrapped[0], wrapped.slice(1), {
     encoding: "utf8",
     timeout: 30 * 60_000,
-    env,
+    env: serviceEnv(layout),
   })
 }
 
@@ -318,9 +353,11 @@ export function createSystemHost(layout = loadLayout()): Host {
         throw new Error("Refusing a backup label outside the allow-list.")
       }
       const stamp = new Date().toISOString().replace(/[:.]/g, "-")
+      const dirs = ensureServiceDirs(layout)
+      const stage = path.join(dirs.staging, `${stamp}-${label}`)
       const dest = path.join(layout.backupDir, `${stamp}-${label}`)
-      fs.mkdirSync(dest, { recursive: true, mode: 0o700 })
-      mode(dest, 0o700)
+      fs.mkdirSync(stage, { recursive: true, mode: 0o700 })
+      ownService(stage)
       const state = this.readState()
       const local = path.join(
         colourDir(layout, state.active),
@@ -332,9 +369,14 @@ export function createSystemHost(layout = loadLayout()): Host {
         : "/usr/local/lib/xiryn/self-update-snapshot.mjs"
       const source = colourData(layout, state.active)
       if (fs.existsSync(source)) ownService(source)
-      ownService(dest)
-      runAsService(layout, ["node", file, "--from", source, "--to", dest])
-      ownTree(dest, 0, 0)
+      // The service user cannot write /var/backups/xiryn (root, mode 0700).
+      // Snapshot into staging, then move the tree across as root.
+      runAsService(layout, ["node", file, "--from", source, "--to", stage])
+      fs.mkdirSync(layout.backupDir, { recursive: true, mode: 0o700 })
+      fs.chownSync(layout.backupDir, 0, 0)
+      mode(layout.backupDir, 0o700)
+      moveTree(stage, dest)
+      sealRoot(dest)
       if (fs.existsSync(layout.sharedEnv))
         copyPrivate(layout.sharedEnv, path.join(dest, "shared.env"))
       if (fs.existsSync(layout.vaultDir)) {
@@ -346,6 +388,7 @@ export function createSystemHost(layout = loadLayout()): Host {
       const note = path.join(dest, "label.txt")
       fs.writeFileSync(note, `${label}\n`, { mode: 0o600 })
       mode(note, 0o600)
+      fs.chownSync(note, 0, 0)
     },
     readApproval(id) {
       if (!/^[A-Za-z0-9_-]{8,32}$/.test(id)) return null
@@ -396,7 +439,37 @@ export function createSystemHost(layout = loadLayout()): Host {
 
 function copyPrivate(from: string, to: string) {
   fs.copyFileSync(from, to)
+  fs.chownSync(to, 0, 0)
   mode(to, 0o600)
+}
+
+function moveTree(from: string, to: string) {
+  try {
+    fs.renameSync(from, to)
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code
+    if (code !== "EXDEV") throw error
+    fs.cpSync(from, to, { recursive: true })
+    fs.rmSync(from, { recursive: true, force: true })
+  }
+}
+
+function sealRoot(target: string) {
+  const visit = (file: string) => {
+    const stat = fs.lstatSync(file)
+    if (stat.isSymbolicLink()) {
+      fs.lchownSync(file, 0, 0)
+      return
+    }
+    fs.chownSync(file, 0, 0)
+    if (stat.isDirectory()) {
+      fs.chmodSync(file, 0o700)
+      for (const name of fs.readdirSync(file)) visit(path.join(file, name))
+      return
+    }
+    fs.chmodSync(file, 0o600)
+  }
+  visit(target)
 }
 
 function caddySnippet(ports: {

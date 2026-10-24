@@ -18,6 +18,10 @@ The vault key (`/etc/xiryn/vault`) and the environment file (`/etc/xiryn/shared.
 
 Git, npm, and node that touch a colour tree or its database run as the `xiryn` user. The oneshot is still root, and it drops with `setpriv` (no new privileges, no capabilities) before those commands. The allow-list only accepts that fixed wrapper, so npm install scripts are not root and the checkout, `node_modules`, `.next`, and `xiryn.db` are owned by `xiryn`. Fetching the mirror, reloading Caddy, and starting the units stay root. A database snapshot also copies subdirectories such as `skills/`. It still skips `backups/`, `vault*`, `*.key`, and `.env`.
 
+`xiryn-deploy.service` keeps `ProtectHome=read-only`, so npm and Next cannot write `~/.npm` or `~/.cache`. The helper sets `npm_config_cache=/var/lib/xiryn/deploy/npm-cache`, `XDG_CACHE_HOME=/var/lib/xiryn/deploy/cache`, `XDG_CONFIG_HOME=/var/lib/xiryn/deploy/config`, and `NEXT_TELEMETRY_DISABLED=1`. The install script creates those directories owned by `xiryn`. They are on the unit's `ReadWritePaths`.
+
+`/var/backups/xiryn` stays root and mode 0700. The service user cannot create a backup there. Prepare and the pre-switch backup snapshot the database as `xiryn` into `/var/lib/xiryn/deploy/staging/<stamp>`, then root moves that directory to `/var/backups/xiryn/<stamp>-prepare` or `-switch`, chowns it to root, and sets the directory to mode 700 and the files to mode 600. The shared env and the vault key are copied in that last step, still as root.
+
 ## Install it once on the existing server
 
 Do this on the EC2 box, as root, from the current checkout. The copy keeps serving until the last restart. Blue is given up to 90 seconds to answer `/api/health`. If it does not, the script enables and starts `xiryn.service` again, so a reboot still comes up on the old unit.
@@ -41,7 +45,7 @@ sudo systemctl reload caddy
 
 Open TCP 8443 from your IP if you want to browse the inactive colour before a switch. Until then it is only on the instance. The security group already allows 443 for the live site.
 
-The script is safe to run again. Once `/etc/xiryn/active` says `blue` and `xiryn-blue.service` is installed, it only makes sure the green directories exist and exits.
+The script is safe to run again. Once `/etc/xiryn/active` says `blue` and `xiryn-blue.service` is installed, it makes sure the green directories, the pin mirror, and the cache and staging directories exist, installs the current `xiryn-deploy.service`, reloads systemd, and exits.
 
 What you still do by hand, because the script will not guess a customised Caddyfile or a security group:
 
@@ -63,7 +67,7 @@ Settings → **Update version** on a wide browser (the item sits in the settings
 
 An agent can call `request_self_update`. The first call is only an approval card, in the thread and on Telegram. Nothing is queued until you approve and the tool is called again with the same action. The helper checks that approval in the live database before it will switch or roll back, then marks it used. A used approval is refused even if it is still inside the 20-minute window, so the same card cannot switch twice.
 
-Every prepare, switch, and rollback writes a line under `/var/lib/xiryn/deploy/audit/` at mode 600. Backups of the database, the shared env, and the vault key go to `/var/backups/xiryn/<timestamp>/` at mode 600. Logs are redacted before they are shown.
+Every prepare, switch, and rollback writes a line under `/var/lib/xiryn/deploy/audit/` at mode 600. Backups of the database, the shared env, and the vault key go to `/var/backups/xiryn/<timestamp>-prepare` or `-switch`. That directory is root mode 700 and the files inside it are root mode 600. Logs are redacted before they are shown.
 
 ## Migrations
 

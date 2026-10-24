@@ -75,10 +75,22 @@ ensure_mirror() {
   git --git-dir "$mirror" fetch --prune origin "+refs/heads/${branch}:refs/heads/${branch}"
 }
 
+# Caches live here because the deploy unit keeps ProtectHome=read-only.
+# /var/backups/xiryn stays root mode 0700; the helper stages elsewhere.
+install_runtime_dirs() {
+  install -d -o xiryn -g xiryn -m 0700 \
+    "$DEPLOY" "$DEPLOY/inbox" "$DEPLOY/audit" \
+    "$DEPLOY/npm-cache" "$DEPLOY/cache" "$DEPLOY/config" "$DEPLOY/staging"
+  install -d -o root -g root -m 0700 /var/backups/xiryn
+}
+
 if [[ -f "$ACTIVE" && -d "$BLUE" && -f /etc/systemd/system/xiryn-blue.service ]]; then
   ensure_mirror
-  install -d -o xiryn -g xiryn -m 0700 "$GREEN_DATA" "$DEPLOY/inbox" "$DEPLOY/audit"
+  install -d -o xiryn -g xiryn -m 0700 "$GREEN_DATA"
   install -d -m 0755 "$GREEN"
+  install_runtime_dirs
+  install -m 0644 "$SRC/xiryn-deploy.service" /etc/systemd/system/xiryn-deploy.service
+  systemctl daemon-reload
   echo "Blue/green is already installed (active: $(cat "$ACTIVE"))."
   exit 0
 fi
@@ -89,8 +101,8 @@ if [[ ! -d "$ROOT" ]]; then
 fi
 
 install -d -m 0755 /etc/xiryn /usr/local/lib/xiryn /usr/local/sbin
-install -d -o xiryn -g xiryn -m 0700 "$BLUE_DATA" "$GREEN_DATA" "$DEPLOY" "$DEPLOY/inbox" "$DEPLOY/audit" "$VAULT"
-install -d -m 0700 /var/backups/xiryn
+install -d -o xiryn -g xiryn -m 0700 "$BLUE_DATA" "$GREEN_DATA" "$VAULT"
+install_runtime_dirs
 
 if [[ ! -f "$SHARED" ]]; then
   if [[ -f "$ROOT/.env" ]]; then

@@ -11,3 +11,6 @@ Nice=10
 NoNewPrivileges=true
 ProtectHome=read-only
 PrivateTmp=true
+# npm and next caches, and the backup staging dir. The service home stays
+# read-only. /var/backups/xiryn is root mode 0700 and is not writable by xiryn.
+ReadWritePaths=/var/lib/xiryn/deploy /var/lib/xiryn/deploy/npm-cache /var/lib/xiryn/deploy/cache /var/lib/xiryn/deploy/config /var/lib/xiryn/deploy/staging /opt/xiryn-blue /opt/xiryn-green /var/lib/xiryn/colours /var/lib/xiryn-pin.git /var/backups/xiryn /etc/caddy /etc/xiryn

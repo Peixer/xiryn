@@ -165,6 +165,33 @@ test("spawned commands are pinned to the layout", () => {
     commandAllowed(["npm", "--prefix", layout.blueDir, "run", "something-else"], layout),
     false
   )
+  const snapshot = [
+    "node",
+    "/usr/local/lib/xiryn/self-update-snapshot.mjs",
+    "--from",
+    layout.blueData,
+    "--to",
+  ]
+  assert.equal(
+    commandAllowed(
+      serviceArgv("xiryn", [
+        ...snapshot,
+        `${layout.deployDir}/staging/2026-10-24T10-00-00-000Z-prepare`,
+      ]),
+      layout
+    ),
+    true
+  )
+  assert.equal(
+    commandAllowed(
+      serviceArgv("xiryn", [
+        ...snapshot,
+        `${layout.backupDir}/2026-10-24T10-00-00-000Z-prepare`,
+      ]),
+      layout
+    ),
+    false
+  )
 })
 
 test("the oneshot is started by a path unit and takes no arguments", () => {
@@ -176,4 +203,9 @@ test("the oneshot is started by a path unit and takes no arguments", () => {
   assert.match(watch, /PathExistsGlob=\/var\/lib\/xiryn\/deploy\/inbox\/\*\.json/)
   assert.match(wrapper, /\$# -ne 0/)
   assert.doesNotMatch(unit, /sudo/)
+  assert.match(unit, /^ProtectHome=read-only$/m)
+  assert.match(unit, /^ReadWritePaths=.*\/var\/lib\/xiryn\/deploy\/npm-cache/m)
+  assert.match(unit, /\/var\/lib\/xiryn\/deploy\/cache/)
+  assert.match(unit, /\/var\/lib\/xiryn\/deploy\/config/)
+  assert.match(unit, /\/var\/lib\/xiryn\/deploy\/staging/)
 })

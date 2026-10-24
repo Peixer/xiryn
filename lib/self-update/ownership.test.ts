@@ -15,10 +15,28 @@ const CHILD = process.env.XIRYN_OWNERSHIP_CHILD === "1"
 const USER = "xirynsu"
 const SHA = "b".repeat(40)
 
+function privilegeGap() {
+  const sudo = spawnSync("sudo", ["-n", "true"], { encoding: "utf8" })
+  if (sudo.error || sudo.status !== 0) return "passwordless sudo is unavailable"
+  const useradd = spawnSync("sudo", ["-n", "sh", "-c", "command -v useradd"], {
+    encoding: "utf8",
+  })
+  if (useradd.status !== 0 || !useradd.stdout.trim()) return "useradd is unavailable"
+  return null
+}
+
 test(
   "the service user owns the colour tree and database after build, snapshot, and migrate",
   { skip: CHILD, timeout: 120_000 },
-  () => {
+  (t) => {
+    const reason = privilegeGap()
+    if (reason) {
+      if (process.env.GITHUB_ACTIONS === "true") {
+        assert.fail(`${reason}; CI must run this test`)
+      }
+      t.skip(reason)
+      return
+    }
     const result = spawnSync(
       "sudo",
       [
@@ -47,13 +65,17 @@ test(
   { skip: !CHILD, timeout: 120_000 },
   () => {
     if (spawnSync("id", [USER]).status !== 0) {
-      execFileSync("useradd", [
+      const added = spawnSync("useradd", [
         "--create-home",
         "--shell",
         "/usr/sbin/nologin",
         "--user-group",
         USER,
       ])
+      if (added.status !== 0 && spawnSync("id", [USER]).status !== 0) {
+        const detail = added.stderr?.toString() || "useradd failed"
+        throw new Error(detail)
+      }
     }
     const uid = Number(execFileSync("id", ["-u", USER], { encoding: "utf8" }).trim())
     assert.notEqual(uid, 0)

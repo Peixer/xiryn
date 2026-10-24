@@ -181,15 +181,23 @@ function colourGitAllowed(rest: readonly string[], layout: Layout) {
   return rest[2] === "rev-parse" && rest[3] === "HEAD" && rest.length === 4
 }
 
+// One directory under deploy/staging, the name the helper builds from a
+// timestamp. The service user can write there. /var/backups/xiryn stays root.
+function isServiceStaging(layout: Layout, dir: string) {
+  const root = `${layout.deployDir}/staging/`
+  if (!dir.startsWith(root) || dir.includes("..")) return false
+  const name = dir.slice(root.length)
+  return name.length > 0 && /^[A-Za-z0-9._+-]+$/.test(name)
+}
+
 function nodeAllowed(rest: readonly string[], layout: Layout) {
   if (rest[0]?.endsWith("/self-update-snapshot.mjs") && rest[1] === "--from") {
     const to = rest[4] ?? ""
-    const backup = to.startsWith(`${layout.backupDir}/`) && !to.includes("..")
     return (
       rest.length === 5 &&
       rest[3] === "--to" &&
       isColourData(layout, rest[2]) &&
-      (isColourData(layout, to) || backup)
+      (isColourData(layout, to) || isServiceStaging(layout, to))
     )
   }
   if (rest[0]?.endsWith("/self-update-approval.mjs") && rest[1] === "--db") {
