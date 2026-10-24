@@ -37,6 +37,20 @@ export type AgentLite = {
 
 type Part = XirynMessage["parts"][number]
 
+// Desktop keeps the smooth follow from before the phone layout. A phone jumps
+// so a streaming reply does not lag behind the latest line.
+function usePhoneStickResize() {
+  const [resize, setResize] = React.useState<"smooth" | "instant">("smooth")
+  React.useLayoutEffect(() => {
+    const query = window.matchMedia("(max-width: 767px)")
+    const apply = () => setResize(query.matches ? "instant" : "smooth")
+    apply()
+    query.addEventListener("change", apply)
+    return () => query.removeEventListener("change", apply)
+  }, [])
+  return resize
+}
+
 // One reply can pass through several agents in a squad. It is cut at every
 // delegation so each stretch is credited to whoever wrote it.
 function segments(message: XirynMessage, members: AgentLite[]) {
@@ -215,25 +229,25 @@ function UserMessage({
       provided: "you added to the vault",
     }[vault.action]
     return (
-      <div className="flex w-full min-w-0 items-center gap-3">
-        <span className="h-px min-w-4 flex-1 bg-ok/25" />
+      <div className="flex w-full items-center gap-3 max-md:min-w-0">
+        <span className="h-px flex-1 bg-ok/25 max-md:min-w-4" />
         <span
           className={cn(
-            "flex max-w-[min(100%,36rem)] min-w-0 items-center gap-1.5 text-center font-mono text-[11px] [overflow-wrap:anywhere]",
+            "flex items-center gap-1.5 font-mono text-[11px] max-md:max-w-[min(100%,36rem)] max-md:min-w-0 max-md:text-center max-md:[overflow-wrap:anywhere]",
             vault.action === "declined" ? "text-muted-foreground" : "text-ok"
           )}
         >
-          <ShieldCheckIcon className="size-3.5 shrink-0" />
+          <ShieldCheckIcon className="size-3.5 max-md:shrink-0" />
           {said} · {vault.summary}
         </span>
-        <span className="h-px min-w-4 flex-1 bg-ok/25" />
+        <span className="h-px flex-1 bg-ok/25 max-md:min-w-4" />
       </div>
     )
   }
 
   return (
-    <div className="flex min-w-0 justify-end">
-      <div className="flex w-fit max-w-[min(85%,36rem)] min-w-0 flex-col items-end gap-1">
+    <div className="flex justify-end max-md:min-w-0">
+      <div className="flex max-w-[85%] flex-col items-end gap-1 max-md:w-fit max-md:max-w-[min(85%,36rem)] max-md:min-w-0">
         {(addressee ||
           message.metadata?.via === "telegram" ||
           message.metadata?.routine) && (
@@ -263,7 +277,7 @@ function UserMessage({
               const href = `/api/uploads/${encodeURIComponent(file.agentId)}/${encodeURIComponent(file.storedName)}`
               const image = isImageMedia(file.mediaType)
               return (
-                <li key={file.storedName} className="max-w-full min-w-0">
+                <li key={file.storedName} className="max-md:max-w-full max-md:min-w-0">
                   <a
                     href={href}
                     download={file.name}
@@ -293,7 +307,7 @@ function UserMessage({
           </ul>
         )}
         {text.trim() ? (
-          <div className="xiryn-user-bubble max-w-full rounded-xl rounded-br-sm border bg-elevated px-3.5 py-2 text-[14px] leading-relaxed [overflow-wrap:anywhere] whitespace-pre-wrap">
+          <div className="xiryn-user-bubble rounded-xl rounded-br-sm border bg-elevated px-3.5 py-2 text-[14px] leading-relaxed whitespace-pre-wrap max-md:max-w-full max-md:[overflow-wrap:anywhere]">
             {text}
           </div>
         ) : null}
@@ -321,7 +335,7 @@ function AgentMessage({
     parts.every((segment) => segment.parts.every((p) => p.type === "step-start"))
 
   return (
-    <div className="flex min-w-0 flex-col gap-4">
+    <div className="flex flex-col gap-4 max-md:min-w-0">
       {parts.map((segment, i) => (
         <div key={i} className="flex flex-col gap-2.5">
           {segment.via && (
@@ -338,7 +352,7 @@ function AgentMessage({
               {segment.author.role}
             </span>
           </div>
-          <div className="min-w-0 pl-[30px]">
+          <div className="pl-[30px] max-md:min-w-0">
             {working && i === 0 ? (
               <span className="shimmer-text font-mono text-[12px]">working…</span>
             ) : (
@@ -401,12 +415,17 @@ export function Transcript({
 }) {
   const busy = status === "submitted" || status === "streaming"
   const last = messages[messages.length - 1]
+  const stickResize = usePhoneStickResize()
 
   return (
-    <StickToBottom className="relative min-h-0 flex-1" resize="instant" initial="instant">
+    <StickToBottom
+      className="relative min-h-0 flex-1"
+      resize={stickResize}
+      initial="instant"
+    >
       <StickToBottom.Content
         scrollClassName="xiryn-transcript-scroll"
-        className="mx-auto flex w-full max-w-3xl min-w-0 flex-col gap-7 px-4 py-8 sm:px-6"
+        className="mx-auto flex w-full max-w-3xl flex-col gap-7 px-4 py-8 max-md:min-w-0 sm:px-6"
       >
         {messages.length === 0 && empty}
         {messages.map((message) =>

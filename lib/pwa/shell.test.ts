@@ -9,7 +9,6 @@ import {
   PHONE_MAX_WIDTH,
   shouldOfferInstallGuide,
   wantsAppShell,
-  WORKBENCH_SPLIT_MIN_WIDTH,
   workbenchPlacement,
 } from "./shell"
 
@@ -30,27 +29,31 @@ test("the app shell is for an installed window or a phone-sized viewport", () =>
   assert.equal(isThreadPath("/agents"), false)
 })
 
-test("the workbench sits beside the chat only on a wide browser window", () => {
-  assert.equal(WORKBENCH_SPLIT_MIN_WIDTH, 1100)
-  assert.equal(workbenchPlacement({ width: 390, appShell: true }), "overlay")
+test("the workbench collapses only on a phone-sized viewport", () => {
   assert.equal(workbenchPlacement({ width: 360, appShell: false }), "overlay")
-  assert.equal(workbenchPlacement({ width: 820, appShell: false }), "overlay")
-  assert.equal(workbenchPlacement({ width: 1099, appShell: false }), "overlay")
-  assert.equal(workbenchPlacement({ width: 1100, appShell: false }), "split")
+  assert.equal(workbenchPlacement({ width: 390, appShell: true }), "overlay")
+  assert.equal(workbenchPlacement({ width: 767, appShell: false }), "overlay")
+  assert.equal(workbenchPlacement({ width: 768, appShell: false }), "split")
+  assert.equal(workbenchPlacement({ width: 820, appShell: false }), "split")
+  assert.equal(workbenchPlacement({ width: 1024, appShell: false }), "split")
+  assert.equal(workbenchPlacement({ width: 1024, appShell: true }), "split")
   assert.equal(workbenchPlacement({ width: 1280, appShell: false }), "split")
-  assert.equal(workbenchPlacement({ width: 1920, appShell: false }), "split")
-  // An installed window uses the app shell even on a desktop monitor.
-  assert.equal(workbenchPlacement({ width: 1440, appShell: true }), "overlay")
+  assert.equal(workbenchPlacement({ width: 1440, appShell: false }), "split")
+  assert.equal(workbenchPlacement({ width: 1440, appShell: true }), "split")
+  assert.equal(workbenchPlacement({ width: 1920, appShell: true }), "split")
 })
 
-test("narrow layout CSS collapses the workbench panel, not only its contents", () => {
+test("phone CSS collapses the workbench panel, and wider windows do not", () => {
   const css = fs.readFileSync(
     path.join(import.meta.dirname, "../../app/globals.css"),
     "utf8"
   )
-  assert.match(css, /max-width:\s*1099px/)
-  assert.match(css, /\[data-panel\]:has\(> \.xiryn-workbench\)/)
-  assert.match(css, /\[data-panel\]:has\(> \.xiryn-chat-panel\)/)
+  const phone = css.match(/@media \(max-width: 767px\) \{[\s\S]*?\n\}/)
+  assert.ok(phone, "phone media query")
+  assert.match(phone[0], /\[data-panel\]:has\(> \.xiryn-workbench\)/)
+  assert.match(phone[0], /\[data-panel\]:has\(> \.xiryn-chat-panel\)/)
+  assert.doesNotMatch(css, /max-width:\s*1099px/)
+  assert.doesNotMatch(css, /html\[data-xiryn-app="1"\] \[data-panel\]/)
 })
 
 test("the home-screen guide is only for iOS Safari that is not installed yet", () => {

@@ -3,15 +3,13 @@
 
 export const PHONE_MAX_WIDTH = 767
 
-// Side-by-side chat and workbench only at this width and above. Below it the
-// workbench panel still owned a share of the row after its contents were
-// hidden, so the conversation was stuck at about 60% of a phone or tablet.
-// Keep this in step with the max-width query in app/globals.css.
-export const WORKBENCH_SPLIT_MIN_WIDTH = 1100
-
+// The side-by-side workbench is the desktop layout, including a laptop window
+// and an installed app on a desktop. Only a phone-sized viewport collapses the
+// outer panel. An installed window does not, unless it is also that narrow.
+// Keep this in step with the phone query in app/globals.css.
 export function workbenchPlacement(input: { width: number; appShell: boolean }) {
-  if (input.appShell) return "overlay" as const
-  if (input.width < WORKBENCH_SPLIT_MIN_WIDTH) return "overlay" as const
+  void input.appShell
+  if (input.width <= PHONE_MAX_WIDTH) return "overlay" as const
   return "split" as const
 }
 
