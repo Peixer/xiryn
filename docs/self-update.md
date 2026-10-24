@@ -12,7 +12,9 @@ Two colours run on the same machine:
 | Desktop proxy | `127.0.0.1:6797` | `127.0.0.1:6897` |
 | systemd | `xiryn-blue.service` | `xiryn-green.service` |
 
-The vault key (`/etc/xiryn/vault`) and the environment file (`/etc/xiryn/shared.env`, mode 640, group `xiryn`) are shared and not writable by the service. Each colour has its own SQLite file. Caddy sends the public hostname to the active colour. The inactive colour is on port 8443 with the same basic auth (`deploy/Caddyfile.bluegreen`).
+The vault key (`/etc/xiryn/vault`) and the shared environment file (`/etc/xiryn/shared.env`, mode 640, group `xiryn`) are not writable by the service. API keys stay in that shared file. Each colour has its own SQLite file. Caddy sends the public hostname to the active colour. The inactive colour is on port 8443 with the same basic auth (`deploy/Caddyfile.bluegreen`).
+
+systemd applies every `EnvironmentFile=` after `Environment=`, and a later file replaces the same key in an earlier file. The installer copies the old `/opt/xiryn/.env` into `shared.env`, and that file sets `XIRYN_DATA_DIR=/opt/xiryn/data`. Both colours would then open the same database, on a path the colour sandbox does not make writable. The installer removes `XIRYN_DATA_DIR`, `XIRYN_PORT`, `XIRYN_DESKTOP_PROXY_PORT`, and `XIRYN_VAULT_KEY_DIR` from `shared.env`. It writes `/etc/xiryn/blue.env` and `/etc/xiryn/green.env`, and each unit loads `shared.env` first and its own file second. The colour file sets the data directory, both ports, the vault-key directory, and `XIRYN_DEPLOY_DIR`.
 
 `/etc/xiryn-deploy.conf` names the branch (yours is `BRANCH=main`). The helper fetches that one branch through the bare mirror `/var/lib/xiryn-pin.git` and will only build the commit that branch points at. A tag, a short name, or another branch is refused. The install script creates that mirror, root-owned and world-readable, when it is missing. The helper does not.
 
@@ -45,7 +47,13 @@ sudo systemctl reload caddy
 
 Open TCP 8443 from your IP if you want to browse the inactive colour before a switch. Until then it is only on the instance. The security group already allows 443 for the live site.
 
-The script is safe to run again. Once `/etc/xiryn/active` says `blue` and `xiryn-blue.service` is installed, it makes sure the green directories, the pin mirror, and the cache and staging directories exist, installs the current `xiryn-deploy.service`, reloads systemd, and exits.
+The script is safe to run again. Once `/etc/xiryn/active` exists and `xiryn-blue.service` is installed, it makes sure the green directories, the pin mirror, and the cache and staging directories exist. It installs the current colour units, `/etc/xiryn/blue.env`, `/etc/xiryn/green.env`, and `xiryn-deploy.service`, strips the four per-colour variables from `shared.env` if they are present, reloads systemd, and exits. It does not restart the colour that is serving. After a re-run, restart that colour so it reads the new files:
+
+```bash
+sudo systemctl restart xiryn-blue.service
+```
+
+Use `xiryn-green.service` when `/etc/xiryn/active` says `green`.
 
 What you still do by hand, because the script will not guess a customised Caddyfile or a security group:
 

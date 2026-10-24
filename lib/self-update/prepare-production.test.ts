@@ -9,35 +9,18 @@ import Database from "better-sqlite3"
 
 import { serviceArgv } from "./allowlist"
 import { runPrepare, type Host } from "./helper"
+import {
+  copyHelperTree,
+  ensureServiceUser,
+  installHelperRuntime,
+  privilegeGap,
+} from "./host-fixture"
 import { DEFAULT_LAYOUT, type Layout } from "./layout"
 import { createSystemHost } from "./system-host"
 
 const CHILD = process.env.XIRYN_PREPARE_CHILD === "1"
 const USER = "xirynprep"
 const SHA = "c".repeat(40)
-
-// GitHub's runner home is mode 750, so a symlink into the checkout is
-// invisible to the service user. Other users only need to traverse.
-function allowOthersToTraverse(start: string) {
-  let dir = path.resolve(start)
-  while (true) {
-    const mode = fs.statSync(dir).mode
-    if ((mode & 0o001) === 0) fs.chmodSync(dir, mode | 0o001)
-    const parent = path.dirname(dir)
-    if (parent === dir) break
-    dir = parent
-  }
-}
-
-function privilegeGap() {
-  const sudo = spawnSync("sudo", ["-n", "true"], { encoding: "utf8" })
-  if (sudo.error || sudo.status !== 0) return "passwordless sudo is unavailable"
-  const useradd = spawnSync("sudo", ["-n", "sh", "-c", "command -v useradd"], {
-    encoding: "utf8",
-  })
-  if (useradd.status !== 0 || !useradd.stdout.trim()) return "useradd is unavailable"
-  return null
-}
 
 function writeExe(file: string, body: string) {
   fs.writeFileSync(file, body)
@@ -62,12 +45,12 @@ test(
   "prepare succeeds when backups are root-only and the service home is read-only",
   { skip: CHILD, timeout: 180_000 },
   (t) => {
-    const reason = privilegeGap()
-    if (reason) {
+    const gap = privilegeGap()
+    if ("skip" in gap) {
       if (process.env.GITHUB_ACTIONS === "true") {
-        assert.fail(`${reason}; CI must run this test`)
+        assert.fail(`${gap.skip}; CI must run this test`)
       }
-      t.skip(reason)
+      t.skip(gap.skip)
       return
     }
     const result = spawnSync(
@@ -77,6 +60,7 @@ test(
         "env",
         `PATH=${process.env.PATH ?? "/usr/bin:/bin"}`,
         "XIRYN_PREPARE_CHILD=1",
+        `XIRYN_USERADD=${gap.useradd}`,
         `XIRYN_SERVICE_USER=${USER}`,
         process.execPath,
         "--import",
@@ -97,19 +81,7 @@ test(
   "backup staging and npm caches let prepare finish under production permissions",
   { skip: !CHILD, timeout: 180_000 },
   () => {
-    if (spawnSync("id", [USER]).status !== 0) {
-      const added = spawnSync("useradd", [
-        "--create-home",
-        "--shell",
-        "/usr/sbin/nologin",
-        "--user-group",
-        USER,
-      ])
-      if (added.status !== 0 && spawnSync("id", [USER]).status !== 0) {
-        throw new Error(added.stderr?.toString() || "useradd failed")
-      }
-    }
-    allowOthersToTraverse(process.cwd())
+    ensureServiceUser(USER, process.env.XIRYN_USERADD ?? "")
     const uid = Number(spawnSync("id", ["-u", USER], { encoding: "utf8" }).stdout.trim())
     assert.notEqual(uid, 0)
     const home = spawnSync("getent", ["passwd", USER], { encoding: "utf8" }).stdout.split(
@@ -120,7 +92,7 @@ test(
 
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "xirynprep"))
     fs.chmodSync(root, 0o755)
-    const repo = process.cwd()
+    const runtime = installHelperRuntime(root)
     const fakeBin = path.join(root, "bin")
     fs.mkdirSync(fakeBin)
     fs.chmodSync(fakeBin, 0o755)
@@ -143,9 +115,9 @@ if [ "\${1:-}" = "-C" ]; then
   dest=$2
   mkdir -p "$dest/scripts" "$dest/db"
   printf '%s\\n' checked > "$dest/checked-out"
-  ln -sfn '${repo}/scripts/self-update-migrate.mjs' "$dest/scripts/self-update-migrate.mjs"
-  ln -sfn '${repo}/scripts/self-update-snapshot.mjs' "$dest/scripts/self-update-snapshot.mjs"
-  ln -sfn '${repo}/db/migrations' "$dest/db/migrations"
+  cp -R '${runtime}/scripts/.' "$dest/scripts/"
+  rm -rf "$dest/db/migrations"
+  cp -R '${runtime}/db/migrations' "$dest/db/migrations"
   exit 0
 fi
 dest=
@@ -227,11 +199,14 @@ printf '%s\\n' '{"status":"ok"}'
     fs.mkdirSync(layout.backupDir)
     fs.chownSync(layout.backupDir, 0, 0)
     fs.chmodSync(layout.backupDir, 0o700)
-    fs.mkdirSync(path.join(layout.blueDir, "scripts"), { recursive: true })
-    fs.symlinkSync(
-      path.join(repo, "scripts/self-update-snapshot.mjs"),
-      path.join(layout.blueDir, "scripts", "self-update-snapshot.mjs")
+    copyHelperTree(layout.blueDir, runtime)
+    const snapshotScript = path.join(
+      layout.blueDir,
+      "scripts",
+      "self-update-snapshot.mjs"
     )
+    assert.equal(fs.lstatSync(snapshotScript).isSymbolicLink(), false)
+    assert.equal(fs.lstatSync(snapshotScript).isFile(), true)
     fs.mkdirSync(path.join(layout.blueData, "skills", "demo"), { recursive: true })
     fs.writeFileSync(path.join(layout.blueData, "skills", "demo", "SKILL.md"), "skill\n")
     const db = new Database(path.join(layout.blueData, "xiryn.db"))
@@ -263,6 +238,15 @@ printf '%s\\n' '{"status":"ok"}'
       })
       assert.equal(result.ok, true, result.ok ? "" : result.error)
       assert.equal(host.readState().phase, "ready")
+      const migrated = path.join(layout.greenDir, "scripts", "self-update-migrate.mjs")
+      assert.equal(fs.lstatSync(migrated).isSymbolicLink(), false)
+      assert.equal(fs.lstatSync(migrated).isFile(), true)
+      assert.equal(
+        fs
+          .lstatSync(path.join(layout.greenDir, "scripts", "self-update-approval.mjs"))
+          .isFile(),
+        true
+      )
       host.backup("switch")
 
       assert.equal(fs.statSync(layout.backupDir).uid, 0)

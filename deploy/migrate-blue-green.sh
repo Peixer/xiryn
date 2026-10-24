@@ -3,22 +3,56 @@
 # and an empty green. The only downtime is one restart at the end.
 set -euo pipefail
 
-if [[ "$(id -u)" -ne 0 ]]; then
-  echo "Run this as root: sudo bash deploy/migrate-blue-green.sh" >&2
-  exit 1
-fi
-
 ROOT="${XIRYN_ROOT:-/opt/xiryn}"
 BLUE=/opt/xiryn-blue
 GREEN=/opt/xiryn-green
 BLUE_DATA=/var/lib/xiryn/colours/blue
 GREEN_DATA=/var/lib/xiryn/colours/green
-SHARED=/etc/xiryn/shared.env
+# Tests point this at a temp file. A real run uses /etc/xiryn/shared.env.
+SHARED="${XIRYN_SHARED_ENV:-/etc/xiryn/shared.env}"
 VAULT=/etc/xiryn/vault
 DEPLOY=/var/lib/xiryn/deploy
 CONF=/etc/xiryn-deploy.conf
 ACTIVE=/etc/xiryn/active
 SRC="$(cd "$(dirname "$0")" && pwd)"
+
+# Production .env names XIRYN_DATA_DIR=/opt/xiryn/data. That path is shared and
+# read-only under the colour sandbox. Drop the per-colour keys so shared.env
+# cannot override /etc/xiryn/blue.env and green.env. Do not print the file.
+strip_colour_env() {
+  [[ -f "$SHARED" ]] || return 0
+  local dir tmp
+  dir="$(dirname "$SHARED")"
+  tmp="$(mktemp "$dir/.shared.env.XXXXXX")"
+  awk '
+    {
+      line = $0
+      sub(/^[[:space:]]*export[[:space:]]+/, "", line)
+      sub(/^[[:space:]]+/, "", line)
+      key = line
+      sub(/=.*/, "", key)
+      gsub(/[[:space:]]+$/, "", key)
+      if (key == "XIRYN_DATA_DIR" || key == "XIRYN_PORT" || key == "XIRYN_DESKTOP_PROXY_PORT" || key == "XIRYN_VAULT_KEY_DIR")
+        next
+      print
+    }
+  ' "$SHARED" > "$tmp"
+  if [[ "$(id -u)" -eq 0 ]]; then
+    chown --reference="$SHARED" "$tmp"
+  fi
+  chmod --reference="$SHARED" "$tmp"
+  mv -f "$tmp" "$SHARED"
+}
+
+if [[ "${XIRYN_STRIP_ONLY:-}" == "1" ]]; then
+  strip_colour_env
+  exit 0
+fi
+
+if [[ "$(id -u)" -ne 0 ]]; then
+  echo "Run this as root: sudo bash deploy/migrate-blue-green.sh" >&2
+  exit 1
+fi
 
 if ! id xiryn >/dev/null 2>&1; then
   echo "The xiryn user does not exist." >&2
@@ -84,14 +118,30 @@ install_runtime_dirs() {
   install -d -o root -g root -m 0700 /var/backups/xiryn
 }
 
+install_colour_files() {
+  install -d -m 0755 /etc/xiryn
+  install -m 0644 "$SRC/xiryn-blue.env" /etc/xiryn/blue.env
+  install -m 0644 "$SRC/xiryn-green.env" /etc/xiryn/green.env
+  install -m 0644 "$SRC/xiryn-blue.service" /etc/systemd/system/xiryn-blue.service
+  install -m 0644 "$SRC/xiryn-green.service" /etc/systemd/system/xiryn-green.service
+  strip_colour_env
+}
+
 if [[ -f "$ACTIVE" && -d "$BLUE" && -f /etc/systemd/system/xiryn-blue.service ]]; then
   ensure_mirror
   install -d -o xiryn -g xiryn -m 0700 "$GREEN_DATA"
   install -d -m 0755 "$GREEN"
   install_runtime_dirs
+  install_colour_files
   install -m 0644 "$SRC/xiryn-deploy.service" /etc/systemd/system/xiryn-deploy.service
   systemctl daemon-reload
-  echo "Blue/green is already installed (active: $(cat "$ACTIVE"))."
+  active="$(tr -d '[:space:]' < "$ACTIVE")"
+  echo "Blue/green is already installed (active: ${active})."
+  if [[ "$active" == "blue" || "$active" == "green" ]]; then
+    echo "Restart the serving colour so it loads its env file: systemctl restart xiryn-${active}.service"
+  else
+    echo "Restart the serving colour so it loads its env file."
+  fi
   exit 0
 fi
 
@@ -150,7 +200,7 @@ rm -f "$BLUE/.env"
 chown -R xiryn:xiryn "$BLUE"
 install -d -o xiryn -g xiryn -m 0755 "$GREEN"
 
-# Consistent database copy while the old process is still up.
+# Read the old data directory before strip_colour_env removes XIRYN_DATA_DIR.
 data_dir="$(sed -n 's/^XIRYN_DATA_DIR=//p' "$SHARED" | head -1)"
 data_dir="${data_dir:-$ROOT/data}"
 if [[ -f "$data_dir/xiryn.db" ]]; then
@@ -186,8 +236,7 @@ install -m 0644 "$SRC/xiryn-helper.ts" /usr/local/lib/xiryn/xiryn-helper.ts
 install -m 0644 "$SRC/../scripts/self-update-snapshot.mjs" /usr/local/lib/xiryn/self-update-snapshot.mjs
 install -m 0644 "$SRC/../scripts/self-update-migrate.mjs" /usr/local/lib/xiryn/self-update-migrate.mjs
 install -m 0644 "$SRC/../scripts/self-update-approval.mjs" /usr/local/lib/xiryn/self-update-approval.mjs
-install -m 0644 "$SRC/xiryn-blue.service" /etc/systemd/system/xiryn-blue.service
-install -m 0644 "$SRC/xiryn-green.service" /etc/systemd/system/xiryn-green.service
+install_colour_files
 install -m 0644 "$SRC/xiryn-deploy.service" /etc/systemd/system/xiryn-deploy.service
 install -m 0644 "$SRC/xiryn-deploy.path" /etc/systemd/system/xiryn-deploy.path
 

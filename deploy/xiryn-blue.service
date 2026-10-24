@@ -10,17 +10,12 @@ Group=xiryn
 SupplementaryGroups=docker
 WorkingDirectory=/opt/xiryn-blue
 Environment=NODE_ENV=production
-Environment=XIRYN_PORT=6796
-Environment=XIRYN_DESKTOP_PROXY_PORT=6797
-Environment=XIRYN_DATA_DIR=/var/lib/xiryn/colours/blue
-Environment=XIRYN_VAULT_KEY_DIR=/etc/xiryn/vault
-Environment=XIRYN_DEPLOY_DIR=/var/lib/xiryn/deploy
+# EnvironmentFile overrides Environment=, and a later file overrides an earlier
+# one. shared.env is the old production file and may still name /opt/xiryn/data.
+# The colour file is second so this unit keeps its own database, ports, and
+# vault-key directory.
 EnvironmentFile=-/etc/xiryn/shared.env
-# These win over the shared env file so each colour keeps its own database.
-Environment=XIRYN_PORT=6796
-Environment=XIRYN_DESKTOP_PROXY_PORT=6797
-Environment=XIRYN_DATA_DIR=/var/lib/xiryn/colours/blue
-Environment=XIRYN_VAULT_KEY_DIR=/etc/xiryn/vault
+EnvironmentFile=/etc/xiryn/blue.env
 ExecStart=/usr/bin/npm run start
 Restart=on-failure
 RestartSec=5
