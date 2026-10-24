@@ -1,5 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server"
 
+import { maintenanceActive } from "@/lib/self-update/maintenance"
+
 // Xiryn has no accounts: anyone who can reach the server can drive your
 // agents. So it only answers on loopback, and refuses requests whose Host
 // points anywhere else (which also defeats DNS-rebinding attacks from web
@@ -84,6 +86,14 @@ export function proxy(request: NextRequest) {
         { status: 403 }
       )
     }
+  }
+
+  // Host and Origin were checked above. During a colour switch the helper
+  // marks the active process read-only; page loads still work.
+  if (request.method !== "GET" && request.method !== "HEAD" && maintenanceActive()) {
+    return new NextResponse("Xiryn is read-only while it switches version.", {
+      status: 503,
+    })
   }
 
   return NextResponse.next()

@@ -1,4 +1,7 @@
 import assert from "node:assert/strict"
+import fs from "node:fs"
+import os from "node:os"
+import path from "node:path"
 import { test } from "node:test"
 
 import { NextRequest } from "next/server"
@@ -196,4 +199,29 @@ test("uploads keep the Origin check, and the PWA manifest stays a normal GET", a
 
   const hookForeign = call("http://evil.example/api/hooks/routines/routine_1", "POST")
   assert.equal(hookForeign.status, 403)
+})
+
+test("maintenance is read-only for writes and still refuses a foreign host", async () => {
+  const file = path.join(
+    fs.mkdtempSync(path.join(os.tmpdir(), "xiryn-maint-")),
+    "maintenance"
+  )
+  fs.writeFileSync(file, "read-only\n")
+  const previous = process.env.XIRYN_MAINTENANCE_FILE
+  process.env.XIRYN_MAINTENANCE_FILE = file
+  try {
+    const read = call("http://127.0.0.1:6796/api/health", "GET")
+    assert.notEqual(read.status, 503)
+    const write = call("http://127.0.0.1:6796/settings", "POST", {
+      origin: "http://127.0.0.1:6796",
+    })
+    assert.equal(write.status, 503)
+    const foreign = call("http://evil.example/settings", "POST", {
+      origin: "http://evil.example",
+    })
+    assert.equal(foreign.status, 403)
+  } finally {
+    if (previous === undefined) delete process.env.XIRYN_MAINTENANCE_FILE
+    else process.env.XIRYN_MAINTENANCE_FILE = previous
+  }
 })

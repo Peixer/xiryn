@@ -48,7 +48,7 @@
     "workstation:build": "node scripts/setup.mjs --workstation-only",
     "dev": "next dev --hostname 127.0.0.1 --port 6796",
     "build": "next build",
-    "start": "next start --hostname 127.0.0.1 --port 6796",
+    "start": "next start --hostname 127.0.0.1 --port ${XIRYN_PORT:-6796}",
     "background": "node scripts/background.mjs",
     "backup": "node --import tsx scripts/backup.ts",
     "lint": "eslint",

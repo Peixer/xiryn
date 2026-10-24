@@ -379,8 +379,29 @@ export function renderApprovalPreview(tool: string, args: unknown) {
     return calendarPreview(record)
   }
   if (tool === "vault_fill") return vaultFillPreview(record)
+  if (tool === "request_self_update") return selfUpdatePreview(record)
   if (tool.startsWith("drive_")) return drivePreview(record)
   return mcpPreview(tool, args)
+}
+
+function selfUpdatePreview(args: Record<string, unknown>) {
+  const op = stringOf(args.op)
+  const verb =
+    op === "switch"
+      ? "Switch the live version"
+      : op === "rollback"
+        ? "Roll back"
+        : "Update"
+  return capCard(
+    [
+      verb,
+      `Branch: ${shown(oneLine(stringOf(args.branch)), FIELD_LIMIT)}`,
+      `Commit: ${shown(oneLine(stringOf(args.sha)), FIELD_LIMIT)}`,
+      `From: ${shown(oneLine(stringOf(args.from)), FIELD_LIMIT)}`,
+      `To: ${shown(oneLine(stringOf(args.to)), FIELD_LIMIT)}`,
+      "Nothing changes until you approve.",
+    ].join("\n")
+  )
 }
 
 // Only the fields the person is approving. A secret is not one of them, and

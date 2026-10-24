@@ -1,0 +1,10 @@
+[Unit]
+Description=Watch for a Xiryn self-update request
+
+[Path]
+PathExistsGlob=/var/lib/xiryn/deploy/inbox/*.json
+Unit=xiryn-deploy.service
+TriggerLimitIntervalSec=2s
+
+[Install]
+WantedBy=multi-user.target

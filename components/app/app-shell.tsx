@@ -32,6 +32,7 @@ import { rememberThreadList } from "@/lib/pwa/local-db"
 import { isIosSafariUserAgent, isThreadPath } from "@/lib/pwa/shell"
 import type { AgentOverview, RoutineView } from "@/queries/workspace"
 import { cn } from "@/lib/utils"
+import { SelfUpdatePanel } from "@/components/settings/self-update-panel"
 import { toast } from "@/components/ui/toast"
 
 function Presence({ online }: { online: boolean }) {
@@ -67,13 +68,34 @@ export function AppShell({
   const [detail, setDetail] = React.useState(false)
   const [offlineId, setOfflineId] = React.useState<string | null>(null)
   const [guideKey, setGuideKey] = React.useState(0)
+  const [updateOpen, setUpdateOpen] = React.useState(false)
+  const [updateAvailable, setUpdateAvailable] = React.useState(false)
 
   React.useEffect(() => {
     // A new route starts on the designed screen, not the desktop page under it.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setDetail(false)
     setOfflineId(null)
+    setUpdateOpen(false)
   }, [pathname])
+
+  React.useEffect(() => {
+    let stop = false
+    const tick = () => {
+      void fetch("/api/self-update/status")
+        .then((response) => (response.ok ? response.json() : null))
+        .then((body: { updateAvailable?: boolean } | null) => {
+          if (!stop && body) setUpdateAvailable(Boolean(body.updateAvailable))
+        })
+        .catch(() => {})
+    }
+    tick()
+    const timer = window.setInterval(tick, 60_000)
+    return () => {
+      stop = true
+      window.clearInterval(timer)
+    }
+  }, [])
 
   React.useEffect(() => {
     if (!online) return
@@ -160,11 +182,13 @@ export function AppShell({
           onOffline={(id) => setOfflineId(id)}
         />
       )}
-      {list && pathname === "/settings" && (
+      {list && pathname === "/settings" && !updateOpen && (
         <DeviceSettings
           online={online}
           stored={storedThreads.length}
           pending={pending}
+          updateAvailable={updateAvailable}
+          onUpdate={() => setUpdateOpen(true)}
           onWorkspace={() => setDetail(true)}
           onForget={() => void forgetDevice()}
           onGuide={() => {
@@ -172,6 +196,9 @@ export function AppShell({
             setGuideKey((key) => key + 1)
           }}
         />
+      )}
+      {list && pathname === "/settings" && updateOpen && (
+        <UpdateVersion onBack={() => setUpdateOpen(false)} />
       )}
       {offlineId && (
         <OfflineThread threadId={offlineId} onClose={() => setOfflineId(null)} />
@@ -204,6 +231,9 @@ export function AppShell({
                 >
                   <Icon className="size-6" strokeWidth={tab.on ? 2.4 : 1.8} />
                   {tab.label}
+                  {tab.href === "/settings" && updateAvailable && (
+                    <span className="absolute top-1 right-[calc(50%-18px)] size-2 rounded-full bg-betelgeuse" />
+                  )}
                   {tab.href === "/" && pending > 0 && (
                     <span className="absolute top-1 right-[calc(50%-22px)] grid min-w-4 place-items-center rounded-full bg-betelgeuse px-1 text-[10px] text-background">
                       {pending}
@@ -639,10 +669,32 @@ function RoutinesHome({
   )
 }
 
+function UpdateVersion({ onBack }: { onBack: () => void }) {
+  return (
+    <div className="pointer-events-auto relative flex min-h-0 flex-1 flex-col bg-background">
+      <header className="flex items-center gap-3 px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3">
+        <button
+          type="button"
+          onClick={onBack}
+          className="min-h-11 rounded-full px-3 text-[15px] font-medium text-rigel"
+        >
+          Settings
+        </button>
+        <h1 className="text-[20px] font-semibold tracking-[-0.03em]">Update version</h1>
+      </header>
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-6">
+        <SelfUpdatePanel layout="phone" />
+      </div>
+    </div>
+  )
+}
+
 function DeviceSettings({
   online,
   stored,
   pending,
+  updateAvailable,
+  onUpdate,
   onWorkspace,
   onForget,
   onGuide,
@@ -650,6 +702,8 @@ function DeviceSettings({
   online: boolean
   stored: number
   pending: number
+  updateAvailable: boolean
+  onUpdate: () => void
   onWorkspace: () => void
   onForget: () => void
   onGuide: () => void
@@ -672,6 +726,29 @@ function DeviceSettings({
         </span>
       </header>
       <div className="min-h-0 flex-1 space-y-6 overflow-y-auto overscroll-contain px-5 pb-6">
+        <section className="flex flex-col gap-2">
+          <h2 className="label-mono">Version</h2>
+          <button
+            type="button"
+            onClick={onUpdate}
+            className="flex min-h-14 items-center justify-between gap-3 rounded-2xl bg-elevated px-4 text-left"
+          >
+            <span>
+              <span className="block text-[16px] font-medium">Update version</span>
+              <span className="block text-[13px] text-muted-foreground">
+                Build, switch, or roll back
+              </span>
+            </span>
+            <span className="flex items-center gap-2">
+              {updateAvailable && (
+                <span className="rounded-full bg-betelgeuse px-2 py-0.5 text-[11px] font-medium text-background">
+                  New
+                </span>
+              )}
+              <ChevronRightIcon className="size-4 text-faint" />
+            </span>
+          </button>
+        </section>
         <section className="flex flex-col gap-2">
           <h2 className="label-mono">Appearance</h2>
           <div className="grid grid-cols-3 gap-2">

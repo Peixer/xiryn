@@ -50,6 +50,9 @@ export function requestOrTake(input: {
   tool: string
   args: unknown
   summary?: string
+  // Self-update leaves the row approved until the helper consumes it.
+  // Every other tool still marks the row used as soon as it may run.
+  consume?: boolean
 }) {
   const canonical = canonicalArgs(input.args)
   const argsHash = approvalArgsHash(input.args)
@@ -78,6 +81,7 @@ export function requestOrTake(input: {
       row.status === "approved" && payloadMatches(row.args, row.argsHash, input.args)
   )
   if (approved) {
+    if (input.consume === false) return { kind: "run" as const, approval: approved }
     db.update(actionApprovals)
       .set({ status: "used", decidedAt: approved.decidedAt ?? now })
       .where(eq(actionApprovals.id, approved.id))

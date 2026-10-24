@@ -56,6 +56,16 @@ test("phone CSS collapses the workbench panel, and wider windows do not", () => 
   assert.doesNotMatch(css, /html\[data-xiryn-app="1"\] \[data-panel\]/)
 })
 
+test("the phone settings menu has an Update version entry", () => {
+  const source = fs.readFileSync(
+    path.join(import.meta.dirname, "../../components/app/app-shell.tsx"),
+    "utf8"
+  )
+  assert.match(source, /Update version/)
+  assert.match(source, /updateAvailable/)
+  assert.match(source, /SelfUpdatePanel/)
+})
+
 test("the home-screen guide is only for iOS Safari that is not installed yet", () => {
   const iphone =
     "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1"

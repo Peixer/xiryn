@@ -16,6 +16,7 @@ import {
 } from "lucide-react"
 
 import { fetchProviderModels, saveSettings, testIntegration } from "@/actions/settings"
+import { SelfUpdatePanel } from "@/components/settings/self-update-panel"
 import { buildWorkstationImage, dockerStatus, startDocker } from "@/actions/workstation"
 import { ModelPicker } from "@/components/model-picker"
 import { Button } from "@/components/ui/button"
@@ -34,6 +35,7 @@ import { toast } from "@/components/ui/toast"
 import { useWorkspace } from "@/components/workspace/context"
 import type { SettingView } from "@/lib/config"
 import { cn } from "@/lib/utils"
+import type { SelfUpdateView } from "@/lib/self-update/status"
 import type { SettingsData } from "@/queries/workspace"
 
 /* ───────────────────────────── bits ────────────────────────────── */
@@ -1370,9 +1372,11 @@ function DesktopNotify({ enabled }: { enabled: boolean }) {
 export function SettingsForm({
   data,
   telegram,
+  selfUpdate,
 }: {
   data: SettingsData
   telegram: React.ReactNode
+  selfUpdate: SelfUpdateView
 }) {
   const nav = [
     ["model", "Model"],
@@ -1382,6 +1386,7 @@ export function SettingsForm({
     ["integrations", "Integrations"],
     ["vault", "Vault"],
     ["remote", "Remote access"],
+    ["update", "Update"],
     ["system", "System"],
   ]
 
@@ -1499,8 +1504,17 @@ export function SettingsForm({
         </Section>
 
         <Section
+          id="update"
+          kicker="08 · version"
+          title="Update version"
+          description="Build the inactive colour at the latest commit on the configured branch, then switch or roll back. Switching waits for your approval and does not stop the copy that is serving."
+        >
+          <SelfUpdatePanel initial={selfUpdate} />
+        </Section>
+
+        <Section
           id="system"
-          kicker="08 · system"
+          kicker="09 · system"
           title="System"
           description="Where your data lives and what Xiryn is running on."
         >
