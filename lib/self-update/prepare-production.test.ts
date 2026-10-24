@@ -16,6 +16,19 @@ const CHILD = process.env.XIRYN_PREPARE_CHILD === "1"
 const USER = "xirynprep"
 const SHA = "c".repeat(40)
 
+// GitHub's runner home is mode 750, so a symlink into the checkout is
+// invisible to the service user. Other users only need to traverse.
+function allowOthersToTraverse(start: string) {
+  let dir = path.resolve(start)
+  while (true) {
+    const mode = fs.statSync(dir).mode
+    if ((mode & 0o001) === 0) fs.chmodSync(dir, mode | 0o001)
+    const parent = path.dirname(dir)
+    if (parent === dir) break
+    dir = parent
+  }
+}
+
 function privilegeGap() {
   const sudo = spawnSync("sudo", ["-n", "true"], { encoding: "utf8" })
   if (sudo.error || sudo.status !== 0) return "passwordless sudo is unavailable"
@@ -96,6 +109,7 @@ test(
         throw new Error(added.stderr?.toString() || "useradd failed")
       }
     }
+    allowOthersToTraverse(process.cwd())
     const uid = Number(spawnSync("id", ["-u", USER], { encoding: "utf8" }).stdout.trim())
     assert.notEqual(uid, 0)
     const home = spawnSync("getent", ["passwd", USER], { encoding: "utf8" }).stdout.split(
