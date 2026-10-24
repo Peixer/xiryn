@@ -69,7 +69,6 @@ import type { Attachment } from "@/lib/attachments"
 import { exportFilename, threadToMarkdown } from "@/lib/export"
 import { saveStoredThread } from "@/lib/pwa/local-db"
 import { presence } from "@/lib/pwa/offline"
-import { WORKBENCH_SPLIT_MIN_WIDTH, workbenchPlacement } from "@/lib/pwa/shell"
 import { messagesForOfflineStore } from "@/lib/pwa/sanitize"
 import { cn } from "@/lib/utils"
 
@@ -84,32 +83,6 @@ export type ThreadViewProps = {
   threads: ThreadSummary[]
   initialMessages: XirynMessage[]
   workbenchOpen: boolean
-}
-
-function useSplitWorkbench(setScreenOpen: (open: boolean) => void) {
-  const [split, setSplit] = React.useState(true)
-  React.useLayoutEffect(() => {
-    const query = window.matchMedia(`(min-width: ${WORKBENCH_SPLIT_MIN_WIDTH}px)`)
-    const read = () =>
-      workbenchPlacement({
-        width: window.innerWidth,
-        appShell: document.documentElement.dataset.xirynApp === "1",
-      }) === "split"
-    const apply = () => setSplit(read())
-    apply()
-    const onChange = () => {
-      const next = read()
-      setSplit(next)
-      if (next) setScreenOpen(false)
-    }
-    query.addEventListener("change", onChange)
-    window.addEventListener("resize", onChange)
-    return () => {
-      query.removeEventListener("change", onChange)
-      window.removeEventListener("resize", onChange)
-    }
-  }, [setScreenOpen])
-  return split
 }
 
 function errorText(error: Error) {
@@ -318,7 +291,7 @@ function ThreadHeader({
   }
 
   return (
-    <header className="xiryn-only-desktop hairline-b relative z-50 flex h-12 shrink-0 items-center gap-3 px-4">
+    <header className="xiryn-only-desktop hairline-b flex h-12 shrink-0 items-center gap-3 px-4">
       <button
         type="button"
         onClick={configure}
@@ -586,7 +559,6 @@ export function ThreadView(props: ThreadViewProps) {
   const busy = chatStatus === "submitted" || chatStatus === "streaming"
   const { online, enqueue } = useOffline()
   const [screenOpen, setScreenOpen] = React.useState(false)
-  const splitWorkbench = useSplitWorkbench(setScreenOpen)
 
   // A turn that starts elsewhere (Telegram, an answer to a request) shows up
   // here live: catch up with what's saved, then follow the stream
@@ -909,17 +881,10 @@ export function ThreadView(props: ThreadViewProps) {
         <ThreadHeader
           props={props}
           messages={messages}
-          workbenchOpen={splitWorkbench ? workbenchOpen : screenOpen}
-          onToggleWorkbench={
-            kind === "agent"
-              ? () => {
-                  if (splitWorkbench) toggleWorkbench()
-                  else setScreenOpen((open) => !open)
-                }
-              : undefined
-          }
+          workbenchOpen={workbenchOpen}
+          onToggleWorkbench={kind === "agent" ? toggleWorkbench : undefined}
         />
-        {kind === "agent" && (workbenchOpen || screenOpen) ? (
+        {kind === "agent" && workbenchOpen ? (
           <ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1">
             <ResizablePanel id="chat" className="xiryn-chat-panel" minSize="35%">
               {chat}

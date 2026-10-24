@@ -325,7 +325,7 @@ export function Composer({
           disabled={disabled || sending}
           className="block [field-sizing:content] max-h-64 min-h-[52px] w-full resize-none bg-transparent px-4 pt-3.5 pb-1 text-base leading-relaxed outline-none placeholder:text-faint disabled:opacity-50 md:text-[14px]"
         />
-        <div className="xiryn-composer-actions flex min-w-0 items-center gap-1.5 px-2 pt-1 pb-2 sm:gap-2 sm:px-2.5 sm:pb-2.5">
+        <div className="xiryn-composer-actions flex items-center gap-2 px-2.5 pt-1 pb-2.5 max-md:min-w-0 max-md:gap-1.5 max-md:px-2 max-md:pb-2">
           <button
             type="button"
             onClick={() => fileRef.current?.click()}
@@ -372,10 +372,10 @@ export function Composer({
           />
           {members && addressee && onAddresseeChange ? (
             <DropdownMenu>
-              <DropdownMenuTrigger className="flex h-7 max-w-36 min-w-0 shrink items-center gap-1.5 rounded-md border bg-background/50 px-2 text-[12px] hover:bg-accent">
+              <DropdownMenuTrigger className="flex h-7 items-center gap-1.5 rounded-md border bg-background/50 px-2 text-[12px] hover:bg-accent max-md:max-w-36 max-md:min-w-0 max-md:shrink">
                 <span className="font-mono text-[10.5px] text-muted-foreground">to</span>
-                <Glyph seed={addressee.glyph} className="size-4 shrink-0 rounded-[4px]" />
-                <span className="truncate">{addressee.name}</span>
+                <Glyph seed={addressee.glyph} className="size-4 rounded-[4px]" />
+                <span className="max-md:truncate">{addressee.name}</span>
                 <ChevronDownIcon className="size-3 text-muted-foreground" />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="w-56">
@@ -399,7 +399,7 @@ export function Composer({
           {modelSpec && (
             <ModelSpecLabel
               spec={modelSpec}
-              className="hidden max-w-56 min-w-0 overflow-hidden px-1 text-[11px] text-muted-foreground sm:inline-flex"
+              className="hidden max-w-56 px-1 text-[11px] text-muted-foreground md:inline-flex"
             />
           )}
           {listening ? (

@@ -117,10 +117,10 @@ export function StatusBar() {
         </Cell>
       )}
       <NotificationsToggle />
-      <Cell title={status.dbPath} className="max-lg:hidden">
+      <Cell title={status.dbPath} className="max-md:hidden">
         sqlite
       </Cell>
-      <Cell className="max-lg:hidden">node {status.node.replace(/^v/, "")}</Cell>
+      <Cell className="max-md:hidden">node {status.node.replace(/^v/, "")}</Cell>
       <Cell>xiryn {status.version}</Cell>
     </footer>
   )

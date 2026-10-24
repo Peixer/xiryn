@@ -26,9 +26,11 @@ export function OutboxStrip({ threadId }: { threadId: string }) {
       )}
       {mine.map((item) => (
         <div key={item.id} className="flex justify-end">
-          <div className="max-w-[min(85%,36rem)] min-w-0 rounded-2xl rounded-br-md bg-rigel/15 px-3.5 py-2.5 text-[16px] leading-snug">
-            <p className="[overflow-wrap:anywhere] whitespace-pre-wrap">{item.text}</p>
-            <p className="mt-1.5 flex flex-wrap items-center justify-end gap-2 font-mono text-[11px] text-muted-foreground">
+          <div className="max-w-[85%] rounded-2xl rounded-br-md bg-rigel/15 px-3.5 py-2.5 text-[16px] leading-snug max-md:max-w-[min(85%,36rem)] max-md:min-w-0">
+            <p className="whitespace-pre-wrap max-md:[overflow-wrap:anywhere]">
+              {item.text}
+            </p>
+            <p className="mt-1.5 flex items-center justify-end gap-2 font-mono text-[11px] text-muted-foreground max-md:flex-wrap">
               <span
                 className={cn(
                   "size-1.5 rounded-full",
