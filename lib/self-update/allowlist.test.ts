@@ -3,7 +3,7 @@ import fs from "node:fs"
 import path from "node:path"
 import { test } from "node:test"
 
-import { commandAllowed, HELPER_OPS, parseHelperRequest } from "./allowlist"
+import { commandAllowed, HELPER_OPS, parseHelperRequest, serviceArgv } from "./allowlist"
 import { DEFAULT_LAYOUT } from "./layout"
 
 const SHA = "a".repeat(40)
@@ -91,7 +91,37 @@ test("spawned commands are pinned to the layout", () => {
   )
   assert.equal(
     commandAllowed(["git", "-C", layout.greenDir, "checkout", "--detach", SHA], layout),
+    false
+  )
+  assert.equal(
+    commandAllowed(
+      serviceArgv("xiryn", [
+        "git",
+        "-c",
+        `safe.directory=${layout.mirror}`,
+        "clone",
+        "--no-checkout",
+        layout.mirror,
+        layout.greenDir,
+      ]),
+      layout
+    ),
     true
+  )
+  assert.equal(
+    commandAllowed(
+      serviceArgv("xiryn", ["git", "-C", layout.greenDir, "checkout", "--detach", SHA]),
+      layout
+    ),
+    true
+  )
+  assert.equal(
+    commandAllowed(
+      serviceArgv("root", ["git", "-C", layout.greenDir, "checkout", "--detach", SHA]),
+      layout,
+      "root"
+    ),
+    false
   )
   assert.equal(commandAllowed(["bash", "-c", "reboot"], layout), false)
   assert.equal(commandAllowed(["sudo", "systemctl", "restart", "xiryn"], layout), false)
@@ -108,6 +138,27 @@ test("spawned commands are pinned to the layout", () => {
   )
   assert.equal(
     commandAllowed(["npm", "--prefix", layout.blueDir, "run", "build"], layout),
+    false
+  )
+  assert.equal(
+    commandAllowed(
+      serviceArgv("xiryn", ["npm", "--prefix", layout.blueDir, "run", "build"]),
+      layout
+    ),
+    true
+  )
+  assert.equal(
+    commandAllowed(
+      serviceArgv("xiryn", [
+        "npm",
+        "--prefix",
+        layout.blueDir,
+        "ci",
+        "--no-audit",
+        "--no-fund",
+      ]),
+      layout
+    ),
     true
   )
   assert.equal(

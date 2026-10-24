@@ -87,6 +87,37 @@ export function parseHelperRequest(
   }
 }
 
+const SERVICE_NAME = /^[a-z_][a-z0-9_-]{0,31}$/
+
+// The oneshot is root. Git, npm, and node that touch a colour tree or its
+// database run as this user, so the files the service opens are not root-owned
+// and npm install scripts are not root. Override only for tests.
+export function serviceUserName() {
+  const name = process.env.XIRYN_SERVICE_USER || "xiryn"
+  if (!SERVICE_NAME.test(name) || name === "root") {
+    throw new Error("The service user is not valid.")
+  }
+  return name
+}
+
+export function serviceArgv(user: string, argv: readonly string[]) {
+  return [
+    "setpriv",
+    "--no-new-privs",
+    "--reuid",
+    user,
+    "--regid",
+    user,
+    "--init-groups",
+    "--inh-caps",
+    "-all",
+    "--bounding-set",
+    "-all",
+    "--",
+    ...argv,
+  ]
+}
+
 function same(argv: readonly string[], expected: readonly string[]) {
   return (
     argv.length === expected.length &&
@@ -107,10 +138,113 @@ function range(value: string) {
   return Boolean(from && to && isSha(from) && isSha(to) && value === `${from}..${to}`)
 }
 
+function colourGitAllowed(rest: readonly string[], layout: Layout) {
+  if (
+    rest[0] === "-c" &&
+    rest[1] === `safe.directory=${layout.mirror}` &&
+    rest[2] === "clone" &&
+    rest[3] === "--no-checkout" &&
+    rest[4] === layout.mirror &&
+    rest.length === 6 &&
+    isColourDir(layout, rest[5])
+  ) {
+    return true
+  }
+  if (rest[0] !== "-C" || !isColourDir(layout, rest[1] ?? "")) return false
+  if (
+    rest[2] === "checkout" &&
+    rest[3] === "--detach" &&
+    rest.length === 5 &&
+    isSha(rest[4])
+  ) {
+    return true
+  }
+  if (
+    rest[2] === "log" &&
+    rest[3] === "--format=%H%x09%s" &&
+    rest.length === 5 &&
+    range(rest[4])
+  ) {
+    return true
+  }
+  if (
+    rest[2] === "diff" &&
+    rest[3] === "--name-only" &&
+    rest.length === 8 &&
+    isSha(rest[4]) &&
+    isSha(rest[5]) &&
+    rest[6] === "--" &&
+    rest[7] === "db/migrations"
+  ) {
+    return true
+  }
+  return rest[2] === "rev-parse" && rest[3] === "HEAD" && rest.length === 4
+}
+
+function nodeAllowed(rest: readonly string[], layout: Layout) {
+  if (rest[0]?.endsWith("/self-update-snapshot.mjs") && rest[1] === "--from") {
+    const to = rest[4] ?? ""
+    const backup = to.startsWith(`${layout.backupDir}/`) && !to.includes("..")
+    return (
+      rest.length === 5 &&
+      rest[3] === "--to" &&
+      isColourData(layout, rest[2]) &&
+      (isColourData(layout, to) || backup)
+    )
+  }
+  if (rest[0]?.endsWith("/self-update-approval.mjs") && rest[1] === "--db") {
+    const db = rest[2] ?? ""
+    const known =
+      db === `${layout.blueData}/xiryn.db` || db === `${layout.greenData}/xiryn.db`
+    const idOk = /^[A-Za-z0-9_-]{8,32}$/.test(rest[4] ?? "")
+    if (!known || rest[3] !== "--id" || !idOk) return false
+    if (rest.length === 5) return true
+    return rest.length === 6 && rest[5] === "--consume"
+  }
+  if (rest[0]?.endsWith("/self-update-migrate.mjs") && rest[1] === "--data") {
+    return (
+      rest.length === 5 &&
+      rest[3] === "--migrations" &&
+      isColourData(layout, rest[2]) &&
+      rest[4].endsWith("/db/migrations") &&
+      isColourDir(layout, rest[4].slice(0, -"/db/migrations".length))
+    )
+  }
+  return false
+}
+
+// Git, npm, and node against a colour. These must already be wrapped by
+// serviceArgv. Mirror fetch, systemctl, caddy, and the health check stay root.
+function serviceInnerAllowed(rest: readonly string[], layout: Layout) {
+  const [bin, ...args] = rest
+  if (bin === "git") return colourGitAllowed(args, layout)
+  if (
+    bin === "npm" &&
+    args[0] === "--prefix" &&
+    isColourDir(layout, args[1] ?? "") &&
+    (same(args.slice(2), ["ci", "--no-audit", "--no-fund"]) ||
+      same(args.slice(2), ["run", "build"]))
+  ) {
+    return true
+  }
+  return bin === "node" && nodeAllowed(args, layout)
+}
+
+function wrappedServiceAllowed(argv: readonly string[], layout: Layout, user: string) {
+  const prefix = serviceArgv(user, [])
+  if (argv.length <= prefix.length) return false
+  if (!prefix.every((part, index) => argv[index] === part)) return false
+  return serviceInnerAllowed(argv.slice(prefix.length), layout)
+}
+
 // Every process the helper may spawn. Anything else, including a shell,
 // sudo, or a systemctl unit the layout did not name, is refused.
-export function commandAllowed(argv: readonly string[], layout: Layout) {
+// `user` is the account colour commands drop to. It is not taken from the
+// request file.
+export function commandAllowed(argv: readonly string[], layout: Layout, user = "xiryn") {
   if (argv.some((part) => part.includes("\0") || part.includes("\n"))) return false
+  if (!SERVICE_NAME.test(user) || user === "root") return false
+  if (argv[0] === "setpriv") return wrappedServiceAllowed(argv, layout, user)
   const [bin, ...rest] = argv
   if (bin === "git" && rest[0] === "--git-dir" && rest[1] === layout.mirror) {
     if (
@@ -145,54 +279,7 @@ export function commandAllowed(argv: readonly string[], layout: Layout) {
     }
     return false
   }
-  if (
-    bin === "git" &&
-    rest[0] === "clone" &&
-    rest[1] === "--no-checkout" &&
-    rest[2] === layout.mirror
-  ) {
-    return rest.length === 4 && isColourDir(layout, rest[3])
-  }
-  if (bin === "git" && rest[0] === "-C" && isColourDir(layout, rest[1] ?? "")) {
-    if (
-      rest[2] === "checkout" &&
-      rest[3] === "--detach" &&
-      rest.length === 5 &&
-      isSha(rest[4])
-    ) {
-      return true
-    }
-    if (
-      rest[2] === "log" &&
-      rest[3] === "--format=%H%x09%s" &&
-      rest.length === 5 &&
-      range(rest[4])
-    ) {
-      return true
-    }
-    if (
-      rest[2] === "diff" &&
-      rest[3] === "--name-only" &&
-      rest.length === 8 &&
-      isSha(rest[4]) &&
-      isSha(rest[5]) &&
-      rest[6] === "--" &&
-      rest[7] === "db/migrations"
-    ) {
-      return true
-    }
-    if (rest[2] === "rev-parse" && rest[3] === "HEAD" && rest.length === 4) return true
-    return false
-  }
-  if (
-    bin === "npm" &&
-    rest[0] === "--prefix" &&
-    isColourDir(layout, rest[1] ?? "") &&
-    (same(rest.slice(2), ["ci", "--no-audit", "--no-fund"]) ||
-      same(rest.slice(2), ["run", "build"]))
-  ) {
-    return true
-  }
+  if (bin === "git" || bin === "npm" || bin === "node") return false
   if (
     bin === "systemctl" &&
     (rest[0] === "start" || rest[0] === "stop" || rest[0] === "is-active") &&
@@ -201,48 +288,6 @@ export function commandAllowed(argv: readonly string[], layout: Layout) {
     return rest[1] === colourUnit("blue") || rest[1] === colourUnit("green")
   }
   if (bin === "caddy" && same(rest, ["reload", "--config", layout.caddyfile])) return true
-  if (
-    bin === "node" &&
-    rest[0]?.endsWith("/self-update-snapshot.mjs") &&
-    rest[1] === "--from"
-  ) {
-    const to = rest[4] ?? ""
-    const backup = to.startsWith(`${layout.backupDir}/`) && !to.includes("..")
-    return (
-      rest.length === 5 &&
-      rest[3] === "--to" &&
-      isColourData(layout, rest[2]) &&
-      (isColourData(layout, to) || backup)
-    )
-  }
-  if (
-    bin === "node" &&
-    rest[0]?.endsWith("/self-update-approval.mjs") &&
-    rest[1] === "--db"
-  ) {
-    const db = rest[2] ?? ""
-    const known =
-      db === `${layout.blueData}/xiryn.db` || db === `${layout.greenData}/xiryn.db`
-    return (
-      rest.length === 5 &&
-      rest[3] === "--id" &&
-      known &&
-      /^[A-Za-z0-9_-]{8,32}$/.test(rest[4] ?? "")
-    )
-  }
-  if (
-    bin === "node" &&
-    rest[0]?.endsWith("/self-update-migrate.mjs") &&
-    rest[1] === "--data"
-  ) {
-    return (
-      rest.length === 5 &&
-      rest[3] === "--migrations" &&
-      isColourData(layout, rest[2]) &&
-      rest[4].endsWith("/db/migrations") &&
-      isColourDir(layout, rest[4].slice(0, -"/db/migrations".length))
-    )
-  }
   if (
     bin === "curl" &&
     rest[0] === "-fsS" &&

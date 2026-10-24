@@ -3,7 +3,7 @@ import fs from "node:fs"
 import path from "node:path"
 
 import { formatAudit } from "@/lib/self-update/audit"
-import { commandAllowed } from "@/lib/self-update/allowlist"
+import { commandAllowed, serviceArgv, serviceUserName } from "@/lib/self-update/allowlist"
 import { summarizeChangelog } from "@/lib/self-update/changelog"
 import {
   colourData,
@@ -18,8 +18,44 @@ import { isSha } from "@/lib/self-update/sha"
 import { initialState, type DeployState } from "@/lib/self-update/state"
 import type { Host } from "@/lib/self-update/helper"
 
-function run(layout: Layout, argv: readonly string[]) {
-  if (!commandAllowed(argv, layout)) {
+function serviceAccount() {
+  const name = serviceUserName()
+  const text = fs.readFileSync("/etc/passwd", "utf8")
+  for (const line of text.split("\n")) {
+    const [user, , uidText, gidText, , home] = line.split(":")
+    if (user !== name) continue
+    const uid = Number(uidText)
+    const gid = Number(gidText)
+    if (!Number.isInteger(uid) || uid <= 0 || !home?.startsWith("/")) {
+      throw new Error("The service user is not usable.")
+    }
+    return { name, uid, gid, home }
+  }
+  throw new Error("The service user does not exist.")
+}
+
+function ownTree(target: string, uid: number, gid: number) {
+  if (!fs.existsSync(target)) return
+  const visit = (file: string) => {
+    const stat = fs.lstatSync(file)
+    if (stat.isSymbolicLink()) {
+      fs.lchownSync(file, uid, gid)
+      return
+    }
+    fs.chownSync(file, uid, gid)
+    if (!stat.isDirectory()) return
+    for (const name of fs.readdirSync(file)) visit(path.join(file, name))
+  }
+  visit(target)
+}
+
+function ownService(target: string) {
+  const account = serviceAccount()
+  ownTree(target, account.uid, account.gid)
+}
+
+function runRoot(layout: Layout, argv: readonly string[]) {
+  if (!commandAllowed(argv, layout, serviceUserName())) {
     throw new Error("Refusing a command outside the helper allow-list.")
   }
   const env: NodeJS.ProcessEnv = {
@@ -31,6 +67,32 @@ function run(layout: Layout, argv: readonly string[]) {
     NODE_ENV: "production",
   }
   return execFileSync(argv[0], argv.slice(1), {
+    encoding: "utf8",
+    timeout: 30 * 60_000,
+    env,
+  })
+}
+
+// Colour git, npm, and node. setpriv drops to the service user before the
+// command, with a fixed argv the allow-list accepts and an environment that
+// does not inherit this process.
+function runAsService(layout: Layout, argv: readonly string[]) {
+  const account = serviceAccount()
+  const wrapped = serviceArgv(account.name, argv)
+  if (!commandAllowed(wrapped, layout, account.name)) {
+    throw new Error("Refusing a command outside the helper allow-list.")
+  }
+  const env: NodeJS.ProcessEnv = {
+    PATH: process.env.PATH ?? "/usr/bin:/bin",
+    HOME: account.home,
+    USER: account.name,
+    LOGNAME: account.name,
+    GIT_TERMINAL_PROMPT: "0",
+    npm_config_fund: "false",
+    npm_config_audit: "false",
+    NODE_ENV: "production",
+  }
+  return execFileSync(wrapped[0], wrapped.slice(1), {
     encoding: "utf8",
     timeout: 30 * 60_000,
     env,
@@ -94,7 +156,7 @@ export function createSystemHost(layout = loadLayout()): Host {
       if (!fs.existsSync(mirror)) {
         throw new Error("The pin mirror is missing. Run deploy/migrate-blue-green.sh.")
       }
-      run(layout, [
+      runRoot(layout, [
         "git",
         "--git-dir",
         mirror,
@@ -103,7 +165,7 @@ export function createSystemHost(layout = loadLayout()): Host {
         "origin",
         `+refs/heads/${layout.branch}:refs/heads/${layout.branch}`,
       ])
-      const tip = run(layout, [
+      const tip = runRoot(layout, [
         "git",
         "--git-dir",
         mirror,
@@ -116,13 +178,28 @@ export function createSystemHost(layout = loadLayout()): Host {
     syncCheckout(dest, sha) {
       if (!fs.existsSync(path.join(dest, ".git"))) {
         fs.rmSync(dest, { recursive: true, force: true })
-        run(layout, ["git", "clone", "--no-checkout", layout.mirror, dest])
+        fs.mkdirSync(dest, { recursive: true, mode: 0o755 })
+        ownService(dest)
+        runAsService(layout, [
+          "git",
+          "-c",
+          `safe.directory=${layout.mirror}`,
+          "clone",
+          "--no-checkout",
+          layout.mirror,
+          dest,
+        ])
+      } else {
+        ownService(dest)
       }
-      run(layout, ["git", "-C", dest, "checkout", "--detach", sha])
+      runAsService(layout, ["git", "-C", dest, "checkout", "--detach", sha])
+      ownService(dest)
     },
     installAndBuild(dest) {
-      run(layout, ["npm", "--prefix", dest, "ci", "--no-audit", "--no-fund"])
-      run(layout, ["npm", "--prefix", dest, "run", "build"])
+      ownService(dest)
+      runAsService(layout, ["npm", "--prefix", dest, "ci", "--no-audit", "--no-fund"])
+      runAsService(layout, ["npm", "--prefix", dest, "run", "build"])
+      ownService(dest)
     },
     snapshotDb(from, to) {
       const script = path.join(
@@ -132,15 +209,13 @@ export function createSystemHost(layout = loadLayout()): Host {
       )
       const fallback = "/usr/local/lib/xiryn/self-update-snapshot.mjs"
       const file = fs.existsSync(script) ? script : fallback
-      fs.mkdirSync(colourData(layout, to), { recursive: true, mode: 0o700 })
-      run(layout, [
-        "node",
-        file,
-        "--from",
-        colourData(layout, from),
-        "--to",
-        colourData(layout, to),
-      ])
+      const source = colourData(layout, from)
+      const dest = colourData(layout, to)
+      if (fs.existsSync(source)) ownService(source)
+      fs.mkdirSync(dest, { recursive: true, mode: 0o700 })
+      ownService(dest)
+      runAsService(layout, ["node", file, "--from", source, "--to", dest])
+      ownService(dest)
     },
     migrate(colour) {
       const script = "/usr/local/lib/xiryn/self-update-migrate.mjs"
@@ -150,14 +225,17 @@ export function createSystemHost(layout = loadLayout()): Host {
         "self-update-migrate.mjs"
       )
       const file = fs.existsSync(local) ? local : script
-      const out = run(layout, [
+      const data = colourData(layout, colour)
+      ownService(data)
+      const out = runAsService(layout, [
         "node",
         file,
         "--data",
-        colourData(layout, colour),
+        data,
         "--migrations",
         `${colourDir(layout, colour)}/db/migrations`,
       ])
+      ownService(data)
       const parsed = JSON.parse(out.trim().split("\n").at(-1) ?? "{}") as {
         journalCount?: number
         appliedCount?: number
@@ -168,15 +246,15 @@ export function createSystemHost(layout = loadLayout()): Host {
       }
     },
     startColour(colour) {
-      run(layout, ["systemctl", "start", colourUnit(colour)])
+      runRoot(layout, ["systemctl", "start", colourUnit(colour)])
     },
     stopColour(colour) {
-      run(layout, ["systemctl", "stop", colourUnit(colour)])
+      runRoot(layout, ["systemctl", "stop", colourUnit(colour)])
     },
     health(colour) {
       const port = colour === "blue" ? layout.bluePort : layout.greenPort
       try {
-        const body = run(layout, [
+        const body = runRoot(layout, [
           "curl",
           "-fsS",
           "--max-time",
@@ -194,7 +272,7 @@ export function createSystemHost(layout = loadLayout()): Host {
       }
     },
     smoke(colour) {
-      const unit = run(layout, ["systemctl", "is-active", colourUnit(colour)]).trim()
+      const unit = runRoot(layout, ["systemctl", "is-active", colourUnit(colour)]).trim()
       if (unit !== "active")
         return { ok: false, detail: `${colourUnit(colour)} is ${unit}.` }
       const health = this.health(colour)
@@ -228,7 +306,7 @@ export function createSystemHost(layout = loadLayout()): Host {
       fs.writeFileSync(layout.caddySnippet, body, { mode: 0o644 })
     },
     reloadCaddy() {
-      run(layout, ["caddy", "reload", "--config", layout.caddyfile])
+      runRoot(layout, ["caddy", "reload", "--config", layout.caddyfile])
     },
     restoreCaddy() {
       if (caddyBackup && fs.existsSync(caddyBackup)) {
@@ -252,14 +330,11 @@ export function createSystemHost(layout = loadLayout()): Host {
       const file = fs.existsSync(local)
         ? local
         : "/usr/local/lib/xiryn/self-update-snapshot.mjs"
-      run(layout, [
-        "node",
-        file,
-        "--from",
-        colourData(layout, state.active),
-        "--to",
-        dest,
-      ])
+      const source = colourData(layout, state.active)
+      if (fs.existsSync(source)) ownService(source)
+      ownService(dest)
+      runAsService(layout, ["node", file, "--from", source, "--to", dest])
+      ownTree(dest, 0, 0)
       if (fs.existsSync(layout.sharedEnv))
         copyPrivate(layout.sharedEnv, path.join(dest, "shared.env"))
       if (fs.existsSync(layout.vaultDir)) {
@@ -274,7 +349,11 @@ export function createSystemHost(layout = loadLayout()): Host {
     },
     readApproval(id) {
       if (!/^[A-Za-z0-9_-]{8,32}$/.test(id)) return null
-      return readApproval(layout, this.readState(), id)
+      return queryApproval(layout, this.readState(), id, false)
+    },
+    takeApproval(id) {
+      if (!/^[A-Za-z0-9_-]{8,32}$/.test(id)) return null
+      return queryApproval(layout, this.readState(), id, true)
     },
     writeRelease(release) {
       const file = path.join(dir, "release.json")
@@ -284,7 +363,7 @@ export function createSystemHost(layout = loadLayout()): Host {
       if (!from || !isSha(from) || !isSha(to) || from === to) {
         return { titles: [], migrations: [] }
       }
-      const log = run(layout, [
+      const log = runRoot(layout, [
         "git",
         "--git-dir",
         layout.mirror,
@@ -292,7 +371,7 @@ export function createSystemHost(layout = loadLayout()): Host {
         "--format=%H%x09%s",
         `${from}..${to}`,
       ])
-      const diff = run(layout, [
+      const diff = runRoot(layout, [
         "git",
         "--git-dir",
         layout.mirror,
@@ -352,7 +431,7 @@ function caddySnippet(ports: {
 `
 }
 
-function readApproval(layout: Layout, state: DeployState, id: string) {
+function queryApproval(layout: Layout, state: DeployState, id: string, consume: boolean) {
   const script = path.join(
     colourDir(layout, state.active),
     "scripts",
@@ -362,14 +441,11 @@ function readApproval(layout: Layout, state: DeployState, id: string) {
     ? script
     : "/usr/local/lib/xiryn/self-update-approval.mjs"
   try {
-    const out = run(layout, [
-      "node",
-      file,
-      "--db",
-      path.join(colourData(layout, state.active), "xiryn.db"),
-      "--id",
-      id,
-    ])
+    const data = colourData(layout, state.active)
+    if (fs.existsSync(data)) ownService(data)
+    const argv = ["node", file, "--db", path.join(data, "xiryn.db"), "--id", id]
+    if (consume) argv.push("--consume")
+    const out = runAsService(layout, argv)
     const parsed = JSON.parse(out) as {
       tool?: string
       args?: string

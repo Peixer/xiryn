@@ -1,11 +1,8 @@
-import { eq } from "drizzle-orm"
 import { tool } from "ai"
 import { z } from "zod"
 
-import { db } from "@/db"
-import { actionApprovals } from "@/db/schema"
 import type { ToolEnv } from "@/lib/agent/tools"
-import { holdOrRun } from "@/lib/mcp/guard"
+import { requestOrTake } from "@/lib/mcp/approval"
 import { SELF_UPDATE_TOOL } from "@/lib/self-update/approval-gate"
 import type { HelperOp } from "@/lib/self-update/allowlist"
 import { buildSelfUpdateArgs, submitSelfUpdate } from "@/lib/self-update/submit"
@@ -52,26 +49,34 @@ export function createSelfUpdateTools(env: ToolEnv) {
           }
         }
         const args = buildSelfUpdateArgs(state, op, sha)
-        const held = await holdOrRun(env, {
+        // Leave the row approved. The helper marks it used, so a second inbox
+        // file with the same id is refused even inside the 20-minute window.
+        const gate = requestOrTake({
+          threadId: env.threadId,
+          agentId: env.current().id,
           tool: SELF_UPDATE_TOOL,
           summary: action,
           args,
+          consume: false,
         })
-        if (held) return held
-        const used = db
-          .select()
-          .from(actionApprovals)
-          .where(eq(actionApprovals.threadId, env.threadId))
-          .all()
-          .filter((row) => row.tool === SELF_UPDATE_TOOL && row.status === "used")
-          .sort(
-            (a, b) => (b.decidedAt?.getTime() ?? 0) - (a.decidedAt?.getTime() ?? 0)
-          )[0]
-        if (!used)
+        if (gate.kind === "rejected") {
+          return { status: "rejected" as const, reason: gate.reason }
+        }
+        if (gate.kind === "hold") {
+          await env.onActionRequested?.(env.current(), gate.approval)
+          return {
+            status: "needs-approval" as const,
+            approvalId: gate.approval.id,
+            summary: gate.approval.summary,
+          }
+        }
+        const approved = gate.approval
+        if (!approved || approved.status !== "approved") {
           return {
             status: "refused" as const,
             reason: "This needs the owner's approval.",
           }
+        }
         const result = submitSelfUpdate({
           deployDir: deployDir(),
           state,
@@ -79,13 +84,13 @@ export function createSelfUpdateTools(env: ToolEnv) {
           actor: "agent",
           tip: view.tipSha,
           approval: {
-            tool: used.tool,
-            args: used.args,
-            argsHash: used.argsHash,
-            status: used.status,
-            expiresAt: used.expiresAt ? used.expiresAt.getTime() : null,
+            tool: approved.tool,
+            args: approved.args,
+            argsHash: approved.argsHash,
+            status: approved.status,
+            expiresAt: approved.expiresAt ? approved.expiresAt.getTime() : null,
           },
-          approvalId: used.id,
+          approvalId: approved.id,
           now: Date.now(),
         })
         if (!result.ok) return { status: "refused" as const, reason: result.error }

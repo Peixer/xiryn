@@ -37,7 +37,10 @@ export function gateSelfUpdate(input: {
   if (approval.tool !== SELF_UPDATE_TOOL) {
     return { allow: false, reason: "The approval is for a different action." }
   }
-  if (approval.status !== "approved" && approval.status !== "used") {
+  if (approval.status === "used") {
+    return { allow: false, reason: "This approval was already used." }
+  }
+  if (approval.status !== "approved") {
     return { allow: false, reason: "The owner has not approved this." }
   }
   if (approval.expiresAt !== null && approval.expiresAt <= input.now) {

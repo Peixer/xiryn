@@ -20,7 +20,63 @@ CONF=/etc/xiryn-deploy.conf
 ACTIVE=/etc/xiryn/active
 SRC="$(cd "$(dirname "$0")" && pwd)"
 
+if ! id xiryn >/dev/null 2>&1; then
+  echo "The xiryn user does not exist." >&2
+  exit 1
+fi
+XIRYN_HOME="$(getent passwd xiryn | cut -d: -f6)"
+if [[ -z "$XIRYN_HOME" || "$XIRYN_HOME" != /* ]]; then
+  echo "The xiryn user has no home directory." >&2
+  exit 1
+fi
+
+branch=main
+remote="https://github.com/Peixer/xiryn.git"
+mirror=/var/lib/xiryn-pin.git
+
+read_pin() {
+  branch=main
+  remote="https://github.com/Peixer/xiryn.git"
+  mirror=/var/lib/xiryn-pin.git
+  if [[ -f "$CONF" ]]; then
+    local value
+    value="$(sed -n 's/^BRANCH=//p' "$CONF" | head -1)"
+    [[ -n "$value" ]] && branch="$value"
+    value="$(sed -n 's/^REMOTE=//p' "$CONF" | head -1)"
+    [[ -n "$value" ]] && remote="$value"
+    value="$(sed -n 's/^MIRROR=//p' "$CONF" | head -1)"
+    [[ -n "$value" ]] && mirror="$value"
+  fi
+  if [[ ! "$branch" =~ ^[A-Za-z0-9._/-]+$ || "$branch" == *..* ]]; then
+    echo "BRANCH in the deploy config is not a single branch name." >&2
+    exit 1
+  fi
+  if [[ ! "$remote" =~ ^https://[A-Za-z0-9._/-]+$ ]]; then
+    echo "REMOTE in the deploy config must be an https git URL." >&2
+    exit 1
+  fi
+  if [[ ! "$mirror" =~ ^/[A-Za-z0-9._/-]+$ || "$mirror" == *..* ]]; then
+    echo "MIRROR in the deploy config is not a safe path." >&2
+    exit 1
+  fi
+}
+
+# Root-owned bare mirror. The service user can read it. Fetch stays root.
+ensure_mirror() {
+  read_pin
+  if [[ -d "$mirror" ]]; then
+    return 0
+  fi
+  echo "Creating the pin mirror."
+  install -d -m 0755 "$(dirname "$mirror")"
+  git clone --bare "$remote" "$mirror"
+  chown -R root:root "$mirror"
+  chmod -R u+rwX,go+rX "$mirror"
+  git --git-dir "$mirror" fetch --prune origin "+refs/heads/${branch}:refs/heads/${branch}"
+}
+
 if [[ -f "$ACTIVE" && -d "$BLUE" && -f /etc/systemd/system/xiryn-blue.service ]]; then
+  ensure_mirror
   install -d -o xiryn -g xiryn -m 0700 "$GREEN_DATA" "$DEPLOY/inbox" "$DEPLOY/audit"
   install -d -m 0755 "$GREEN"
   echo "Blue/green is already installed (active: $(cat "$ACTIVE"))."
@@ -46,13 +102,18 @@ if [[ ! -f "$SHARED" ]]; then
 fi
 
 # Vault key stays readable by the service and not writable by it.
+# Production keeps it in the service user's home (~xiryn/.xiryn). The key
+# bytes are never printed.
 shopt -s nullglob
-for key in /var/lib/xiryn/.xiryn/vault-*.key "$ROOT"/.xiryn/vault-*.key; do
-  [[ -f "$key" ]] || continue
-  base="$(basename "$key")"
-  if [[ ! -f "$VAULT/$base" ]]; then
-    install -o root -g xiryn -m 0640 "$key" "$VAULT/$base"
-  fi
+for dir in /var/lib/xiryn/.xiryn "$ROOT/.xiryn" "$XIRYN_HOME/.xiryn"; do
+  [[ -d "$dir" ]] || continue
+  for key in "$dir"/vault-*.key; do
+    [[ -f "$key" ]] || continue
+    base="$(basename "$key")"
+    if [[ ! -f "$VAULT/$base" ]]; then
+      install -o root -g xiryn -m 0640 "$key" "$VAULT/$base"
+    fi
+  done
 done
 shopt -u nullglob
 
@@ -68,16 +129,41 @@ if [[ ! -f "$CONF" ]]; then
   fi
 fi
 
+ensure_mirror
+
 echo "Copying the running tree to $BLUE (the process keeps serving)."
 install -d -o xiryn -g xiryn -m 0755 "$BLUE"
 rsync -a --delete --exclude '.env' --exclude 'data' "$ROOT/" "$BLUE/"
 rm -f "$BLUE/.env"
+chown -R xiryn:xiryn "$BLUE"
 install -d -o xiryn -g xiryn -m 0755 "$GREEN"
 
 # Consistent database copy while the old process is still up.
 data_dir="$(sed -n 's/^XIRYN_DATA_DIR=//p' "$SHARED" | head -1)"
 data_dir="${data_dir:-$ROOT/data}"
 if [[ -f "$data_dir/xiryn.db" ]]; then
+  vault_rows="$(
+    sudo -u xiryn env NODE_PATH="$ROOT/node_modules" XIRYN_PKG="$ROOT/package.json" XIRYN_DB="$data_dir/xiryn.db" \
+      node --input-type=module - <<'EOF'
+import { createRequire } from "node:module"
+const require = createRequire(process.env.XIRYN_PKG)
+const Database = require("better-sqlite3")
+const db = new Database(process.env.XIRYN_DB, { readonly: true, fileMustExist: true })
+const table = db.prepare("select count(*) as n from sqlite_master where type = 'table' and name = 'vault_items'").get()
+let n = 0
+if (table && table.n > 0) n = db.prepare("select count(*) as n from vault_items").get().n
+db.close()
+process.stdout.write(String(n))
+EOF
+  )"
+  shopt -s nullglob
+  keys=( "$VAULT"/vault-*.key )
+  shopt -u nullglob
+  if [[ "$vault_rows" != "0" && ${#keys[@]} -eq 0 ]]; then
+    echo "The database has vault entries, and no vault key was found." >&2
+    echo "Looked in ${XIRYN_HOME}/.xiryn, /var/lib/xiryn/.xiryn, and ${ROOT}/.xiryn." >&2
+    exit 1
+  fi
   sudo -u xiryn env NODE_PATH="$ROOT/node_modules" node "$SRC/../scripts/self-update-snapshot.mjs" --from "$data_dir" --to "$BLUE_DATA"
   chown -R xiryn:xiryn "$BLUE_DATA"
   find "$BLUE_DATA" -type f -exec chmod 600 {} +
@@ -133,7 +219,8 @@ echo "Restarting onto blue. The old unit stops only after blue is enabled."
 systemctl disable --now xiryn.service 2>/dev/null || true
 systemctl restart xiryn-blue.service
 
-for _ in 1 2 3 4 5 6 7 8 9 10; do
+# Up to 90s. Next can take a while to listen after a cold start.
+for _ in $(seq 1 45); do
   if curl -fsS --max-time 3 -H 'Host: 127.0.0.1' http://127.0.0.1:6796/api/health >/dev/null; then
     echo blue > "$ACTIVE"
     chmod 644 "$ACTIVE"
@@ -142,9 +229,10 @@ for _ in 1 2 3 4 5 6 7 8 9 10; do
     echo "The old tree is still at $ROOT. Remove it after you have switched once."
     exit 0
   fi
-  sleep 1
+  sleep 2
 done
 
-echo "Blue did not become healthy. Starting the previous unit." >&2
+echo "Blue did not become healthy. Re-enabling the previous unit." >&2
+systemctl enable xiryn.service || true
 systemctl start xiryn.service || true
 exit 1

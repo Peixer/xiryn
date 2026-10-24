@@ -114,6 +114,16 @@ test("an agent update and every switch or rollback need a matching approval", ()
     gateSelfUpdate({
       op: "switch",
       actor: "owner",
+      approval: approval({ status: "used" }),
+      expected: args,
+      now,
+    }).allow,
+    false
+  )
+  assert.equal(
+    gateSelfUpdate({
+      op: "switch",
+      actor: "owner",
       approval: approval(),
       expected: args,
       now,

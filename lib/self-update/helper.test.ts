@@ -50,6 +50,12 @@ function harness(start: DeployState, behaviour: Partial<Host> = {}) {
     restoreCaddy: () => calls.push("restore"),
     backup: () => calls.push("backup"),
     readApproval: () => null,
+    takeApproval: (id) => {
+      const read = behaviour.readApproval ?? (() => null)
+      const row = read(id)
+      if (!row || row.status !== "approved") return null
+      return row
+    },
     writeRelease: () => {},
     changelog: () => ({
       titles: ["Fix the journal"],
@@ -81,6 +87,42 @@ test("prepare does not become ready when migrations were skipped", () => {
   assert.equal(box.calls.includes("start"), false)
   assert.equal(box.state().phase, "idle")
   assert.match(box.state().error ?? "", /Refusing to switch|did not apply/)
+})
+
+test("a used approval cannot switch again inside the window", () => {
+  const args = {
+    op: "switch" as const,
+    sha: TIP,
+    from: "blue" as const,
+    to: "green" as const,
+    branch: "main",
+  }
+  const box = harness(
+    initialState({
+      phase: "ready",
+      activeSha: ACTIVE,
+      candidate: "green",
+      candidateSha: TIP,
+      branch: "main",
+    }),
+    {
+      readApproval: () => ({
+        tool: "request_self_update",
+        args: canonicalArgs(args),
+        argsHash: approvalArgsHash(args),
+        status: "used",
+        expiresAt: Date.parse("2026-10-24T09:00:00.000Z"),
+      }),
+    }
+  )
+  const result = runSwitch(
+    box.host,
+    request({ op: "switch", sha: TIP, approvalId: "approval123" })
+  )
+  assert.equal(result.ok, false)
+  if (!result.ok) assert.match(result.error, /already used/)
+  assert.equal(box.calls.includes("caddy:green"), false)
+  assert.equal(box.state().phase, "ready")
 })
 
 test("switch without an approval does not touch Caddy", () => {
@@ -123,7 +165,7 @@ test("a failed post-switch health check restores the proxy", () => {
         tool: "request_self_update",
         args: canonicalArgs(args),
         argsHash: approvalArgsHash(args),
-        status: "used",
+        status: "approved",
         expiresAt: Date.parse("2026-10-24T09:00:00.000Z"),
       }),
     }
@@ -217,7 +259,7 @@ test("switch refuses a final snapshot whose migrations were skipped", () => {
         tool: "request_self_update",
         args: canonicalArgs(args),
         argsHash: approvalArgsHash(args),
-        status: "used",
+        status: "approved",
         expiresAt: Date.parse("2026-10-24T09:00:00.000Z"),
       }),
     }

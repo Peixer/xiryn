@@ -49,6 +49,10 @@ export type Host = {
   restoreCaddy(): void
   backup(label: string): void
   readApproval(id: string): ApprovalRow | null
+  // Marks an approved row used. Returns the row only when this call won that
+  // update, still reporting status "approved" for the gate. A row that was
+  // already used comes back as used, or null when it is gone.
+  takeApproval(id: string): ApprovalRow | null
   writeRelease(release: {
     branch: string
     tipSha: string
@@ -162,19 +166,12 @@ export function runPrepare(host: Host, request: HelperRequest) {
     return { ok: false as const, error: pinned.reason }
   }
   if (request.actor === "agent") {
-    const row = request.approvalId ? host.readApproval(request.approvalId) : null
-    const gate = gateSelfUpdate({
-      op: "prepare",
-      actor: "agent",
-      approval: approvalOf(row),
-      expected: {
-        op: "update",
-        sha: pinned.sha,
-        from: state.active,
-        to: state.active === "blue" ? "green" : "blue",
-        branch: layout.branch,
-      },
-      now: host.now(),
+    const gate = claimApproval(host, request, "prepare", {
+      op: "update",
+      sha: pinned.sha,
+      from: state.active,
+      to: state.active === "blue" ? "green" : "blue",
+      branch: layout.branch,
     })
     if (!gate.allow) {
       record(host, state, {
@@ -265,21 +262,32 @@ export function runPrepare(host: Host, request: HelperRequest) {
   }
 }
 
-function requireApproval(
+function claimApproval(
   host: Host,
   request: HelperRequest,
-  state: DeployState,
-  sha: string
+  op: "prepare" | "switch" | "rollback",
+  expected: SelfUpdateArgs
 ) {
   const row = request.approvalId ? host.readApproval(request.approvalId) : null
   const gate = gateSelfUpdate({
-    op: request.op === "rollback" ? "rollback" : "switch",
+    op,
     actor: request.actor,
     approval: approvalOf(row),
-    expected: argsFor(request, state, sha),
+    expected,
     now: host.now(),
   })
-  return gate
+  if (!gate.allow || !request.approvalId) return gate
+  const taken = host.takeApproval(request.approvalId)
+  if (!taken || taken.status !== "approved") {
+    return { allow: false as const, reason: "This approval was already used." }
+  }
+  return gateSelfUpdate({
+    op,
+    actor: request.actor,
+    approval: approvalOf(taken),
+    expected,
+    now: host.now(),
+  })
 }
 
 export function runSwitch(host: Host, request: HelperRequest) {
@@ -296,7 +304,7 @@ export function runSwitch(host: Host, request: HelperRequest) {
     })
     return { ok: false as const, error: reason }
   }
-  const gate = requireApproval(host, request, state, sha)
+  const gate = claimApproval(host, request, "switch", argsFor(request, state, sha))
   if (!gate.allow) {
     record(host, state, {
       op: "switch",
@@ -440,7 +448,7 @@ export function runRollback(host: Host, request: HelperRequest) {
     })
     return { ok: false as const, error: reason }
   }
-  const gate = requireApproval(host, request, state, sha)
+  const gate = claimApproval(host, request, "rollback", argsFor(request, state, sha))
   if (!gate.allow) {
     record(host, state, {
       op: "rollback",

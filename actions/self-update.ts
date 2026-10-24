@@ -103,18 +103,14 @@ export async function stageSelfUpdate(op: "switch" | "rollback") {
     agentId: null,
     tool: SELF_UPDATE_TOOL,
     args: built.args,
+    consume: false,
   })
   if (gate.kind === "rejected") return { ok: false as const, error: gate.reason }
   if (gate.kind === "run") {
-    const used = db
-      .select()
-      .from(actionApprovals)
-      .where(eq(actionApprovals.threadId, threadId))
-      .all()
-      .filter((row) => row.tool === SELF_UPDATE_TOOL && row.status === "used")
-      .sort((a, b) => (b.decidedAt?.getTime() ?? 0) - (a.decidedAt?.getTime() ?? 0))[0]
-    if (!used) return { ok: false as const, error: "That approval no longer exists." }
-    const result = queue(op, used.id)
+    if (!gate.approval || gate.approval.status !== "approved") {
+      return { ok: false as const, error: "That approval no longer exists." }
+    }
+    const result = queue(op, gate.approval.id)
     if (!result.ok) return result
     return { ok: true as const, queued: true as const }
   }
@@ -139,7 +135,13 @@ export async function decideSelfUpdate(
     if (!pending || pending.tool !== SELF_UPDATE_TOOL) {
       return { ok: false as const, error: "That approval is not for a version change." }
     }
+    if (pending.status === "used") {
+      return { ok: false as const, error: "This approval was already used." }
+    }
     if (pending.status === "pending") decideAction(approvalId, "approved")
+    else if (pending.status !== "approved") {
+      return { ok: false as const, error: "Approve this exact version first." }
+    }
     const built = currentArgs(op)
     if ("error" in built) return { ok: false as const, error: built.error }
     const gate = requestOrTake({
@@ -147,11 +149,12 @@ export async function decideSelfUpdate(
       agentId: null,
       tool: SELF_UPDATE_TOOL,
       args: built.args,
+      consume: false,
     })
-    if (gate.kind !== "run") {
+    if (gate.kind !== "run" || !gate.approval) {
       return { ok: false as const, error: "Approve this exact version first." }
     }
-    const result = queue(op, pending.id)
+    const result = queue(op, gate.approval.id)
     if (!result.ok) return result
     return { ok: true as const, queued: true as const }
   } catch (error) {

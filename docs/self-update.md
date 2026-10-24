@@ -14,11 +14,13 @@ Two colours run on the same machine:
 
 The vault key (`/etc/xiryn/vault`) and the environment file (`/etc/xiryn/shared.env`, mode 640, group `xiryn`) are shared and not writable by the service. Each colour has its own SQLite file. Caddy sends the public hostname to the active colour. The inactive colour is on port 8443 with the same basic auth (`deploy/Caddyfile.bluegreen`).
 
-`/etc/xiryn-deploy.conf` names the branch (yours is `BRANCH=main`). The helper fetches that one branch through the bare mirror `/var/lib/xiryn-pin.git` and will only build the commit that branch points at. A tag, a short name, or another branch is refused.
+`/etc/xiryn-deploy.conf` names the branch (yours is `BRANCH=main`). The helper fetches that one branch through the bare mirror `/var/lib/xiryn-pin.git` and will only build the commit that branch points at. A tag, a short name, or another branch is refused. The install script creates that mirror, root-owned and world-readable, when it is missing. The helper does not.
+
+Git, npm, and node that touch a colour tree or its database run as the `xiryn` user. The oneshot is still root, and it drops with `setpriv` (no new privileges, no capabilities) before those commands. The allow-list only accepts that fixed wrapper, so npm install scripts are not root and the checkout, `node_modules`, `.next`, and `xiryn.db` are owned by `xiryn`. Fetching the mirror, reloading Caddy, and starting the units stay root. A database snapshot also copies subdirectories such as `skills/`. It still skips `backups/`, `vault*`, `*.key`, and `.env`.
 
 ## Install it once on the existing server
 
-Do this on the EC2 box, as root, from the current checkout. The copy keeps serving until the last restart. If blue does not answer `/api/health`, the script starts `xiryn.service` again.
+Do this on the EC2 box, as root, from the current checkout. The copy keeps serving until the last restart. Blue is given up to 90 seconds to answer `/api/health`. If it does not, the script enables and starts `xiryn.service` again, so a reboot still comes up on the old unit.
 
 ```bash
 cd /opt/xiryn
@@ -47,6 +49,8 @@ What you still do by hand, because the script will not guess a customised Caddyf
 2. Allow TCP 8443 from your IP if you want the standby page on the public hostname.
 3. Leave `/opt/xiryn` in place until you have switched to a new colour once. Then you can remove that old tree. Do not delete `/var/backups/xiryn`, `/etc/xiryn`, or `/var/lib/xiryn-pin.git`.
 
+The script copies the vault key from `/var/lib/xiryn/.xiryn`, the install's `.xiryn`, or the `xiryn` user's home (`~xiryn/.xiryn`, which is where this server keeps `vault-*.key`). It does not print the key. If the database has vault entries and none of those directories has a key, the script stops before it restarts anything.
+
 ## What the buttons do
 
 Settings → **Update version** on a wide browser (the item sits in the settings list between Remote access and System). On a phone, or in the installed app, open the **Settings** tab — it shows a dot when a newer commit is on the branch — and tap **Update version** at the top of that screen. The row carries a **New** badge in the same case. Switch and roll back open an approval card on that screen, with full-width Approve and Decline buttons.
@@ -57,7 +61,7 @@ Settings → **Update version** on a wide browser (the item sits in the settings
 
 **Roll back** is the same approval. It points Caddy at the previous colour. If that health check fails, Caddy stays on the colour that was serving.
 
-An agent can call `request_self_update`. The first call is only an approval card, in the thread and on Telegram. Nothing is queued until you approve and the tool is called again with the same action. The helper checks that approval in the live database before it will switch or roll back.
+An agent can call `request_self_update`. The first call is only an approval card, in the thread and on Telegram. Nothing is queued until you approve and the tool is called again with the same action. The helper checks that approval in the live database before it will switch or roll back, then marks it used. A used approval is refused even if it is still inside the 20-minute window, so the same card cannot switch twice.
 
 Every prepare, switch, and rollback writes a line under `/var/lib/xiryn/deploy/audit/` at mode 600. Backups of the database, the shared env, and the vault key go to `/var/backups/xiryn/<timestamp>/` at mode 600. Logs are redacted before they are shown.
 
