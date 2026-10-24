@@ -93,6 +93,24 @@ test("spawned commands are pinned to the layout", () => {
     commandAllowed(["git", "-C", layout.greenDir, "checkout", "--detach", SHA], layout),
     false
   )
+  const pack = `git -c safe.directory=${layout.mirror} upload-pack`
+  assert.equal(
+    commandAllowed(
+      serviceArgv("xiryn", [
+        "git",
+        "-c",
+        `safe.directory=${layout.mirror}`,
+        "clone",
+        "--no-checkout",
+        "--upload-pack",
+        pack,
+        layout.mirror,
+        layout.greenDir,
+      ]),
+      layout
+    ),
+    true
+  )
   assert.equal(
     commandAllowed(
       serviceArgv("xiryn", [
@@ -106,7 +124,7 @@ test("spawned commands are pinned to the layout", () => {
       ]),
       layout
     ),
-    true
+    false
   )
   assert.equal(
     commandAllowed(
@@ -114,6 +132,89 @@ test("spawned commands are pinned to the layout", () => {
       layout
     ),
     true
+  )
+  const pinRef = `+refs/heads/${layout.branch}:refs/remotes/pin/${layout.branch}`
+  assert.equal(
+    commandAllowed(
+      serviceArgv("xiryn", [
+        "git",
+        "-C",
+        layout.greenDir,
+        "-c",
+        `safe.directory=${layout.mirror}`,
+        "fetch",
+        "--upload-pack",
+        pack,
+        layout.mirror,
+        pinRef,
+      ]),
+      layout
+    ),
+    true
+  )
+  assert.equal(
+    commandAllowed(
+      serviceArgv("xiryn", [
+        "git",
+        "-C",
+        layout.greenDir,
+        "-c",
+        `safe.directory=${layout.mirror}`,
+        "fetch",
+        "--upload-pack",
+        "git upload-pack",
+        layout.mirror,
+        pinRef,
+      ]),
+      layout
+    ),
+    false
+  )
+  assert.equal(
+    commandAllowed(
+      serviceArgv("xiryn", [
+        "git",
+        "-C",
+        layout.greenDir,
+        "fetch",
+        layout.mirror,
+        pinRef,
+      ]),
+      layout
+    ),
+    false
+  )
+  assert.equal(
+    commandAllowed(
+      serviceArgv("xiryn", [
+        "git",
+        "-C",
+        layout.blueDir,
+        "-c",
+        `safe.directory=${layout.mirror}`,
+        "fetch",
+        "origin",
+        pinRef,
+      ]),
+      layout
+    ),
+    false
+  )
+  assert.equal(
+    commandAllowed(
+      serviceArgv("xiryn", [
+        "git",
+        "-C",
+        layout.blueDir,
+        "-c",
+        `safe.directory=${layout.mirror}`,
+        "fetch",
+        layout.mirror,
+        `+refs/heads/${layout.branch}:refs/heads/${layout.branch}`,
+      ]),
+      layout
+    ),
+    false
   )
   assert.equal(
     commandAllowed(

@@ -30,30 +30,38 @@ for (const suffix of ["-wal", "-shm"]) {
   if (fs.existsSync(extra)) fs.chmodSync(extra, 0o600)
 }
 
-function skipped(name) {
-  return (
+function skipped(name, top) {
+  if (
     name === "backups" ||
-    name.startsWith("vault") ||
-    name.endsWith(".key") ||
     name === ".env" ||
     name === "xiryn.db" ||
     name.startsWith("xiryn.db-")
-  )
+  ) {
+    return true
+  }
+  // A skill directory can be named vault-* or hold a .key file. Only the
+  // data-dir root is where a vault key would sit beside the database.
+  return top && (name.startsWith("vault") || name.endsWith(".key"))
 }
 
-// skills/ and any other subdirectory travel with the database. Symlinks are
-// left behind so a link cannot pull in a key from outside this directory.
-function copyTree(srcDir, destDir) {
+// skills/ and any other subdirectory travel with the database. A symlink at
+// the top can point at a key outside this directory, so those stay behind.
+// Links inside skills/ are copied as links.
+function copyTree(srcDir, destDir, top, underSkills) {
   fs.mkdirSync(destDir, { recursive: true, mode: 0o700 })
   fs.chmodSync(destDir, 0o700)
   for (const name of fs.readdirSync(srcDir)) {
-    if (skipped(name)) continue
+    if (skipped(name, top)) continue
     const src = path.join(srcDir, name)
     const dest = path.join(destDir, name)
     const stat = fs.lstatSync(src)
-    if (stat.isSymbolicLink()) continue
+    if (stat.isSymbolicLink()) {
+      if (!underSkills) continue
+      fs.symlinkSync(fs.readlinkSync(src), dest)
+      continue
+    }
     if (stat.isDirectory()) {
-      copyTree(src, dest)
+      copyTree(src, dest, false, underSkills || name === "skills")
       continue
     }
     if (!stat.isFile()) continue
@@ -62,4 +70,4 @@ function copyTree(srcDir, destDir) {
   }
 }
 
-copyTree(fromDir, toDir)
+copyTree(fromDir, toDir, true, false)

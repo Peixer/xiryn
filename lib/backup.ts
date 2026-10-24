@@ -6,6 +6,8 @@ import { fileURLToPath } from "node:url"
 
 import Database from "better-sqlite3"
 
+import { vaultAccount } from "@/lib/vault-account"
+
 // A consistent copy of the data directory.
 //
 // SQLite's online backup API writes the snapshot, so the live WAL and shared-
@@ -72,7 +74,7 @@ export function describeVaultKey(input: {
 }): VaultKeyInfo {
   const dataDir = path.resolve(input.dataDir)
   const dbPath = path.join(dataDir, "xiryn.db")
-  const account = createHash("sha256").update(dbPath).digest("hex").slice(0, 16)
+  const account = vaultAccount(dbPath, input.env.XIRYN_VAULT_ACCOUNT)
   const keyDir = input.env.XIRYN_VAULT_KEY_DIR
     ? path.resolve(input.env.XIRYN_VAULT_KEY_DIR)
     : input.docker

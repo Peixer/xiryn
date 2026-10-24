@@ -138,19 +138,40 @@ function range(value: string) {
   return Boolean(from && to && isSha(from) && isSha(to) && value === `${from}..${to}`)
 }
 
+function uploadPack(layout: Layout) {
+  return `git -c safe.directory=${layout.mirror} upload-pack`
+}
+
 function colourGitAllowed(rest: readonly string[], layout: Layout) {
+  // A local clone or fetch runs upload-pack inside the mirror. That child does
+  // not inherit -c, so the same safe.directory has to be on its command line
+  // or git still reports dubious ownership.
   if (
     rest[0] === "-c" &&
     rest[1] === `safe.directory=${layout.mirror}` &&
     rest[2] === "clone" &&
     rest[3] === "--no-checkout" &&
-    rest[4] === layout.mirror &&
-    rest.length === 6 &&
-    isColourDir(layout, rest[5])
+    rest[4] === "--upload-pack" &&
+    rest[5] === uploadPack(layout) &&
+    rest[6] === layout.mirror &&
+    rest.length === 8 &&
+    isColourDir(layout, rest[7])
   ) {
     return true
   }
   if (rest[0] !== "-C" || !isColourDir(layout, rest[1] ?? "")) return false
+  if (
+    rest[2] === "-c" &&
+    rest[3] === `safe.directory=${layout.mirror}` &&
+    rest[4] === "fetch" &&
+    rest[5] === "--upload-pack" &&
+    rest[6] === uploadPack(layout) &&
+    rest[7] === layout.mirror &&
+    rest[8] === `+refs/heads/${layout.branch}:refs/remotes/pin/${layout.branch}` &&
+    rest.length === 9
+  ) {
+    return true
+  }
   if (
     rest[2] === "checkout" &&
     rest[3] === "--detach" &&

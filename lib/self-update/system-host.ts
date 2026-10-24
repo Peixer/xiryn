@@ -211,6 +211,11 @@ export function createSystemHost(layout = loadLayout()): Host {
       return tip
     },
     syncCheckout(dest, sha) {
+      const safe = `safe.directory=${layout.mirror}`
+      // upload-pack is the process that opens the root-owned mirror. -c on the
+      // parent is not enough: this git does not forward it to that child.
+      const pack = `git -c ${safe} upload-pack`
+      const ref = `+refs/heads/${layout.branch}:refs/remotes/pin/${layout.branch}`
       if (!fs.existsSync(path.join(dest, ".git"))) {
         fs.rmSync(dest, { recursive: true, force: true })
         fs.mkdirSync(dest, { recursive: true, mode: 0o755 })
@@ -218,15 +223,29 @@ export function createSystemHost(layout = loadLayout()): Host {
         runAsService(layout, [
           "git",
           "-c",
-          `safe.directory=${layout.mirror}`,
+          safe,
           "clone",
           "--no-checkout",
+          "--upload-pack",
+          pack,
           layout.mirror,
           dest,
         ])
       } else {
         ownService(dest)
       }
+      runAsService(layout, [
+        "git",
+        "-C",
+        dest,
+        "-c",
+        safe,
+        "fetch",
+        "--upload-pack",
+        pack,
+        layout.mirror,
+        ref,
+      ])
       runAsService(layout, ["git", "-C", dest, "checkout", "--detach", sha])
       ownService(dest)
     },
