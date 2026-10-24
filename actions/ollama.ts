@@ -6,7 +6,6 @@ import { getSettingSource, setSetting } from "@/lib/config"
 import {
   agentContext,
   bestModelForThisMachine,
-  ensureContext,
   memoryGb,
   OLLAMA_MODEL,
   ollamaBinary,
@@ -73,15 +72,9 @@ export async function downloadLocalModel(model: string) {
 // Makes a downloaded model the default for every agent without its own
 export async function chooseLocalModel(model: string) {
   const name = checkName(model)
-  await ensureContext(name)
   connect()
   setSetting("model.default", `ollama/${name}`)
   revalidatePath("/", "layout")
-}
-
-// Saves a context large enough for agents on a model downloaded elsewhere
-export async function fixLocalModelContext(model: string) {
-  await ensureContext(checkName(model))
 }
 
 export async function connectLocalModels() {

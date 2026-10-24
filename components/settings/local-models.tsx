@@ -13,7 +13,6 @@ import {
 
 import {
   connectLocalModels,
-  fixLocalModelContext,
   downloadLocalModel,
   localModelsPanel,
   startLocalModels,
@@ -273,29 +272,6 @@ export function LocalModelsCard() {
             <span className="font-mono text-[10.5px] text-faint">
               {[model.parameters, size(model.size)].filter(Boolean).join(" · ")}
             </span>
-            {model.context !== null && model.context >= (panel?.context ?? 0) ? (
-              <span className="font-mono text-[10.5px] text-faint">
-                {Math.round(model.context / 1024)}K context
-              </span>
-            ) : (
-              <button
-                type="button"
-                disabled={!!busy}
-                title={`Ollama runs it with a ${model.context ? `${Math.round(model.context / 1024)}K` : "small default"} context, which cuts off an agent's instructions. Fixing saves a ${Math.round((panel?.context ?? 0) / 1024)}K context on it, for every app that uses it.`}
-                onClick={() =>
-                  act(
-                    `fix:${model.name}`,
-                    () => fixLocalModelContext(model.name),
-                    `${model.name} now has room for agents`
-                  )
-                }
-                className="inline-flex items-center gap-1 rounded-sm border border-warn/30 px-1.5 py-px font-mono text-[10px] text-warn hover:bg-warn/10"
-              >
-                {busy === `fix:${model.name}` && <Spinner className="size-3" />}
-                {model.context ? `${Math.round(model.context / 1024)}K` : "small"} context
-                · fix
-              </button>
-            )}
             {isDefault(model.name) ? (
               <span className="ml-auto rounded-sm border border-rigel/30 px-1.5 py-px font-mono text-[10px] text-rigel">
                 default
@@ -410,9 +386,9 @@ export function LocalModelsCard() {
             ))}
           <p className="text-[11.5px] text-faint">
             Agents need a model that can call tools. These can, and they can see
-            screenshots of their desktop too. Xiryn gives the models it downloads or makes
-            the default a {Math.round(panel.context / 1024)}K context, so an agent&apos;s
-            instructions fit.
+            screenshots of their desktop too. Xiryn asks Ollama for a{" "}
+            {Math.round(panel.context / 1024)}K context with every request, so an
+            agent&apos;s instructions always fit.
           </p>
         </div>
       )}

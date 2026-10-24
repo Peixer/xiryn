@@ -30,7 +30,7 @@ graph TB
 1. The composer posts the new message to `POST /api/threads/:id/turn`.
 2. `lib/agent/runtime.ts` loads the thread (agent or squad), resolves the model (`lib/providers/registry.ts`), saves the user message, and builds the tool belt for the configured capabilities.
 3. Instructions are assembled per agent (`lib/agent/instructions.ts`): identity, standing orders, capabilities, **memory notes**, squad roster and channel.
-4. `streamText` runs the tool loop. Its output becomes a UI message stream that is **buffered in a run object** and fanned out to any number of subscribers.
+4. `streamText` runs the tool loop. The last allowed step is offered no actions, so a long task still ends with an answer. If the model stops with no visible text and no tool call (small models sometimes end on their reasoning alone), one more call, tools off, asks for the reply; it streams on as part of the same message. The output becomes a UI message stream that is **buffered in a run object** and fanned out to any number of subscribers.
 5. When the stream ends the reply is persisted, the thread preview updated and a row written to the `turns` ledger.
 
 Because the run lives in the server process and not in the HTTP request, closing the tab doesn't stop it. `GET /api/threads/:id/turn` replays the buffer and follows it live — that's how a reload re-attaches. `DELETE` aborts it.
@@ -49,7 +49,7 @@ Defined in `lib/agent/tools.ts`. Every tool resolves "the agent holding the turn
 | Squad | `delegate` | Runtime (swaps agent, instructions and model) |
 | Hand-off | `request_takeover` | Runtime (ends the turn) + Telegram notice |
 
-Screenshots are returned to the model as images. Before every step, `prepareStep` compacts the turn's context: only the two most recent screenshots and the six most recent tool outputs are kept in full, older ones are cut to short stubs. A long desktop session therefore costs roughly the same per step at step 40 as at step 4.
+Screenshots are returned to the model as images. OpenAI, Anthropic, Gemini, xAI, DeepSeek and Ollama take images inside tool results; for other providers (OpenAI-style APIs such as OpenRouter, LM Studio, Groq, Mistral or a custom endpoint, which would turn them into base64 text) the tool result keeps only its caption and the image follows in a message of its own, after a one-line assistant turn because Mistral and many chat templates refuse a user turn right after a tool turn. Before every step, `prepareStep` compacts the turn's context: only the two most recent screenshots and the six most recent tool outputs are kept in full, older ones are cut to short stubs. A long desktop session therefore costs roughly the same per step at step 40 as at step 4.
 
 ## Take-over and hand-offs
 
@@ -77,13 +77,13 @@ The runtime emits an event when a turn finishes (or fails) and when an agent han
 
 ## Routines
 
-A routine (`routines` table) is a prompt, an owner (an agent or a squad) and a schedule — daily, weekdays, weekly, every few hours, or once — in the server's local time. `lib/routines.ts` is started from `instrumentation.ts` and checks every 30 seconds for routines that are due. Each run moves `next_run_at` on first (so a failed run never repeats; a one-off switches itself off), then sends the prompt into the routine's own thread through `startTurn` with `routine` set: the message carries `metadata.routine`, the instructions tell the agent nobody is watching, and the routine tools are left out so a run can't schedule more runs. A run missed by up to six hours (the computer slept) still happens; older ones are skipped until the next time. If the thread is busy, it tries again in five minutes.
+A routine (`routines` table) is a prompt, an owner (an agent or a squad) and a schedule — daily, weekdays, weekly, every few hours, or once — in the server's local time. `lib/routines.ts` is started from `instrumentation.ts` and checks every 30 seconds for routines that are due. Each run moves `next_run_at` on first (so a failed run never repeats; a one-off switches itself off), then sends the prompt into the routine's own thread through `startTurn` with `routine` set: the message carries `metadata.routine`, the instructions tell the agent nobody is watching, and the routine tools are left out so a run can't schedule more runs. A run missed by up to six hours (the computer slept) still happens; older ones are skipped until the next time. If the thread is busy, it tries again in five minutes. Every time a routine comes due or is run by hand gets a row in `routine_runs` — started, skipped (missed, or busy) or failed to start — closed with its outcome when the run ends. A run's turn is recorded in the `turns` ledger under the run's own id, which `routine_runs.turn_id` points to, so the history's costs are the ledger's. Runs still open when Xiryn starts are closed as interrupted.
 
 `scripts/background.mjs` keeps the server running with no terminal: it builds once per version or commit, starts `next start` detached on 127.0.0.1, records the pid in `data/background.pid` and logs to `data/xiryn.log`. `login` adds an entry the operating system starts at login (a hidden `.vbs` in the Windows Startup folder, a LaunchAgent on macOS, an XDG autostart entry on Linux).
 
 ## Local models
 
-`lib/ollama.ts` talks only to the Ollama endpoint configured for Xiryn (`/api/version`, `/api/tags`, `/api/pull`). Settings → Local models starts a pull, which streams progress as lines of JSON into an in-memory map the panel polls. Downloading or choosing a model points Xiryn at Ollama if nothing else does, and saves a 32K context on it (`num_ctx` through `/api/create`, same name): Ollama's default is often 4K, which would cut an agent's prompt, and its OpenAI-style endpoint can't ask for more. Before a turn on an Ollama model Xiryn checks this once per model. `npm run setup:local` does the same from the terminal, installing Ollama first if needed.
+`lib/ollama.ts` talks only to the Ollama endpoint configured for Xiryn (`/api/version`, `/api/tags`, `/api/pull`). Settings → Local models starts a pull, which streams progress as lines of JSON into an in-memory map the panel polls. Downloading or choosing a model points Xiryn at Ollama if nothing else does; `npm run setup:local` does the same from the terminal, installing Ollama first if needed. Turns on Ollama models go through its native `/api/chat` (`ai-sdk-ollama`), with `num_ctx` (32K, 16K under 12 GB of memory) and `keep_alive` on every request: Ollama's default context is often 4K, which would cut an agent's prompt. Reasoning from earlier steps is left out of what's sent back (Ollama would fold it into the reply text), and a call that has to answer rather than act is offered no tools, since Ollama's API has no tool choice.
 
 ## Squads and delegation
 
@@ -110,6 +110,7 @@ Everything lives in `data/xiryn.db` (override with `XIRYN_DATA_DIR`). Schema: `d
 | `memories` | Long-term notes per agent |
 | `turns` | The usage ledger, with each turn's cost in millionths of a dollar |
 | `routines` | Scheduled tasks: prompt, owner, schedule, next and last run |
+| `routine_runs` | Each time a routine came due or was run by hand: outcome, reason, timing and its turn |
 | `settings` | Values saved from Settings (override `.env`) |
 
 ## Settings resolution

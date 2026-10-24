@@ -2,7 +2,14 @@ import { and, eq, lte } from "drizzle-orm"
 import { nanoid } from "nanoid"
 
 import { db } from "@/db"
-import { routines, threads, type Routine } from "@/db/schema"
+import {
+  routineRuns,
+  routines,
+  threads,
+  turns,
+  type Routine,
+  type RoutineRun,
+} from "@/db/schema"
 import { startTurn, subscribe, TurnError } from "@/lib/agent/runtime"
 import type { XirynMessage } from "@/lib/agent/tools"
 import { nextRun } from "@/lib/schedule"
@@ -22,6 +29,20 @@ const state = (globalForRoutines.__xirynRoutines ??= { timer: null, running: new
 
 function update(id: string, values: Partial<Routine>) {
   db.update(routines).set(values).where(eq(routines.id, id)).run()
+}
+
+// A line in the routine's history
+function logRun(values: typeof routineRuns.$inferInsert) {
+  const [row] = db
+    .insert(routineRuns)
+    .values(values)
+    .returning({ id: routineRuns.id })
+    .all()
+  return row.id
+}
+
+function updateRun(id: string, values: Partial<RoutineRun>) {
+  db.update(routineRuns).set(values).where(eq(routineRuns.id, id)).run()
 }
 
 // The routine's own thread, made again if it was deleted
@@ -59,6 +80,12 @@ export async function runRoutine(routine: Routine, { manual = false } = {}) {
     throw new TurnError("This routine is already running.", 409)
   }
   const now = new Date()
+  const entry = {
+    routineId: routine.id,
+    trigger: manual ? ("manual" as const) : ("schedule" as const),
+    dueAt: manual ? null : routine.nextRunAt,
+    startedAt: now,
+  }
   // Scheduled runs move on first, so a slow or failed run never repeats; a
   // one-off routine switches itself off
   if (!manual) {
@@ -82,23 +109,26 @@ export async function runRoutine(routine: Routine, { manual = false } = {}) {
     })
   } catch (error) {
     if (!manual && error instanceof TurnError && error.status === 409) {
-      // Someone's talking to the agent in this thread: try again shortly
+      // Someone's talking to the agent in this thread: try again shortly. A
+      // one-off routine stays on until it gets its turn.
+      const detail = "The agent was busy in this thread; trying again in 5 minutes."
       update(routine.id, {
+        enabled: true,
         nextRunAt: new Date(Date.now() + RETRY_BUSY),
         lastStatus: "skipped",
-        lastError: "The agent was busy in this thread; trying again in 5 minutes.",
+        lastError: detail,
       })
+      logRun({ ...entry, threadId, status: "skipped", detail, finishedAt: new Date() })
       return null
     }
-    update(routine.id, {
-      lastRunAt: now,
-      lastStatus: "failed",
-      lastError: error instanceof Error ? error.message : String(error),
-    })
+    const detail = error instanceof Error ? error.message : String(error)
+    update(routine.id, { lastRunAt: now, lastStatus: "failed", lastError: detail })
+    logRun({ ...entry, threadId, status: "failed", detail, finishedAt: new Date() })
     throw error
   }
 
   update(routine.id, { lastRunAt: now, lastStatus: "running", lastError: null })
+  const runId = logRun({ ...entry, threadId, status: "running" })
   state.running.add(routine.id)
   // Follow the run to its end to record how it went
   void (async () => {
@@ -114,7 +144,26 @@ export async function runRoutine(routine: Routine, { manual = false } = {}) {
       failure = error instanceof Error ? error.message : String(error)
     } finally {
       state.running.delete(routine.id)
-      update(routine.id, { lastStatus: failure ? "failed" : "ok", lastError: failure })
+      // The turn's ledger row is written before its stream ends
+      const turn = db
+        .select({ id: turns.id, status: turns.status, error: turns.error })
+        .from(turns)
+        .where(eq(turns.id, run.id))
+        .get()
+      const status =
+        failure || turn?.status === "failed"
+          ? ("failed" as const)
+          : turn?.status === "stopped"
+            ? ("stopped" as const)
+            : ("ok" as const)
+      const detail = failure ?? turn?.error ?? null
+      update(routine.id, { lastStatus: status, lastError: detail })
+      updateRun(runId, {
+        status,
+        detail,
+        turnId: turn?.id ?? null,
+        finishedAt: new Date(),
+      })
     }
   })()
   return { threadId }
@@ -136,11 +185,22 @@ async function tick() {
     const late = now.getTime() - (routine.nextRunAt?.getTime() ?? now.getTime())
     if (late > CATCH_UP) {
       const next = nextRun(routine.schedule, now)
+      const detail = "Xiryn wasn't running at the scheduled time."
       update(routine.id, {
         nextRunAt: next,
         ...(!next && { enabled: false }),
         lastStatus: "skipped",
-        lastError: "Xiryn wasn't running at the scheduled time.",
+        lastError: detail,
+      })
+      logRun({
+        routineId: routine.id,
+        trigger: "schedule",
+        dueAt: routine.nextRunAt,
+        threadId: routine.threadId,
+        status: "skipped",
+        detail,
+        startedAt: now,
+        finishedAt: now,
       })
       continue
     }
@@ -152,6 +212,16 @@ async function tick() {
 
 export function startRoutines() {
   if (state.timer) return
+  // Runs cut short the last time Xiryn stopped
+  const interrupted = "Xiryn stopped during this run."
+  db.update(routineRuns)
+    .set({ status: "failed", detail: interrupted, finishedAt: new Date() })
+    .where(eq(routineRuns.status, "running"))
+    .run()
+  db.update(routines)
+    .set({ lastStatus: "failed", lastError: interrupted })
+    .where(eq(routines.lastStatus, "running"))
+    .run()
   state.timer = setInterval(() => {
     tick().catch((error) => console.error("[xiryn] routines:", error))
   }, TICK)

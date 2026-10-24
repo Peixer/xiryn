@@ -7,6 +7,7 @@ import {
   agents,
   memories,
   messages,
+  routineRuns,
   routines,
   squadMembers,
   squads,
@@ -20,6 +21,7 @@ import {
   estimateCost,
   findPrice,
   fromMicros,
+  isFree,
   PRICES_AS_OF,
   type CustomPrices,
 } from "@/lib/providers/pricing"
@@ -455,7 +457,67 @@ export type UsageData = ReturnType<typeof getUsage>
 
 /* ──────────────────────────── routines ──────────────────────────── */
 
+const RUNS_SHOWN = 20
+
+// A routine's latest runs, with what each cost from the ledger
+function routineHistory(routineId: string) {
+  return db
+    .select({
+      id: routineRuns.id,
+      trigger: routineRuns.trigger,
+      status: routineRuns.status,
+      detail: routineRuns.detail,
+      dueAt: routineRuns.dueAt,
+      startedAt: routineRuns.startedAt,
+      finishedAt: routineRuns.finishedAt,
+      turnId: routineRuns.turnId,
+      model: turns.model,
+      costMicros: turns.costMicros,
+    })
+    .from(routineRuns)
+    .leftJoin(turns, eq(turns.id, routineRuns.turnId))
+    .where(eq(routineRuns.routineId, routineId))
+    .orderBy(desc(routineRuns.startedAt))
+    .limit(RUNS_SHOWN)
+    .all()
+    .map((run) => ({
+      id: run.id,
+      trigger: run.trigger,
+      status: run.status,
+      detail: run.detail,
+      // A missed run is shown at the time it was due
+      at: (run.status === "skipped" && run.dueAt
+        ? run.dueAt
+        : run.startedAt
+      ).toISOString(),
+      durationMs:
+        run.status !== "skipped" && run.finishedAt
+          ? run.finishedAt.getTime() - run.startedAt.getTime()
+          : null,
+      cost: run.turnId
+        ? {
+            usd: run.costMicros === null ? null : fromMicros(run.costMicros),
+            free: !!run.model && isFree(run.model),
+          }
+        : null,
+    }))
+}
+
 export function getRoutines() {
+  const totals = new Map(
+    db
+      .select({
+        routineId: routineRuns.routineId,
+        runs: sql<number>`sum(${routineRuns.status} != 'skipped')`,
+        skipped: sql<number>`sum(${routineRuns.status} = 'skipped')`,
+        costMicros: sql<number | null>`sum(${turns.costMicros})`,
+      })
+      .from(routineRuns)
+      .leftJoin(turns, eq(turns.id, routineRuns.turnId))
+      .groupBy(routineRuns.routineId)
+      .all()
+      .map((row) => [row.routineId, row])
+  )
   return db
     .select()
     .from(routines)
@@ -479,6 +541,12 @@ export function getRoutines() {
           : routine.lastStatus,
       lastError: routine.lastError,
       href: threadHref(routine),
+      history: routineHistory(routine.id),
+      totals: {
+        runs: totals.get(routine.id)?.runs ?? 0,
+        skipped: totals.get(routine.id)?.skipped ?? 0,
+        usd: fromMicros(totals.get(routine.id)?.costMicros ?? 0),
+      },
     }))
 }
 

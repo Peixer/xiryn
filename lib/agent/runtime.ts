@@ -4,8 +4,10 @@ import {
   isStepCount,
   streamText,
   toUIMessageStream,
+  type FilePart,
   type LanguageModelUsage,
   type ModelMessage,
+  type TextStreamPart,
   type ToolSet,
   type UIMessageChunk,
 } from "ai"
@@ -35,7 +37,6 @@ import {
 } from "@/lib/agent/tools"
 import { getMaxSteps } from "@/lib/config"
 import { emit, previewText } from "@/lib/events"
-import { prepareLocalModel } from "@/lib/ollama"
 import { parseModelSpec } from "@/lib/providers/catalog"
 import { callCost, findPrice, toMicros } from "@/lib/providers/pricing"
 import { createModel, resolveModelSpec } from "@/lib/providers/registry"
@@ -200,6 +201,63 @@ const LAST_STEP = `
 # Step limit reached
 This is your last step in this turn, and your tools are switched off. Tell the person what you have found or done so far, with the concrete details (names, times, prices, links, file paths), and what is still left. They can reply to have you carry on.`
 
+const NO_ANSWER = `
+
+# Your reply
+Your last step ended without a reply to the person. Write your answer to them now, from what you have already found. Your tools are switched off.`
+
+// Some models, small local ones especially, end a turn with reasoning and
+// no reply. When the last step has neither text nor tool calls, one more
+// call asks for the answer, and it streams into the same reply.
+type Streamed = {
+  stream: AsyncIterable<TextStreamPart<ToolSet>>
+  responseMessages: PromiseLike<ModelMessage[]>
+}
+
+function answerIfSilent(
+  result: Streamed,
+  followUp: (responseMessages: ModelMessage[]) => Streamed | null
+): ReadableStream<TextStreamPart<ToolSet>> {
+  const parts = (async function* () {
+    let text = ""
+    let toolCalls = 0
+    for await (const part of result.stream) {
+      if (part.type === "start-step") {
+        text = ""
+        toolCalls = 0
+      } else if (part.type === "text-delta") {
+        text += part.text
+      } else if (part.type === "tool-call") {
+        toolCalls++
+      }
+      if (part.type !== "finish") {
+        yield part
+        continue
+      }
+      const silent = part.finishReason === "stop" && !text.trim() && toolCalls === 0
+      const next = silent ? followUp(await result.responseMessages) : null
+      if (!next) {
+        yield part
+        continue
+      }
+      for await (const more of next.stream) {
+        // One reply: the follow-up's own start would open a second message
+        if (more.type !== "start") yield more
+      }
+    }
+  })()
+  return new ReadableStream({
+    async pull(controller) {
+      const { value, done } = await parts.next()
+      if (done) controller.close()
+      else controller.enqueue(value)
+    },
+    async cancel() {
+      await parts.return(undefined)
+    },
+  })
+}
+
 // Screenshots are heavy. Only the most recent few go back to the model.
 const SCREENS_IN_CONTEXT = 2
 
@@ -303,8 +361,16 @@ const STUB_CHARS = 600
 
 type ToolOutput = { type: string; value?: unknown }
 
+function hasImage(output: ToolOutput) {
+  return (
+    output.type === "content" &&
+    Array.isArray(output.value) &&
+    (output.value as { type: string }[]).some((part) => part.type === "file")
+  )
+}
+
 function shrink(output: ToolOutput, keepImage: boolean, keepFull: boolean): ToolOutput {
-  if (output.type === "content" && Array.isArray(output.value)) {
+  if (hasImage(output)) {
     if (keepImage) return output
     const text = (output.value as { type: string; text?: string }[])
       .filter((part) => part.type === "text")
@@ -329,6 +395,14 @@ function compactContext(input: ModelMessage[]): ModelMessage[] {
     .slice()
     .reverse()
     .map((message) => {
+      // A screenshot sent as a message of its own (see liftToolImages)
+      if (isScreenshotMessage(message) && message.role === "user") {
+        if (images++ < IMAGES_KEPT) return message
+        return {
+          ...message,
+          content: [{ type: "text" as const, text: "[Earlier screenshot omitted.]" }],
+        }
+      }
       if (message.role !== "tool") return message
       const content = message.content
         .slice()
@@ -336,7 +410,7 @@ function compactContext(input: ModelMessage[]): ModelMessage[] {
         .map((part) => {
           if (part.type !== "tool-result") return part
           const output = part.output as ToolOutput
-          const isImage = output.type === "content"
+          const isImage = hasImage(output)
           const keepImage = isImage && images < IMAGES_KEPT
           const keepFull = outputs < OUTPUTS_KEPT
           if (isImage) images++
@@ -350,6 +424,89 @@ function compactContext(input: ModelMessage[]): ModelMessage[] {
       return { ...message, content }
     })
     .reverse()
+}
+
+/* ─────────────────────── per provider ──────────────────────────── */
+
+// Providers whose APIs take images inside tool results. For the others
+// (OpenAI-style chat APIs among them) a screenshot would arrive as base64
+// text the model can't see, so it travels in a message of its own instead.
+const IMAGES_IN_TOOL_RESULTS = new Set([
+  "openai",
+  "anthropic",
+  "google",
+  "xai",
+  "deepseek",
+  "ollama",
+])
+const LIFTED = "[The screenshot is in the next message.]"
+
+function isScreenshotMessage(message: ModelMessage) {
+  const xiryn = message.providerOptions?.xiryn as { screenshot?: boolean } | undefined
+  return message.role === "user" && !!xiryn?.screenshot
+}
+
+function liftToolImages(messages: ModelMessage[]): ModelMessage[] {
+  return messages.flatMap((message): ModelMessage[] => {
+    if (message.role !== "tool") return [message]
+    const images: { mediaType: string; data: FilePart["data"] }[] = []
+    const content = message.content.map((part) => {
+      if (part.type !== "tool-result" || part.output.type !== "content") return part
+      const value = part.output.value.map((item) => {
+        if (item.type !== "file" || !item.mediaType.startsWith("image/")) return item
+        images.push({ mediaType: item.mediaType, data: item.data })
+        return { type: "text" as const, text: LIFTED }
+      })
+      return { ...part, output: { ...part.output, value } }
+    })
+    if (!images.length) return [{ ...message, content }]
+    return [
+      { ...message, content },
+      // Mistral and many chat templates refuse a user turn right after a tool turn
+      { role: "assistant" as const, content: "Let me look at the screenshot." },
+      {
+        role: "user" as const,
+        content: [
+          { type: "text" as const, text: "The screenshot from your last action:" },
+          ...images.map((image) => ({
+            type: "file" as const,
+            mediaType: image.mediaType,
+            data: image.data,
+          })),
+        ],
+        providerOptions: { xiryn: { screenshot: true } },
+      },
+    ]
+  })
+}
+
+// Ollama's own API would hand a model its earlier reasoning back as text
+function withoutReasoning(messages: ModelMessage[]): ModelMessage[] {
+  return messages.map((message) =>
+    message.role === "assistant" && Array.isArray(message.content)
+      ? {
+          ...message,
+          content: message.content.filter((part) => part.type !== "reasoning"),
+        }
+      : message
+  )
+}
+
+// The history, shaped for what the provider of `spec` accepts
+function forProvider(spec: string, messages: ModelMessage[]) {
+  const provider = parseModelSpec(spec)?.provider
+  let shaped = messages
+  if (provider === "ollama") shaped = withoutReasoning(shaped)
+  if (provider && !IMAGES_IN_TOOL_RESULTS.has(provider)) shaped = liftToolImages(shaped)
+  return shaped
+}
+
+// Settings for a call that must answer rather than act. Ollama's API has no
+// tool choice, so there the only way is to offer no tools at all.
+function answerOnly(spec: string) {
+  return parseModelSpec(spec)?.provider === "ollama"
+    ? { toolChoice: "none" as const, activeTools: [] }
+    : { toolChoice: "none" as const }
 }
 
 /* ───────────────────────────── turns ───────────────────────────── */
@@ -401,15 +558,6 @@ export async function startTurn({
   // A monthly budget holds turns on paid models once it's spent
   const blocked = budgetBlock(firstSpec)
   if (blocked) throw new TurnError(blocked, 402)
-  // Local models get a context their instructions fit in (once per model)
-  await Promise.all(
-    [...new Set(members.map((member) => resolveModelSpec(member.model)))].flatMap(
-      (spec) => {
-        const parsed = spec ? parseModelSpec(spec) : null
-        return parsed?.provider === "ollama" ? [prepareLocalModel(parsed.model)] : []
-      }
-    )
-  )
   const firstModel = (() => {
     try {
       return createModel(firstSpec)
@@ -582,13 +730,14 @@ export async function startTurn({
   const maxSteps = getMaxSteps()
 
   try {
+    const initialMessages = await convertToModelMessages(
+      pruneScreens(frameRoutineRuns(history)),
+      { tools, ignoreIncompleteToolCalls: true }
+    )
     const result = streamText({
       model: firstModel,
       instructions: buildInstructions(first, capabilities, squadContext(first)),
-      messages: await convertToModelMessages(pruneScreens(frameRoutineRuns(history)), {
-        tools,
-        ignoreIncompleteToolCalls: true,
-      }),
+      messages: forProvider(firstSpec, initialMessages),
       tools,
       // The turn also ends when the agent needs the person: its screen,
       // a payment decision or a detail only they have
@@ -600,15 +749,15 @@ export async function startTurn({
       ],
       abortSignal: run.controller.signal,
       prepareStep: ({ messages: stepMessages, stepNumber }) => {
-        // Long tool loops resend everything each step; keep it lean
-        const compacted = compactContext(stepMessages)
         // The last step answers instead of acting, so a long task always
         // ends with what was found and what's left
         const lastStep = stepNumber === maxSteps - 1
         const delegated = current.id !== appliedAgentId
+        if (delegated) activeSpec = specFor(current)
+        // Long tool loops resend everything each step; keep it lean
+        const compacted = forProvider(activeSpec, compactContext(stepMessages))
         if (!delegated && !lastStep) return { messages: compacted }
         appliedAgentId = current.id
-        if (delegated) activeSpec = specFor(current)
         return {
           messages: compacted,
           // After a delegation the next step runs as the new agent, on its model
@@ -616,7 +765,7 @@ export async function startTurn({
           instructions:
             buildInstructions(current, capabilities, squadContext(current)) +
             (lastStep ? LAST_STEP : ""),
-          ...(lastStep && { toolChoice: "none" as const }),
+          ...(lastStep && answerOnly(activeSpec)),
         }
       },
       // Counted per model call, so a turn stopped mid-tool is still metered
@@ -631,8 +780,37 @@ export async function startTurn({
       },
     })
 
+    const answered = answerIfSilent(result, (responseMessages) => {
+      if (failure || run.controller.signal.aborted) return null
+      return streamText({
+        model: createModel(activeSpec),
+        instructions:
+          buildInstructions(current, capabilities, squadContext(current)) + NO_ANSWER,
+        messages: forProvider(
+          activeSpec,
+          compactContext([
+            ...initialMessages,
+            ...responseMessages,
+            // Only the model sees this; it isn't saved to the thread
+            { role: "user", content: "Reply with your answer now." },
+          ])
+        ),
+        tools,
+        ...answerOnly(activeSpec),
+        abortSignal: run.controller.signal,
+        onLanguageModelCallEnd: (call) => addUsage(call.usage),
+        onStepEnd: () => {
+          usage.steps++
+        },
+        onError: ({ error }) => {
+          failure = describeError(error)
+          console.error(`[xiryn] turn failed in thread ${threadId}:`, error)
+        },
+      })
+    })
+
     const stream = toUIMessageStream<ToolSet, XirynMessage>({
-      stream: result.stream,
+      stream: answered,
       originalMessages: history,
       generateMessageId: () => nanoid(),
       messageMetadata: ({ part }) => {
@@ -676,6 +854,8 @@ export async function startTurn({
 
         db.insert(turns)
           .values({
+            // Shares the run's id, so a routine's history can find it
+            id: run.id,
             threadId,
             agentId: first.id,
             model: firstSpec,

@@ -15,8 +15,6 @@ export type LocalModel = {
   size: number
   parameters?: string
   family?: string
-  // The context Ollama runs it with, in tokens; null when it's Ollama's default
-  context: number | null
 }
 
 export type RecommendedModel = {
@@ -105,17 +103,15 @@ export async function ollamaStatus() {
       }[]
     }
     const models = json.models ?? []
-    const contexts = await Promise.all(models.map((m) => modelContext(m.name)))
     return {
       running: true as const,
       root,
       version: ((await version.json()) as { version?: string }).version ?? null,
-      models: models.map((m, i): LocalModel => ({
+      models: models.map((m): LocalModel => ({
         name: m.name,
         size: m.size,
         parameters: m.details?.parameter_size,
         family: m.details?.family,
-        context: contexts[i],
       })),
     }
   } catch {
@@ -123,70 +119,18 @@ export async function ollamaStatus() {
   }
 }
 
-/* Context. Unless a model says otherwise, Ollama runs it with a small context
+/* Context. Unless told otherwise, Ollama runs a model with a small context
    (4K on many machines) and quietly cuts longer prompts, which drops most of
-   an agent's instructions. Its OpenAI-style endpoint can't ask for more, so
-   Xiryn saves a larger context on the models agents use, the way a Modelfile
-   would: the same model, under the same name, with num_ctx set. */
+   an agent's instructions. Xiryn asks for enough with every request, through
+   Ollama's own API, so the models themselves are left as they are. */
 
 export function agentContext() {
   return os.totalmem() / 1024 ** 3 < 12 ? 16_384 : 32_768
 }
 
-export async function modelContext(model: string) {
-  try {
-    const response = await fetch(`${ollamaRoot()}/api/show`, {
-      method: "POST",
-      body: JSON.stringify({ model }),
-      signal: AbortSignal.timeout(5000),
-      cache: "no-store",
-    })
-    if (!response.ok) return null
-    const { parameters } = (await response.json()) as { parameters?: string }
-    const match = parameters?.match(/^num_ctx\s+(\d+)/m)
-    return match ? Number(match[1]) : null
-  } catch {
-    return null
-  }
-}
-
-// Gives a model enough context for an agent's instructions; true if it changed
-export async function ensureContext(model: string) {
-  const want = agentContext()
-  const current = await modelContext(model)
-  if (current !== null && current >= want) return false
-  const response = await fetch(`${ollamaRoot()}/api/create`, {
-    method: "POST",
-    body: JSON.stringify({
-      model,
-      from: model,
-      parameters: { num_ctx: want },
-      stream: false,
-    }),
-  })
-  if (!response.ok) {
-    throw new Error(
-      `Ollama couldn't update ${model}: ${(await response.text()).slice(0, 200)}`
-    )
-  }
-  return true
-}
-
-const globalForContext = globalThis as unknown as { xirynOllamaContext?: Set<string> }
-const checked = (globalForContext.xirynOllamaContext ??= new Set())
-
-// Before a turn: once per model while Xiryn runs. Never in the way of the turn.
-export async function prepareLocalModel(model: string) {
-  if (checked.has(model)) return
-  try {
-    if (await ensureContext(model)) {
-      console.log(`[xiryn] ollama: gave ${model} a ${agentContext() / 1024}K context`)
-    }
-    checked.add(model)
-  } catch (error) {
-    console.error("[xiryn] ollama:", error instanceof Error ? error.message : error)
-  }
-}
+// How long Ollama keeps a model loaded after a request, so the next step of
+// a turn doesn't wait for it to load again
+export const OLLAMA_KEEP_ALIVE = "30m"
 
 // Model names as Ollama writes them: "qwen3.5:9b", "library/name:tag"
 export const OLLAMA_MODEL = /^[a-z0-9][a-z0-9._/-]{0,80}(:[a-z0-9._-]{1,60})?$/i
@@ -264,15 +208,6 @@ export function pullModel(model: string) {
           })
         }
       }
-      pulls.set(model, {
-        model,
-        state: "pulling",
-        status: "setting up for agents",
-        completed: 0,
-        total: 0,
-      })
-      await ensureContext(model)
-      checked.add(model)
       pulls.set(model, { model, state: "done" })
     } catch (error) {
       pulls.set(model, {

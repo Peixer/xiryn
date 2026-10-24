@@ -338,6 +338,7 @@ Tasks your agents do on their own, on a schedule — while you sleep, with the b
 - **Just ask.** Tell any agent *"every weekday at 9, check for new jobs that fit me"* or *"tomorrow at 7, remind me to call the bank"* — it schedules the routine itself. Ask it to list or cancel them the same way.
 - **Or set it up** on the **Routines** page: who does it, what to do each time, and when — every day, weekdays, one day a week, every few hours, or just once. Start from ideas like a morning news brief, job alerts, a price watch, a weekly research digest or a plan for the week.
 - **Results come to you.** Each routine has its own thread. When a run finishes you get an in-app notification, a desktop notification when no tab is open, and a Telegram message if it's paired — reply there to follow up.
+- **See how each run went.** A routine's **History** lists every run: when, how long, what it cost, and why one failed or was skipped.
 - **Runs on your computer.** Times are your computer's local time, and Xiryn has to be running: `npm run background -- login` keeps it that way. A run missed while the computer slept still happens if it's back within a few hours.
 
 ## Ready-made agents

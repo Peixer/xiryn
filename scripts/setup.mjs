@@ -481,34 +481,6 @@ async function pullThroughApi(model) {
   }
 }
 
-// Ollama runs models with a small context unless told otherwise (4K on many
-// machines), which cuts off an agent's instructions; save a larger one on it
-async function giveContext(model) {
-  const want = os.totalmem() / 1024 ** 3 < 12 ? 16_384 : 32_768
-  try {
-    const show = await fetch(`${OLLAMA_URL}/api/show`, {
-      method: "POST",
-      body: JSON.stringify({ model }),
-    })
-    const current = Number(
-      (await show.json()).parameters?.match(/^num_ctx\s+(\d+)/m)?.[1] ?? 0
-    )
-    if (current >= want) return true
-    const create = await fetch(`${OLLAMA_URL}/api/create`, {
-      method: "POST",
-      body: JSON.stringify({
-        model,
-        from: model,
-        parameters: { num_ctx: want },
-        stream: false,
-      }),
-    })
-    return create.ok
-  } catch {
-    return false
-  }
-}
-
 // Sets KEY=value in .env, over a commented-out example of it if there is one
 function setEnv(key, value) {
   const text = readFileSync(envPath, "utf8")
@@ -559,11 +531,6 @@ if (args.has("--local") || process.env.XIRYN_LOCAL === "1") {
       pulled = binary
         ? await run(binary, ["pull", pick.model])
         : await pullThroughApi(pick.model)
-    }
-    if (pulled && !(await giveContext(pick.model))) {
-      console.log(
-        warn(`Couldn't give ${pick.model} a larger context; Xiryn retries on first use.`)
-      )
     }
     if (pulled) {
       setEnv("OLLAMA_BASE_URL", `${OLLAMA_URL}/v1`)

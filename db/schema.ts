@@ -166,11 +166,34 @@ export const routines = sqliteTable(
     threadId: text().references(() => threads.id, { onDelete: "set null" }),
     nextRunAt: integer({ mode: "timestamp_ms" }),
     lastRunAt: integer({ mode: "timestamp_ms" }),
-    lastStatus: text({ enum: ["running", "ok", "failed", "skipped"] }),
+    lastStatus: text({ enum: ["running", "ok", "failed", "stopped", "skipped"] }),
     lastError: text(),
     createdAt: timestamp(),
   },
   (t) => [index("routines_next_idx").on(t.enabled, t.nextRunAt)]
+)
+
+// Every time a routine came due or was run by hand, including the times it
+// was skipped. What a run cost is in the ledger: the turn it started.
+export const routineRuns = sqliteTable(
+  "routine_runs",
+  {
+    id: id(),
+    routineId: text()
+      .notNull()
+      .references(() => routines.id, { onDelete: "cascade" }),
+    trigger: text({ enum: ["schedule", "manual"] }).notNull(),
+    status: text({ enum: ["running", "ok", "failed", "stopped", "skipped"] }).notNull(),
+    // Why it was skipped, or what went wrong
+    detail: text(),
+    // When it was due; null for a run by hand
+    dueAt: integer({ mode: "timestamp_ms" }),
+    threadId: text().references(() => threads.id, { onDelete: "set null" }),
+    turnId: text().references(() => turns.id, { onDelete: "set null" }),
+    startedAt: timestamp(),
+    finishedAt: integer({ mode: "timestamp_ms" }),
+  },
+  (t) => [index("routine_runs_routine_idx").on(t.routineId, t.startedAt)]
 )
 
 /* ───────────────────────────── vault ────────────────────────────── */
@@ -365,5 +388,6 @@ export type Thread = typeof threads.$inferSelect
 export type Memory = typeof memories.$inferSelect
 export type Turn = typeof turns.$inferSelect
 export type Routine = typeof routines.$inferSelect
+export type RoutineRun = typeof routineRuns.$inferSelect
 export type RoutineInput = z.infer<typeof routineInputSchema>
 export type MessageRow = typeof messages.$inferSelect

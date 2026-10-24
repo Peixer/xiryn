@@ -3,10 +3,11 @@
 import * as React from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { formatDistanceToNowStrict } from "date-fns"
+import { format, formatDistanceToNowStrict } from "date-fns"
 import {
   AlarmClockIcon,
   ArrowUpRightIcon,
+  HistoryIcon,
   PencilIcon,
   PlayIcon,
   PlusIcon,
@@ -30,6 +31,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { toast } from "@/components/ui/toast"
 import { useWorkspace } from "@/components/workspace/context"
 import type { RoutineSchedule } from "@/db/schema"
+import { formatUsd } from "@/lib/providers/pricing"
 import { describeSchedule, WEEKDAYS } from "@/lib/schedule"
 import { getAgentTemplate, routineTemplates, type RoutineTemplate } from "@/lib/templates"
 import { cn } from "@/lib/utils"
@@ -343,20 +345,83 @@ function Status({ routine }: { routine: RoutineView }) {
   const when = routine.lastRunAt
     ? `${formatDistanceToNowStrict(new Date(routine.lastRunAt))} ago`
     : ""
-  const tone =
-    routine.lastStatus === "ok"
-      ? "text-ok"
-      : routine.lastStatus === "failed"
-        ? "text-destructive"
-        : "text-warn"
+  const status = routine.lastStatus ?? "ok"
   return (
-    <span className={tone} title={routine.lastError ?? undefined}>
-      {routine.lastStatus === "ok"
+    <span className={tones[status]} title={routine.lastError ?? undefined}>
+      {status === "ok"
         ? `ran ${when}`
-        : routine.lastStatus === "failed"
-          ? `failed ${when}`
-          : "skipped"}
+        : status === "skipped"
+          ? "skipped"
+          : `${status} ${when}`}
     </span>
+  )
+}
+
+type Run = RoutineView["history"][number]
+
+const tones: Record<Run["status"], string> = {
+  running: "text-rigel",
+  ok: "text-ok",
+  failed: "text-destructive",
+  stopped: "text-muted-foreground",
+  skipped: "text-warn",
+}
+
+function formatDuration(ms: number) {
+  if (ms < 1000) return "<1s"
+  const seconds = Math.round(ms / 1000)
+  if (seconds < 60) return `${seconds}s`
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `${minutes}m ${seconds % 60}s`
+  return `${Math.floor(minutes / 60)}h ${minutes % 60}m`
+}
+
+function RunCost({ cost }: { cost: Run["cost"] }) {
+  if (!cost) return null
+  if (cost.free) return <span className="text-ok">free</span>
+  if (cost.usd === null) return <span title="This model's price isn't known">—</span>
+  return <span>{formatUsd(cost.usd)}</span>
+}
+
+function History({ routine }: { routine: RoutineView }) {
+  const { runs, skipped, usd } = routine.totals
+  return (
+    <div className="flex flex-col gap-2 border-t pt-3 font-mono text-[11px]">
+      <span className="flex flex-wrap gap-x-3 text-muted-foreground">
+        <span>
+          {runs} {runs === 1 ? "run" : "runs"}
+        </span>
+        {skipped > 0 && <span className="text-warn">{skipped} skipped</span>}
+        {runs > 0 && <span>{formatUsd(usd)} in all</span>}
+      </span>
+      <ol className="flex flex-col gap-1.5">
+        {routine.history.map((run) => (
+          <li key={run.id} className="grid grid-cols-[3.75rem_1fr_auto] gap-x-2">
+            <span className={tones[run.status]}>{run.status}</span>
+            <span className="flex min-w-0 flex-col text-muted-foreground">
+              <span>
+                <span className="text-foreground">
+                  {format(new Date(run.at), "EEE d MMM, HH:mm")}
+                </span>
+                {run.trigger === "manual" ? " · by hand" : ""}
+                {run.durationMs !== null && ` · ${formatDuration(run.durationMs)}`}
+              </span>
+              {run.detail && (
+                <span className="truncate" title={run.detail}>
+                  {run.detail}
+                </span>
+              )}
+            </span>
+            <span className="text-right text-muted-foreground">
+              <RunCost cost={run.cost} />
+            </span>
+          </li>
+        ))}
+      </ol>
+      {runs + skipped > routine.history.length && (
+        <span className="text-faint">the latest {routine.history.length} are shown</span>
+      )}
+    </div>
   )
 }
 
@@ -364,6 +429,8 @@ function RoutineCard({ routine }: { routine: RoutineView }) {
   const router = useRouter()
   const [editing, setEditing] = React.useState(false)
   const [deleting, setDeleting] = React.useState(false)
+  const [showHistory, setShowHistory] = React.useState(false)
+  const entries = routine.totals.runs + routine.totals.skipped
   const [busy, setBusy] = React.useState<"run" | "toggle" | null>(null)
 
   const run = async () => {
@@ -465,6 +532,18 @@ function RoutineCard({ routine }: { routine: RoutineView }) {
             Results
           </Button>
         )}
+        {entries > 0 && (
+          <Button
+            size="sm"
+            variant="ghost"
+            aria-expanded={showHistory}
+            onClick={() => setShowHistory((shown) => !shown)}
+          >
+            <HistoryIcon data-icon="inline-start" />
+            History
+            <span className="font-mono text-[11px] text-muted-foreground">{entries}</span>
+          </Button>
+        )}
         <Button
           size="sm"
           variant="ghost"
@@ -475,6 +554,7 @@ function RoutineCard({ routine }: { routine: RoutineView }) {
           Delete
         </Button>
       </div>
+      {showHistory && <History routine={routine} />}
       {editing && (
         <RoutineDialog
           open={editing}

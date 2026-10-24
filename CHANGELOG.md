@@ -2,6 +2,30 @@
 
 All notable changes to Xiryn are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses [Semantic Versioning](https://semver.org/).
 
+## [0.6.0] — 2026-10-24
+
+Routine history, local models on Ollama's own API, and fixes for agents that went quiet or couldn't see their screen.
+
+### Added
+
+- **Routine history:** each routine on the Routines page has a **History** list showing every time it came due or you ran it by hand. Each entry shows how it went (done, failed, stopped, or skipped and why: Xiryn wasn't running, or you were talking to the agent at the time), when it happened, how long it took and what it cost, plus totals. Costs come from the same ledger as the Usage page.
+
+### Changed
+
+- **Ollama through its own API.** Xiryn now talks to Ollama's native chat API instead of its OpenAI-style one. Every request asks for a 32K context (16K under 12 GB of memory) and keeps the model loaded for 30 minutes. Xiryn no longer changes your models, so Settings → Local models drops the context column and its fix button. `ollama/...` model names and `OLLAMA_BASE_URL` (with or without `/v1`) work as before.
+
+### Fixed
+
+- **No more empty replies.** When a model ends its turn with only its thinking and no answer (small local models do this), Xiryn asks it once more, tools off, for the answer.
+- **Screenshots reach every model.** On OpenAI-style APIs (OpenRouter, LM Studio, Groq, Mistral, custom endpoints) an agent's screenshots used to reach the model as unreadable text. They're now sent as images in a message of their own.
+- On a local model, the step that has to answer can no longer start another action: Ollama has no way to say "no tools", so that step is given none.
+- A one-off routine that came due while you were talking to its agent now runs five minutes later, instead of switching itself off.
+- A routine that was mid-run when Xiryn stopped is shown as failed, with the reason, instead of as never run.
+
+### Security
+
+- Next.js 16.4.3, which fixes critical advisories in 16.4.0 (GHSA-2464-fhr4-w9xw, GHSA-673q-mjm6-r5xr) and a denial-of-service issue. `npm audit` is clean.
+
 ## [0.5.1] — 2026-10-20
 
 Fixes from running 0.5.0 end to end with a real Ollama on Windows.
@@ -140,6 +164,7 @@ The first public release.
 - **Security:** loopback-only server, Host/Origin guard, masked secrets.
 - Constellation glyphs for agents and squads, dark and light themes, command palette (⌘K), responsive layout.
 
+[0.6.0]: https://github.com/SouravBeraAkaSpeed/xiryn/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/SouravBeraAkaSpeed/xiryn/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/SouravBeraAkaSpeed/xiryn/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/SouravBeraAkaSpeed/xiryn/compare/v0.4.0...v0.4.1
