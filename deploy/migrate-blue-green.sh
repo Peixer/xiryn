@@ -282,6 +282,33 @@ install_xiryn_update() {
   fi
 }
 
+# Operator tool for managing git credentials of coding agents.
+# A later run replaces the copy.
+install_git_token() {
+  local bin
+  bin="${XIRYN_GIT_TOKEN_BIN:-/usr/local/sbin/xiryn-git-token}"
+  install -d -m 0755 "$(dirname "$bin")"
+  rm -f "$bin"
+  install -m 0755 "$SRC/xiryn-git-token" "$bin"
+  if [[ "$(id -u)" -eq 0 ]]; then
+    chown root:root "$bin"
+  fi
+}
+
+warn_host_credentials() {
+  local cred='/home/xiryn/.git-credentials'
+  if [[ -f "$cred" ]]; then
+    echo '' >&2
+    echo 'WARNING: /home/xiryn/.git-credentials exists on the host.' >&2
+    echo 'This file is NOT used by coding agents (they read from the xiryn-coding-creds volume).' >&2
+    echo 'It may also be world-readable. To move it into the volume:' >&2
+    echo '' >&2
+    echo '  sudo cat /home/xiryn/.git-credentials | sudo xiryn-git-token set' >&2
+    echo '  sudo rm /home/xiryn/.git-credentials # only after verifying xiryn-git-token show works' >&2
+    echo '' >&2
+  fi
+}
+
 # Replacing the program does not clear a start-limit failure. The path unit
 # stops triggering until that failure is reset.
 refresh_deploy_path() {
@@ -464,6 +491,7 @@ if [[ ( -f "$ACTIVE" || -f "$STATE_FILE" ) && -d "$BLUE" && -f /etc/systemd/syst
   install -m 0644 "$SRC/xiryn-deploy.service" /etc/systemd/system/xiryn-deploy.service
   install_helper
   install_xiryn_update
+  install_git_token
   tree="$BLUE"
   [[ "$active" == green ]] && tree="$GREEN"
   printf '%s\n' "$active" > "${ACTIVE}.tmp"
@@ -475,6 +503,7 @@ if [[ ( -f "$ACTIVE" || -f "$STATE_FILE" ) && -d "$BLUE" && -f /etc/systemd/syst
   systemctl daemon-reload
   enable_active_colour "$active"
   refresh_deploy_path
+  warn_host_credentials
   echo "Blue/green is already installed (active: ${active})."
   echo "Replaced the root helper, xiryn-update, the lock script, and the root-owned better-sqlite3 under /usr/local/lib/xiryn."
   if [[ "$active" == "blue" || "$active" == "green" ]]; then
@@ -581,6 +610,7 @@ fi
 
 install_helper
 install_xiryn_update
+install_git_token
 install_colour_files
 write_install_state "$sha" blue
 install -m 0644 "$SRC/xiryn-deploy.service" /etc/systemd/system/xiryn-deploy.service
@@ -633,6 +663,7 @@ for _ in $(seq 1 45); do
     printf 'blue\n' > "${ACTIVE}.tmp"
     mv -f "${ACTIVE}.tmp" "$ACTIVE"
     chmod 644 "$ACTIVE"
+    warn_host_credentials
     echo "Blue answered /api/health."
     echo "Point Caddy at the snippet in deploy/Caddyfile.bluegreen, then: systemctl reload caddy"
     echo "The old tree is still at $ROOT. Remove it after you have switched once."

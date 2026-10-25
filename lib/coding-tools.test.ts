@@ -74,3 +74,105 @@ test("category migration preserves existing coding opt-in and legacy column", as
     sqlite.close()
   }
 })
+
+// Helper used by the git-credentials tests below
+function makeCredsEnv(
+  root: string,
+  creds: string
+): { env: NodeJS.ProcessEnv; script: string } {
+  const bin = path.join(root, "bin")
+  fs.mkdirSync(bin, { recursive: true })
+  fs.mkdirSync(creds, { recursive: true })
+  // Minimal fake npm that satisfies the codex install check
+  fs.writeFileSync(
+    path.join(bin, "npm"),
+    '#!/bin/bash\nmkdir -p "$HOME/codex-cli/node_modules/.bin"\nprintf "#!/bin/sh\\n" > "$HOME/codex-cli/node_modules/.bin/codex"\nchmod +x "$HOME/codex-cli/node_modules/.bin/codex"\n',
+    { mode: 0o755 }
+  )
+  // Patch the CREDS path in the script so it points to our temp dir
+  const src = fs
+    .readFileSync("scripts/setup-coding-tools.sh", "utf8")
+    .replace("/home/xiryn/.coding-creds", creds)
+  const script = path.join(root, "setup.sh")
+  fs.writeFileSync(script, src, { mode: 0o755 })
+  const env = { ...process.env, HOME: root, PATH: `${bin}:${process.env.PATH ?? ""}` }
+  return { env, script }
+}
+
+test("setup-coding-tools: links credentials when .git-credentials is missing", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "xiryn-creds-missing-"))
+  const creds = path.join(root, "creds")
+  try {
+    const { env, script } = makeCredsEnv(root, creds)
+    fs.writeFileSync(path.join(creds, ".git-credentials"), "https://u:t@github.com\n")
+    const out = execFileSync("bash", [script], { env, encoding: "utf8" })
+    assert.ok(
+      out.includes("linked from volume"),
+      `expected 'linked from volume' in: ${out}`
+    )
+    assert.ok(fs.lstatSync(path.join(root, ".git-credentials")).isSymbolicLink())
+    assert.equal(
+      fs.readlinkSync(path.join(root, ".git-credentials")),
+      path.join(creds, ".git-credentials")
+    )
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test("setup-coding-tools: skips when .git-credentials is already a symlink (idempotent)", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "xiryn-creds-linked-"))
+  const creds = path.join(root, "creds")
+  try {
+    const { env, script } = makeCredsEnv(root, creds)
+    fs.writeFileSync(path.join(creds, ".git-credentials"), "https://u:t@github.com\n")
+    fs.symlinkSync(
+      path.join(creds, ".git-credentials"),
+      path.join(root, ".git-credentials")
+    )
+    const out = execFileSync("bash", [script], { env, encoding: "utf8" })
+    assert.ok(out.includes("already linked"), `expected 'already linked' in: ${out}`)
+    assert.ok(fs.lstatSync(path.join(root, ".git-credentials")).isSymbolicLink())
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test("setup-coding-tools: replaces empty .git-credentials file with symlink", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "xiryn-creds-empty-"))
+  const creds = path.join(root, "creds")
+  try {
+    const { env, script } = makeCredsEnv(root, creds)
+    fs.writeFileSync(path.join(creds, ".git-credentials"), "https://u:t@github.com\n")
+    fs.writeFileSync(path.join(root, ".git-credentials"), "") // empty regular file
+    const out = execFileSync("bash", [script], { env, encoding: "utf8" })
+    assert.ok(
+      out.includes("replaced empty file"),
+      `expected 'replaced empty file' in: ${out}`
+    )
+    assert.ok(fs.lstatSync(path.join(root, ".git-credentials")).isSymbolicLink())
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test("setup-coding-tools: backs up non-empty stale file then symlinks", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "xiryn-creds-stale-"))
+  const creds = path.join(root, "creds")
+  try {
+    const { env, script } = makeCredsEnv(root, creds)
+    fs.writeFileSync(path.join(creds, ".git-credentials"), "https://u:t@github.com\n")
+    const stale = "https://old:oldtoken@github.com\n"
+    fs.writeFileSync(path.join(root, ".git-credentials"), stale) // non-empty stale
+    const out = execFileSync("bash", [script], { env, encoding: "utf8" })
+    assert.ok(
+      out.includes("backed up stale file"),
+      `expected 'backed up stale file' in: ${out}`
+    )
+    assert.ok(fs.lstatSync(path.join(root, ".git-credentials")).isSymbolicLink())
+    assert.ok(fs.existsSync(path.join(root, ".git-credentials.bak")), "backup must exist")
+    assert.equal(fs.readFileSync(path.join(root, ".git-credentials.bak"), "utf8"), stale)
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})

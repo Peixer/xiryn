@@ -1,0 +1,108 @@
+#!/usr/bin/env bash
+# xiryn-git-token — manage the GitHub credential for coding agents
+#
+#   set [--stdin]   read username + token from stdin, write to volume
+#   show            print masked credential (username and last-4 of token)
+#   clear           remove the credential file
+#
+# Token is NEVER passed via argv and NEVER printed.
+set -euo pipefail
+
+VOLUME_NAME='xiryn-coding-creds'
+CRED_FILE='.git-credentials'
+OWNER_UID=1000
+
+die()  { printf '%s\n' "$*" >&2; exit 1; }
+info() { printf '%s\n' "$*"; }
+
+require_docker() {
+  command -v docker >/dev/null 2>&1 || die 'docker is required but not found in PATH'
+}
+
+get_mountpoint() {
+  require_docker
+  if ! docker volume inspect "$VOLUME_NAME" >/dev/null 2>&1; then
+    info "Creating volume $VOLUME_NAME"
+    docker volume create "$VOLUME_NAME" >/dev/null
+  fi
+  local mp
+  mp="$(docker volume inspect "$VOLUME_NAME" --format '{{.Mountpoint}}')"
+  [[ -n "$mp" && -d "$mp" ]] || die "Cannot resolve mountpoint for volume $VOLUME_NAME"
+  printf '%s' "$mp"
+}
+
+validate_token() {
+  local t=$1
+  [[ "$t" =~ ^(github_pat_|ghp_|ghs_)[A-Za-z0-9_-]+$ ]] && return 0
+  [[ "$t" =~ ^[a-f0-9]{40}$ ]] && return 0
+  die 'Token does not look like a GitHub PAT (expected github_pat_*, ghp_*, ghs_*, or classic 40-char hex)'
+}
+
+cmd_set() {
+  local user='' token='' line
+  # Read from stdin only — never from argv
+  IFS= read -r line || die 'No input on stdin'
+  if [[ "$line" =~ ^https://([^:]+):([^@]+)@github\.com/?$ ]]; then
+    user="${BASH_REMATCH[1]}"
+    token="${BASH_REMATCH[2]}"
+  else
+    user="$line"
+    IFS= read -r token || die 'Expected token on second line of stdin'
+    token="${token%$'\r'}"  # strip CR if piped from Windows
+  fi
+  user="${user#https://}"  # strip leading https:// if present
+  [[ -n "$user"  ]] || die 'Username is empty'
+  [[ -n "$token" ]] || die 'Token is empty'
+  validate_token "$token"
+
+  local mp file tmp
+  mp="$(get_mountpoint)"
+  file="$mp/$CRED_FILE"
+  # Atomic write: temp in same dir → chmod → chown → rename
+  tmp="$(mktemp "$mp/.git-credentials.XXXXXX")"
+  printf 'https://%s:%s@github.com\n' "$user" "$token" > "$tmp"
+  chmod 600 "$tmp"
+  chown "$OWNER_UID:$OWNER_UID" "$tmp" 2>/dev/null || true  # no-op if running as the uid already
+  mv -f "$tmp" "$file"
+  info "Credential saved for user $user"
+}
+
+cmd_show() {
+  local mp file line user token last4
+  mp="$(get_mountpoint)"
+  file="$mp/$CRED_FILE"
+  [[ -f "$file" ]] || die "No credential file found. Run: xiryn-git-token set"
+  IFS= read -r line < "$file" || die 'Credential file is empty'
+  if [[ "$line" =~ ^https://([^:]+):([^@]+)@github\.com/?$ ]]; then
+    user="${BASH_REMATCH[1]}"
+    token="${BASH_REMATCH[2]}"
+    last4="${token: -4}"
+    printf 'host=github.com  user=%s  token=%s***%s\n' "$user" "${token:0:4}" "$last4"
+  else
+    die 'Credential file format not recognised'
+  fi
+}
+
+cmd_clear() {
+  local mp file
+  mp="$(get_mountpoint)"
+  file="$mp/$CRED_FILE"
+  if [[ -f "$file" ]]; then
+    rm -f "$file"
+    info 'Credential file removed'
+  else
+    info 'No credential file to remove'
+  fi
+}
+
+usage() {
+  sed -n '2,5p' "$0" | sed 's/^# *//'
+  exit 1
+}
+
+case "${1:-}" in
+  set)   shift; cmd_set "$@" ;;
+  show)  cmd_show ;;
+  clear) cmd_clear ;;
+  *)     usage ;;
+esac

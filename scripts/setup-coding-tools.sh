@@ -23,6 +23,19 @@ fi
 if [ -f "$CREDS/.git-credentials" ]; then
   if [ ! -e "$HOME/.git-credentials" ]; then
     ln -sf "$CREDS/.git-credentials" "$HOME/.git-credentials"
+    echo 'git-credentials: linked from volume (was missing)'
+  elif [ -L "$HOME/.git-credentials" ]; then
+    echo 'git-credentials: already linked, skipping'
+  elif [ ! -s "$HOME/.git-credentials" ]; then
+    rm "$HOME/.git-credentials"
+    ln -sf "$CREDS/.git-credentials" "$HOME/.git-credentials"
+    echo 'git-credentials: replaced empty file with volume link'
+  else
+    cp "$HOME/.git-credentials" "$HOME/.git-credentials.bak"
+    chmod 600 "$HOME/.git-credentials.bak"
+    rm "$HOME/.git-credentials"
+    ln -sf "$CREDS/.git-credentials" "$HOME/.git-credentials"
+    echo 'git-credentials: backed up stale file to .git-credentials.bak, linked from volume'
   fi
   git config --global credential.helper store
 fi
