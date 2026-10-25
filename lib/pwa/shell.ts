@@ -26,7 +26,11 @@ export function wantsAppShell(input: {
 
 // The phone shell is position fixed over the page. Mark the page inert only
 // while that shell is actually showing, so a wide window can still scroll.
-export function shellCoversPage(input: { phone: boolean; list: boolean; offline: boolean }) {
+export function shellCoversPage(input: {
+  phone: boolean
+  list: boolean
+  offline: boolean
+}) {
   return input.phone && (input.list || input.offline)
 }
 

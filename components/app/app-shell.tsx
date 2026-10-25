@@ -29,7 +29,12 @@ import { useNotifications } from "@/components/workspace/notifier"
 import { useWorkspace } from "@/components/workspace/context"
 import { subscribeInstalledPush } from "@/components/app/push-client"
 import { rememberThreadList } from "@/lib/pwa/local-db"
-import { isIosSafariUserAgent, isThreadPath, PHONE_MAX_WIDTH, shellCoversPage } from "@/lib/pwa/shell"
+import {
+  isIosSafariUserAgent,
+  isThreadPath,
+  PHONE_MAX_WIDTH,
+  shellCoversPage,
+} from "@/lib/pwa/shell"
 import type { AgentOverview, RoutineView } from "@/queries/workspace"
 import { cn } from "@/lib/utils"
 import { SelfUpdatePanel } from "@/components/settings/self-update-panel"
