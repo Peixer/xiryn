@@ -652,6 +652,7 @@ function resolveTarget(): Target | null {
 /* ──────────────────────────── turns ───────────────────────────── */
 
 const TOOL_LABELS: Record<string, (input: Record<string, unknown>) => string> = {
+  spawn_work_session: () => "Parallel coding sessions",
   shell: (i) => `$ ${String(i.command ?? "")}`,
   fs_read: (i) => `read ${String(i.path ?? "")}`,
   fs_write: (i) => `write ${String(i.path ?? "")}`,

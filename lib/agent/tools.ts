@@ -928,7 +928,8 @@ export type XirynTools = ReturnType<typeof createWorkstationTools> &
   ReturnType<typeof createWebTools> &
   ReturnType<typeof createRoutineTools> &
   ReturnType<typeof createDelegateTool> &
-  ReturnType<typeof createSubagentTools>
+  ReturnType<typeof createSubagentTools> &
+  ReturnType<typeof createWorkSessionTools>
 
 export type XirynMetadata = {
   // The agent that started the reply, or that a squad message was sent to
@@ -1058,6 +1059,141 @@ export function createSubagentTools(env: ToolEnv) {
 
         const totalCostUsd = results.reduce((sum, r) => sum + (r.costUsd ?? 0), 0)
         return { results, totalCostUsd }
+      },
+    }),
+  }
+}
+
+export function createWorkSessionTools(env: ToolEnv) {
+  return {
+    spawn_work_session: tool({
+      description:
+        "Launch parallel coding sessions in the agent's Docker workstation on isolated git branches. Commits changes and retains branches for review. The repository must already exist in the workstation.",
+      inputSchema: z.object({
+        tasks: z
+          .array(
+            z.object({
+              brief: z.string().min(1).max(4000),
+              branch: z
+                .string()
+                .regex(/^[a-zA-Z0-9_-]+$/)
+                .optional(),
+              tool: z.enum(["codex", "claude-code"]).optional(),
+              model: z.string().optional(),
+              timeoutMinutes: z.number().int().min(1).max(60).optional(),
+            })
+          )
+          .min(1)
+          .max(5),
+        repoPath: z.string().startsWith("/").default("/home/xiryn/xiryn"),
+        baseBranch: z
+          .string()
+          .regex(/^[a-zA-Z0-9_./-]+$/)
+          .default("main"),
+      }),
+      execute: async ({ tasks, repoPath, baseBranch }) => {
+        const { createWorktree } = await import("@/lib/worktree")
+        const { runCodingSession } = await import("@/lib/coding-session")
+        const { runWorkstationCommand } = await import("@/lib/workstation")
+        const agent = env.current()
+        const run = async (
+          command: string[],
+          cwd?: string,
+          timeoutMs = 30_000,
+          onLine?: (line: string) => void
+        ) => {
+          const r = await runWorkstationCommand(agent.id, command, {
+            cwd,
+            timeoutMs,
+            onLine,
+          })
+          if (r.exitCode !== 0)
+            throw new Error(
+              r.stderr || r.stdout.toString() || "Workstation command failed"
+            )
+          return r.stdout.toString()
+        }
+        const sessions = await Promise.all(
+          tasks.map(async (t) => {
+            let wt: Awaited<ReturnType<typeof createWorktree>> | undefined
+            const started = Date.now()
+            try {
+              wt = await createWorktree({
+                repoPath,
+                baseBranch,
+                branchPrefix: t.branch ?? "task",
+                runGit: (args) => run(["git", ...args]),
+              })
+              const result = await runCodingSession({
+                tool: t.tool ?? "codex",
+                task: t.brief,
+                workdir: wt.path,
+                model: t.model,
+                timeoutMs: (t.timeoutMinutes ?? 15) * 60_000,
+                run: async (command, opts) => {
+                  // timeout executes inside Docker and kills the CLI process group there.
+                  const text = await run(
+                    [
+                      "timeout",
+                      "--signal=TERM",
+                      "--kill-after=5s",
+                      `${Math.ceil(opts.timeoutMs / 1000)}s`,
+                      ...command,
+                    ],
+                    opts.cwd,
+                    opts.timeoutMs + 20_000,
+                    opts.onOutput
+                  )
+                  return { text, exitCode: 0 }
+                },
+              })
+              if (result.ok) {
+                await run(["git", "add", "-A"], wt.path)
+                const changed = await run(
+                  ["git", "diff", "--cached", "--name-only"],
+                  wt.path
+                )
+                if (changed.trim())
+                  await run(
+                    [
+                      "git",
+                      "-c",
+                      "user.name=Xiryn",
+                      "-c",
+                      "user.email=xiryn@localhost",
+                      "commit",
+                      "-m",
+                      "feat: complete work session",
+                    ],
+                    wt.path
+                  )
+              }
+              if (result.ok) await wt.cleanup({ preserveBranch: true })
+              return {
+                task: t.brief,
+                branch: wt.branch,
+                ok: result.ok,
+                output: result.text.slice(-3000),
+                durationMs: result.durationMs,
+                error: result.error,
+              }
+            } catch (err) {
+              return {
+                task: t.brief,
+                branch: wt?.branch ?? "unknown",
+                ok: false,
+                output: "",
+                durationMs: Date.now() - started,
+                error: err instanceof Error ? err.message.slice(0, 200) : String(err),
+              }
+            }
+          })
+        )
+        return {
+          sessions,
+          succeeded: sessions.filter((r) => r.ok).length,
+          failed: sessions.filter((r) => !r.ok).length,
+        }
       },
     }),
   }

@@ -27,6 +27,7 @@ import {
   createDelegateTool,
   createMemoryTools,
   createSubagentTools,
+  createWorkSessionTools,
   createRoutineTools,
   createSkillTools,
   createWebTools,
@@ -491,6 +492,7 @@ export async function startTurn({
     ...createSelfUpdateTools(env),
     // Subagent spawning — disabled inside subturns (depth guard in subturn.ts)
     ...createSubagentTools(env),
+    ...(capabilities.workstation ? createWorkSessionTools(env) : {}),
     ...connectors.tools,
     ...(thread.squad
       ? createDelegateTool((targetId, handoverBrief) => {

@@ -60,6 +60,7 @@ type Meta = {
 const str = (value: unknown) => (typeof value === "string" ? value : "")
 
 const META: Record<string, Meta> = {
+  spawn_work_session: { icon: SquareTerminalIcon, label: "coding sessions" },
   shell: { icon: SquareTerminalIcon, label: "shell", summary: (i) => str(i.command) },
   fs_read: { icon: FileTextIcon, label: "read", summary: (i) => str(i.path) },
   fs_write: { icon: FilePenIcon, label: "write", summary: (i) => str(i.path) },
