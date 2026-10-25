@@ -204,3 +204,77 @@ test("installer trusts deploy state over an old active label without switching c
     fs.rmSync(root, { recursive: true, force: true })
   }
 })
+
+const BUILDX_STATE_DIR = "/var/lib/xiryn/docker/buildx"
+
+test("colour and legacy units give buildx a writable config dir without opening the home directory", () => {
+  for (const file of ["xiryn-blue.service", "xiryn-green.service", "xiryn.service"]) {
+    const unit = fs.readFileSync(path.join("deploy", file), "utf8")
+    assert.match(unit, /^ProtectHome=read-only$/m, file)
+    assert.match(unit, /^ProtectSystem=strict$/m, file)
+    assert.match(
+      unit,
+      new RegExp(`^Environment=BUILDX_CONFIG=${BUILDX_STATE_DIR}$`, "m"),
+      file
+    )
+    assert.match(
+      unit,
+      new RegExp(`^ReadWritePaths=.*${BUILDX_STATE_DIR}( |$)`, "m"),
+      file
+    )
+    assert.doesNotMatch(unit, /\/home\/xiryn/, file)
+  }
+  const deploy = fs.readFileSync("deploy/xiryn-deploy.service", "utf8")
+  assert.doesNotMatch(deploy, /BUILDX_CONFIG/)
+  assert.doesNotMatch(deploy, /\/var\/lib\/xiryn\/docker\/buildx/)
+})
+
+test("installer creates the buildx state directory idempotently and does not restart a colour", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "xiryn-buildx-"))
+  const state = path.join(root, "docker", "buildx")
+  const calls = path.join(root, "calls")
+  try {
+    fs.writeFileSync(
+      path.join(root, "systemctl"),
+      `#!/bin/sh\necho "$*" >> '${calls}'\n`,
+      { mode: 0o755 }
+    )
+    const env = {
+      ...process.env,
+      PATH: `${root}:${process.env.PATH}`,
+      XIRYN_BUILDX_ONLY: "1",
+      XIRYN_BUILDX_STATE: state,
+    }
+    const first = spawnSync("bash", ["deploy/migrate-blue-green.sh"], {
+      encoding: "utf8",
+      env,
+    })
+    assert.equal(first.status, 0, first.stderr)
+    assert.equal(fs.statSync(state).isDirectory(), true)
+    assert.equal(fs.statSync(state).mode & 0o777, 0o700)
+    fs.writeFileSync(path.join(state, "keep"), "keep")
+    const second = spawnSync("bash", ["deploy/migrate-blue-green.sh"], {
+      encoding: "utf8",
+      env,
+    })
+    assert.equal(second.status, 0, second.stderr)
+    assert.equal(fs.readFileSync(path.join(state, "keep"), "utf8"), "keep")
+    assert.equal(fs.statSync(state).mode & 0o777, 0o700)
+    assert.equal(fs.existsSync(calls), false)
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+
+  const source = fs.readFileSync("deploy/migrate-blue-green.sh", "utf8")
+  assert.match(source, /XIRYN_BUILDX_STATE:-\/var\/lib\/xiryn\/docker\/buildx/)
+  assert.match(source, /install_runtime_dirs\(\) \{[\s\S]*?install_buildx_state/)
+  const already = source.slice(
+    source.indexOf('if [[ ( -f "$ACTIVE"'),
+    source.indexOf('if [[ ! -d "$ROOT" ]]')
+  )
+  assert.match(already, /install_runtime_dirs/)
+  assert.doesNotMatch(already, /systemctl restart xiryn-(blue|green|)\.service/)
+  const docs = fs.readFileSync("docs/self-update.md", "utf8")
+  assert.match(docs, /20-docker-config\.conf/)
+  assert.match(docs, /\/var\/lib\/xiryn\/docker\/buildx/)
+})

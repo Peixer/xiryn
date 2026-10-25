@@ -13,6 +13,10 @@ Group=xiryn
 SupplementaryGroups=docker
 WorkingDirectory=/opt/xiryn
 Environment=NODE_ENV=production
+# buildx writes activity and builder state under ~/.docker/buildx. ProtectHome
+# keeps that path read-only. .env is loaded after this and overrides it, so
+# do not set BUILDX_CONFIG there to a path under the home directory.
+Environment=BUILDX_CONFIG=/var/lib/xiryn/docker/buildx
 EnvironmentFile=-/opt/xiryn/.env
 ExecStart=/usr/bin/npm run start
 Restart=on-failure
@@ -24,7 +28,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=/opt/xiryn/data /var/lib/xiryn /opt/xiryn/.next/cache /run/docker.sock /var/run/docker.sock
+ReadWritePaths=/opt/xiryn/data /var/lib/xiryn /opt/xiryn/.next/cache /var/lib/xiryn/docker/buildx /run/docker.sock /var/run/docker.sock
 UMask=0077
 RestrictSUIDSGID=true
 LockPersonality=true

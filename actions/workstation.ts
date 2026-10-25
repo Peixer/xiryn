@@ -11,7 +11,11 @@ import {
   resetWorkstation,
   stopWorkstation,
 } from "@/lib/workstation"
-import { buildImage, getImageState } from "@/lib/workstation-image"
+import {
+  buildImage,
+  getImageState,
+  observeWorkstationBuild,
+} from "@/lib/workstation-image"
 
 function reason(error: unknown) {
   return error instanceof Error ? error.message : String(error)
@@ -71,10 +75,9 @@ export async function startDocker() {
   }
 }
 
-// Starts a build and returns right away; progress comes from dockerStatus()
+// Starts a build and returns right away; progress comes from dockerStatus().
+// A failed build is logged and does not reject this action.
 export async function buildWorkstationImage() {
-  buildImage().catch((error) =>
-    console.error("[xiryn] workstation image build failed:", error)
-  )
+  observeWorkstationBuild(buildImage())
   return dockerStatus()
 }
