@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+# xiryn-update: atalhos para atualizar o Xiryn blue/green
+#   xiryn-update          puxa a main, roda o instalador se deploy/ mudou, e checa versão
+#   xiryn-update info     mostra versões e estado (só leitura)
+#   xiryn-update check    só pede ao helper para checar a versão nova
+#   xiryn-update install  roda o instalador mesmo sem mudança em deploy/
+#   xiryn-update logs     acompanha o log do deploy (Ctrl+C para sair)
+set -euo pipefail
+[ "$(id -u)" -eq 0 ] || exec sudo "$0" "$@"
+
+REPO=/opt/xiryn
+DEPLOY=/var/lib/xiryn/deploy
+g() { git -c safe.directory="$1" -C "$1" "${@:2}"; }
+
+info() {
+  echo "GitHub main : $(g $REPO ls-remote origin refs/heads/main | cut -c1-7)"
+  echo "/opt/xiryn  : $(g $REPO rev-parse --short HEAD)"
+  for c in blue green; do
+    printf '%-12s: %s  %s/%s\n' "$c" \
+      "$(g /opt/xiryn-$c rev-parse --short HEAD 2>/dev/null || echo '?')" \
+      "$(systemctl is-active xiryn-$c.service || true)" \
+      "$(systemctl is-enabled xiryn-$c.service 2>/dev/null || true)"
+  done
+  echo "cor ativa   : $(cat /etc/xiryn/active)"
+  echo "deploy svc  : $(systemctl is-active xiryn-deploy.service || true)"
+  echo "--- state.json";   cat $DEPLOY/state.json;   echo
+  echo "--- release.json"; cat $DEPLOY/release.json; echo
+}
+
+check() {
+  local ms ra tmp f
+  ms=$(date +%s%3N); ra=$(date -u +%Y-%m-%dT%H:%M:%S.000Z); tmp=$(mktemp)
+  printf '{"op":"status","sha":null,"approvalId":null,"actor":"owner","requestedAt":"%s"}\n' "$ra" > "$tmp"
+  f="$DEPLOY/inbox/$ms-status.json"
+  install -o xiryn -g xiryn -m 0600 "$tmp" "$f"; rm -f "$tmp"
+  echo "Pedido de status enviado, esperando o helper..."
+  for _ in $(seq 1 60); do [ -e "$f" ] || break; sleep 1; done
+  sleep 2
+  if [ -e "$f" ]; then
+    echo "O helper não pegou o pedido em 60s. Veja: xiryn-update logs"; return 1
+  fi
+  echo "--- release.json"; cat $DEPLOY/release.json; echo
+}
+
+pull() {
+  local old new
+  old=$(g $REPO rev-parse HEAD)
+  g $REPO fetch --quiet origin
+  new=$(g $REPO rev-parse origin/main)
+  if [ "$old" = "$new" ]; then
+    echo "/opt/xiryn já está na main ($(g $REPO rev-parse --short HEAD))."
+    return
+  fi
+  g $REPO merge --ff-only origin/main
+  if g $REPO diff --quiet "$old" "$new" -- deploy/; then
+    echo "deploy/ não mudou, não precisa do instalador."
+  else
+    echo "deploy/ mudou, rodando o instalador..."
+    bash $REPO/deploy/migrate-blue-green.sh
+  fi
+}
+
+case "${1:-update}" in
+  update)  pull; check
+           echo; echo "Pronto. Agora abra Settings, clique em Update, espere ficar ready e aprove o Switch." ;;
+  info)    info ;;
+  check)   check ;;
+  install) bash $REPO/deploy/migrate-blue-green.sh ;;
+  logs)    exec journalctl -u xiryn-deploy.service -f ;;
+  *)       sed -n '2,7p' "$0"; exit 1 ;;
+esac

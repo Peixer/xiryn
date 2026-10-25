@@ -55,7 +55,7 @@ Open TCP 8443 from your IP if you want to browse the inactive colour before a sw
 
 The oneshot is `/usr/local/sbin/xiryn-helper`. It runs `/usr/bin/node` on `/usr/local/lib/xiryn/xiryn-helper.mjs`. That file is a bundle the installer copies out of the checkout and owns as root. `@/` imports are resolved when the bundle is built (`node scripts/bundle-xiryn-helper.mjs`). The colour trees belong to `xiryn`, so the oneshot does not execute `tsx`, TypeScript, or `better-sqlite3` from those trees. The snapshot write lock is a separate root process: `/usr/bin/node /usr/local/lib/xiryn/self-update-lock.mjs`. That script and the `better-sqlite3` it loads live under `/usr/local/lib/xiryn`, which the installer copies out of this checkout and then owns as root. When the oneshot itself is root, it refuses the lock unless that script, `/usr/bin/node`, and the copied native module are root-owned and not symlinks. The copy prefers this checkout's `node_modules` after `npm ci`. It falls back to `/opt/xiryn` or a colour tree only when the checkout has no built module, and that fallback is frozen at install time.
 
-The script is safe to run again. Once `/etc/xiryn/active` exists and `xiryn-blue.service` is installed, it makes sure the green directories, the pin mirror, and the cache and staging directories exist. It installs the current colour units, `/etc/xiryn/blue.env`, `/etc/xiryn/green.env`, and `xiryn-deploy.service`, strips the four per-colour variables from `shared.env` if they are present, and keeps the vault account already written into the colour files. It replaces `/usr/local/sbin/xiryn-helper` and `/usr/local/lib/xiryn/xiryn-helper.mjs`, removes a leftover `/usr/local/lib/xiryn/xiryn-helper.ts`, and refreshes the root-owned snapshot, migrate, approval, and lock scripts plus `/usr/local/lib/xiryn/node_modules`. If `state.json` has no commit yet, it writes one from the active colour's checkout. It reloads systemd, clears a start-limit failure on `xiryn-deploy.service` and `xiryn-deploy.path`, restarts the path unit, and exits. It does not restart the colour that is serving. After a re-run, restart that colour so it reads the new files:
+The script is safe to run again. Once `/etc/xiryn/active` exists and `xiryn-blue.service` is installed, it makes sure the green directories, the pin mirror, and the cache and staging directories exist. It installs the current colour units, `/etc/xiryn/blue.env`, `/etc/xiryn/green.env`, and `xiryn-deploy.service`, strips the four per-colour variables from `shared.env` if they are present, and keeps the vault account already written into the colour files. It replaces `/usr/local/sbin/xiryn-helper` and `/usr/local/lib/xiryn/xiryn-helper.mjs`, removes a leftover `/usr/local/lib/xiryn/xiryn-helper.ts`, installs `/usr/local/sbin/xiryn-update` (root, mode 0755), and refreshes the root-owned snapshot, migrate, approval, and lock scripts plus `/usr/local/lib/xiryn/node_modules`. If `state.json` has no commit yet, it writes one from the active colour's checkout. It reloads systemd, clears a start-limit failure on `xiryn-deploy.service` and `xiryn-deploy.path`, restarts the path unit, and exits. It does not restart the colour that is serving. After a re-run, restart that colour so it reads the new files:
 
 ```bash
 sudo systemctl restart xiryn-blue.service
@@ -102,6 +102,32 @@ What you still do by hand, because the script will not guess a customised Caddyf
 3. Leave `/opt/xiryn` in place until you have switched to a new colour once. Then you can remove that old tree. Do not delete `/var/backups/xiryn`, `/etc/xiryn`, or `/var/lib/xiryn-pin.git`.
 
 The script copies the vault key from `/var/lib/xiryn/.xiryn`, the install's `.xiryn`, or the `xiryn` user's home (`~xiryn/.xiryn`, which is where this server keeps `vault-*.key`). It does not print the key. If the database has vault entries and none of those directories has a key, the script stops before it restarts anything.
+
+## Updating the server
+
+After blue/green is installed, SSH in and run:
+
+```bash
+sudo xiryn-update
+```
+
+If you are not root, the script runs itself again with `sudo`. In `/opt/xiryn` it fetches `origin` and fast-forwards `main` (`git merge --ff-only`). When `deploy/` differs between the old and new `HEAD`, it runs `deploy/migrate-blue-green.sh`. It then writes a status request as `xiryn:xiryn` mode 0600 to `/var/lib/xiryn/deploy/inbox/<milliseconds>-status.json`:
+
+```json
+{"op":"status","sha":null,"approvalId":null,"actor":"owner","requestedAt":"<UTC time>"}
+```
+
+It waits until the helper consumes that file, prints `release.json`, and tells you to open Settings, click Update, wait until it is ready, and approve Switch. It does not prepare a colour and it does not switch. Switching still needs the approval row the app writes.
+
+| Command | What it does |
+| --- | --- |
+| `xiryn-update` | Fast-forward, install when `deploy/` changed, then the status request |
+| `xiryn-update info` | Read-only: GitHub `main`, `/opt/xiryn`, each colour's `HEAD` plus whether that unit is active and enabled, `/etc/xiryn/active`, `xiryn-deploy.service`, `state.json`, and `release.json` |
+| `xiryn-update check` | Only the status request |
+| `xiryn-update install` | Run the installer even when `deploy/` did not change |
+| `xiryn-update logs` | Follow `xiryn-deploy.service` (`journalctl -u xiryn-deploy.service -f`) |
+
+The installer copies this script to `/usr/local/sbin/xiryn-update` on the first blue/green install and on every later run. You can still pull and run `deploy/migrate-blue-green.sh` by hand, as in [Refresh the root helper](#refresh-the-root-helper).
 
 ## What the buttons do
 

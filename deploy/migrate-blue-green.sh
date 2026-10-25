@@ -269,6 +269,19 @@ install_helper() {
   install_helper_files
 }
 
+# Operator shortcut next to the other root programs in /usr/local/sbin.
+# A later run replaces the copy. Tests point XIRYN_UPDATE_BIN at a temp path.
+install_xiryn_update() {
+  local bin
+  bin="${XIRYN_UPDATE_BIN:-/usr/local/sbin/xiryn-update}"
+  install -d -m 0755 "$(dirname "$bin")"
+  rm -f "$bin"
+  install -m 0755 "$SRC/xiryn-update" "$bin"
+  if [[ "$(id -u)" -eq 0 ]]; then
+    chown root:root "$bin"
+  fi
+}
+
 # Replacing the program does not clear a start-limit failure. The path unit
 # stops triggering until that failure is reset.
 refresh_deploy_path() {
@@ -288,6 +301,11 @@ fi
 
 if [[ "${XIRYN_HELPER_ONLY:-}" == "1" ]]; then
   install_helper
+  exit 0
+fi
+
+if [[ "${XIRYN_UPDATE_ONLY:-}" == "1" ]]; then
+  install_xiryn_update
   exit 0
 fi
 
@@ -445,6 +463,7 @@ if [[ ( -f "$ACTIVE" || -f "$STATE_FILE" ) && -d "$BLUE" && -f /etc/systemd/syst
   install_colour_files
   install -m 0644 "$SRC/xiryn-deploy.service" /etc/systemd/system/xiryn-deploy.service
   install_helper
+  install_xiryn_update
   tree="$BLUE"
   [[ "$active" == green ]] && tree="$GREEN"
   printf '%s\n' "$active" > "${ACTIVE}.tmp"
@@ -457,7 +476,7 @@ if [[ ( -f "$ACTIVE" || -f "$STATE_FILE" ) && -d "$BLUE" && -f /etc/systemd/syst
   enable_active_colour "$active"
   refresh_deploy_path
   echo "Blue/green is already installed (active: ${active})."
-  echo "Replaced the root helper, the lock script, and the root-owned better-sqlite3 under /usr/local/lib/xiryn."
+  echo "Replaced the root helper, xiryn-update, the lock script, and the root-owned better-sqlite3 under /usr/local/lib/xiryn."
   if [[ "$active" == "blue" || "$active" == "green" ]]; then
     echo "Restart the serving colour so it loads its env file: systemctl restart xiryn-${active}.service"
   else
@@ -561,6 +580,7 @@ EOF
 fi
 
 install_helper
+install_xiryn_update
 install_colour_files
 write_install_state "$sha" blue
 install -m 0644 "$SRC/xiryn-deploy.service" /etc/systemd/system/xiryn-deploy.service
