@@ -10,9 +10,15 @@ import {
   ArrowRightLeftIcon,
   AlertTriangleIcon,
   CloudIcon,
+  RefreshCwIcon,
 } from "lucide-react"
 
-import { decideSelfUpdate, stageSelfUpdate, startSelfUpdate } from "@/actions/self-update"
+import {
+  checkForUpdates,
+  decideSelfUpdate,
+  stageSelfUpdate,
+  startSelfUpdate,
+} from "@/actions/self-update"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Spinner } from "@/components/ui/spinner"
@@ -40,6 +46,7 @@ export function SelfUpdatePanel({
     impact: string | null
   } | null>(null)
   const [confirmDiscard, setConfirmDiscard] = React.useState(false)
+  const [checking, setChecking] = React.useState(false)
   const [clock, setClock] = React.useState(() => Date.now())
   const logRef = React.useRef<HTMLOListElement>(null)
   const [queued, setQueued] = React.useState(false)
@@ -122,6 +129,20 @@ export function SelfUpdatePanel({
   const canRollback = Boolean(
     view?.configured && phase === "active" && view.previousSha && !working
   )
+  const canCheck = Boolean(view?.configured && !working && !checking)
+
+  const checkNow = async () => {
+    setChecking(true)
+    setError(null)
+    try {
+      const result = await checkForUpdates()
+      if (!result.ok) setError(result.error ?? "Could not check for updates.")
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not check for updates.")
+    } finally {
+      setChecking(false)
+    }
+  }
 
   const run = async (
     label: string,
@@ -233,6 +254,15 @@ export function SelfUpdatePanel({
                       : "update available"
                     : "up to date",
             ],
+            [
+              "Last checked",
+              view?.checkedAt
+                ? new Date(view.checkedAt).toLocaleTimeString(undefined, {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })
+                : "never",
+            ],
           ] as const
         ).map(([label, value]) => (
           <div
@@ -329,6 +359,19 @@ export function SelfUpdatePanel({
       )}
       <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
         <Button
+          variant="outline"
+          className="min-h-12 sm:min-h-8"
+          disabled={!canCheck}
+          onClick={checkNow}
+        >
+          {checking ? (
+            <Spinner data-icon="inline-start" />
+          ) : (
+            <RefreshCwIcon data-icon="inline-start" />
+          )}
+          Check for updates
+        </Button>
+        <Button
           className="min-h-12 sm:min-h-8"
           disabled={!canUpdate || !!busy || queued}
           onClick={() => run("update", startSelfUpdate)}
@@ -355,6 +398,13 @@ export function SelfUpdatePanel({
           Roll back
         </Button>
       </div>
+      {!view?.updateAvailable &&
+        view?.githubUpdate &&
+        (view.githubUpdate as { available?: boolean }).available === true && (
+          <p className="text-[12.5px] text-muted-foreground">
+            Release.json may be stale — click Check for updates
+          </p>
+        )}
       {card && (
         <div
           ref={cardRef}

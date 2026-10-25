@@ -1211,7 +1211,8 @@ function runStatus(host) {
       branch: layout2.branch,
       tipSha: tip,
       titles: release.titles,
-      migrations: release.migrations
+      migrations: release.migrations,
+      checkedAt: new Date(host.now()).toISOString()
     });
     return { ok: true, tip };
   } catch (error) {

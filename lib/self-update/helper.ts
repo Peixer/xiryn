@@ -66,6 +66,7 @@ export type Host = {
     tipSha: string
     titles: string[]
     migrations: string[]
+    checkedAt?: string
   }): void
   changelog(from: string | null, to: string): { titles: string[]; migrations: string[] }
 }
@@ -643,6 +644,7 @@ export function runStatus(host: Host) {
       tipSha: tip,
       titles: release.titles,
       migrations: release.migrations,
+      checkedAt: new Date(host.now()).toISOString(),
     })
     return { ok: true as const, tip }
   } catch (error) {

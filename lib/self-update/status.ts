@@ -44,6 +44,7 @@ export type SelfUpdateView = {
   maintenance: boolean
   standbyUrl: string | null
   logs: ProgressLine[]
+  checkedAt: string | null
   githubUpdate?: GithubUpdatePayload
 }
 
@@ -169,6 +170,7 @@ export function loadSelfUpdateView(): SelfUpdateView {
     tipSha?: string
     titles?: unknown
     migrations?: unknown
+    checkedAt?: string
   } | null
   if (release && isSha(release.tipSha ?? "")) {
     tipSha = release.tipSha!
@@ -235,6 +237,8 @@ export function loadSelfUpdateView(): SelfUpdateView {
   }
 
   const includesMigrations = migrations.length > 0
+  const checkedAt =
+    release && typeof release.checkedAt === "string" ? release.checkedAt : null
   return {
     configured,
     phase: state.phase,
@@ -254,5 +258,6 @@ export function loadSelfUpdateView(): SelfUpdateView {
     maintenance: state.maintenance,
     standbyUrl: layout.standbyUrl,
     logs: readLogs(path.join(dir, "progress.jsonl")),
+    checkedAt,
   }
 }
