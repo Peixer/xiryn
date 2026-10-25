@@ -1,7 +1,6 @@
 import { tool, type InferUITools, type UIMessage } from "ai"
 import { asc, eq } from "drizzle-orm"
 import { z } from "zod"
-import { nanoid } from "nanoid"
 
 import { db } from "@/db"
 import {
@@ -952,6 +951,12 @@ export type XirynMetadata = {
     action: "approved" | "declined" | "taken-over" | "provided"
     summary: string
   }
+  // Posted when a background coding batch finishes. Not something the person wrote.
+  workSessions?: {
+    batchId: string
+    origin: "tool"
+    sessionIds: string[]
+  }
 }
 
 export type XirynMessage = UIMessage<
@@ -1069,7 +1074,7 @@ export function createWorkSessionTools(env: ToolEnv) {
   return {
     spawn_work_session: tool({
       description:
-        "Launch parallel coding sessions in the agent's Docker workstation on isolated git branches. Commits changes and retains branches for review. The repository must already exist in the workstation.",
+        "Start up to 5 coding sessions in the background, each on its own git branch in the workstation. Returns immediately with session ids and branch names. End your turn after telling the person; you are woken in this conversation when the batch finishes. Do not poll.",
       inputSchema: z.object({
         tasks: z
           .array(
@@ -1093,145 +1098,86 @@ export function createWorkSessionTools(env: ToolEnv) {
           .default("main"),
       }),
       execute: async ({ tasks, repoPath, baseBranch }) => {
-        const { createWorktree } = await import("@/lib/worktree")
-        const { runCodingSession } = await import("@/lib/coding-session")
-        const { runWorkstationCommand } = await import("@/lib/workstation")
-        const { upsertSession, cleanupOldSessions } = await import("@/lib/work-sessions")
-        cleanupOldSessions()
-        const agent = env.current()
-        const run = async (
-          command: string[],
-          cwd?: string,
-          timeoutMs = 30_000,
-          onLine?: (line: string) => void
-        ) => {
-          const r = await runWorkstationCommand(agent.id, command, {
-            cwd,
-            timeoutMs,
-            onLine,
-          })
-          if (r.exitCode !== 0)
-            throw new Error(
-              r.stderr || r.stdout.toString() || "Workstation command failed"
-            )
-          return r.stdout.toString()
+        const { isSubturnThread } = await import("@/lib/agent/subturn")
+        if (isSubturnThread(env.threadId)) {
+          return {
+            started: false,
+            error: "spawn_work_session cannot run inside a subagent turn.",
+          }
         }
-        const sessions = await Promise.all(
-          tasks.map(async (t) => {
-            let wt: Awaited<ReturnType<typeof createWorktree>> | undefined
-            const started = Date.now()
-            const tracked: import("@/lib/work-sessions").WorkSession = {
-              id: nanoid(),
-              agentId: agent.id,
-              agentName: agent.name,
-              task: t.brief,
-              tool: t.tool ?? "codex",
-              branch: "",
-              repoPath,
-              status: "running",
-              startedAt: new Date(started),
-              output: [],
-            }
-            upsertSession(tracked)
-            try {
-              wt = await createWorktree({
-                repoPath,
-                sessionId: tracked.id,
-                baseBranch,
-                branchPrefix: t.branch ?? "task",
-                runGit: (args) => run(["git", ...args]),
-              })
-              tracked.branch = wt.branch
-              const result = await runCodingSession({
-                tool: t.tool ?? "codex",
-                task: t.brief,
-                workdir: wt.path,
-                model: t.model,
-                onOutput: wt.onOutput,
-                timeoutMs: (t.timeoutMinutes ?? 15) * 60_000,
-                run: async (command, opts) => {
-                  // timeout executes inside Docker and kills the CLI process group there.
-                  const processResult = await runWorkstationCommand(
-                    agent.id,
-                    [
-                      "timeout",
-                      "--signal=TERM",
-                      "--kill-after=5s",
-                      `${Math.ceil(opts.timeoutMs / 1000)}s`,
-                      "bash",
-                      "-c",
-                      `touch /tmp/xiryn/active; (while sleep 20; do touch /tmp/xiryn/active; done) & heartbeat=$!; trap 'kill "$heartbeat" 2>/dev/null; touch /tmp/xiryn/active' EXIT; "$@"`,
-                      "work-session",
-                      ...command,
-                    ],
-                    {
-                      cwd: opts.cwd,
-                      timeoutMs: opts.timeoutMs + 20_000,
-                      onLine: opts.onOutput,
-                    }
-                  )
-                  return {
-                    text: processResult.stdout.toString() + processResult.stderr,
-                    exitCode: processResult.exitCode ?? -1,
-                  }
-                },
-              })
-              if (result.ok) {
-                await run(["git", "add", "-A"], wt.path)
-                const changed = await run(
-                  ["git", "diff", "--cached", "--name-only"],
-                  wt.path
-                )
-                if (changed.trim())
-                  await run(
-                    [
-                      "git",
-                      "-c",
-                      "user.name=Xiryn",
-                      "-c",
-                      "user.email=xiryn@localhost",
-                      "commit",
-                      "-m",
-                      "feat: complete work session",
-                    ],
-                    wt.path
-                  )
-              }
-              if (result.ok) await wt.cleanup({ preserveBranch: true })
-              tracked.status = result.ok ? "done" : "failed"
-              tracked.error = result.error
-              tracked.finishedAt = new Date()
-              tracked.durationMs = Date.now() - started
-              return {
-                task: t.brief,
-                branch: wt.branch,
-                ok: result.ok,
-                output: result.text.slice(-3000),
-                durationMs: result.durationMs,
-                error: result.error,
-              }
-            } catch (err) {
-              tracked.status = "failed"
-              tracked.finishedAt = new Date()
-              tracked.durationMs = Date.now() - started
-              tracked.error =
-                err instanceof Error ? err.message.slice(0, 200) : String(err)
-              return {
-                task: t.brief,
-                branch: wt?.branch ?? "unknown",
-                ok: false,
-                output: "",
-                durationMs: Date.now() - started,
-                error: err instanceof Error ? err.message.slice(0, 200) : String(err),
-              }
-            }
-          })
+        const { spawnWorkSessions } = await import("@/lib/work-sessions")
+        const agent = env.current()
+        const result = spawnWorkSessions({
+          agentId: agent.id,
+          agentName: agent.name,
+          threadId: env.threadId,
+          tasks,
+          repoPath,
+          baseBranch,
+        })
+        if (!result.ok) return { started: false, error: result.error }
+        return {
+          started: true,
+          batchId: result.batchId,
+          threadId: result.threadId,
+          sessions: result.sessions.map((session) => ({
+            id: session.id,
+            branch: session.branch,
+            task: session.task,
+            tool: session.tool,
+            status: session.status,
+          })),
+          note: "The sessions are running in the background. End this turn. Tell the person how many started and the branch names. You will be woken in this same conversation when they finish. Do not poll.",
+        }
+      },
+    }),
+    list_work_sessions: tool({
+      description:
+        "List coding sessions you started. Set threadOnly to this conversation; omit it to see every conversation of yours. Does not include other agents.",
+      inputSchema: z.object({
+        threadOnly: z.boolean().optional(),
+      }),
+      execute: async ({ threadOnly }) => {
+        const { listAgentWorkSessions } = await import("@/lib/work-sessions")
+        const agent = env.current()
+        const sessions = listAgentWorkSessions(
+          agent.id,
+          threadOnly ? env.threadId : undefined
         )
         return {
-          sessions,
-          succeeded: sessions.filter((r) => r.ok).length,
-          failed: sessions.filter((r) => !r.ok).length,
+          sessions: sessions.map((session) => ({
+            id: session.id,
+            threadId: session.threadId,
+            batchId: session.batchId,
+            branch: session.branch,
+            status: session.status,
+            tool: session.tool,
+            task: session.task.slice(0, 200),
+            error: session.error,
+          })),
         }
+      },
+    }),
+    get_work_session: tool({
+      description:
+        "Status of one coding session you started, including the tail of its output. Only sessions that belong to you.",
+      inputSchema: z.object({
+        sessionId: z.string().min(1),
+      }),
+      execute: async ({ sessionId }) => {
+        const { getAgentWorkSession } = await import("@/lib/work-sessions")
+        return getAgentWorkSession(env.current().id, sessionId)
+      },
+    }),
+    cancel_work_session: tool({
+      description:
+        "Stop one of your coding sessions. Kills the CLI inside the workstation and removes the worktree. The branch is kept when it already has commits.",
+      inputSchema: z.object({
+        sessionId: z.string().min(1),
+      }),
+      execute: async ({ sessionId }) => {
+        const { cancelAgentWorkSession } = await import("@/lib/work-sessions")
+        return cancelAgentWorkSession(env.current().id, sessionId)
       },
     }),
   }

@@ -39,6 +39,8 @@ const integrationSettings = {
   "pricing.custom": { env: null, internal: true },
   // Limits for each agent's workstation container
   "workstation.cpus": { env: "XIRYN_WORKSTATION_CPUS", fallback: "2" },
+  // Coding sessions one agent may have running at once, across every thread
+  "workstation.maxSessions": { env: "XIRYN_MAX_WORK_SESSIONS", fallback: "8" },
   "workstation.memory": { env: "XIRYN_WORKSTATION_MEMORY_GB", fallback: "4" },
   // Idle minutes before a workstation stops itself; 0 keeps it running
   "workstation.autoStop": { env: "XIRYN_WORKSTATION_AUTO_STOP_MINUTES", fallback: "15" },
@@ -221,4 +223,9 @@ export type SettingView = ReturnType<typeof describeSetting>
 export function getMaxSteps() {
   const value = Number.parseInt(getSetting("agent.maxSteps") ?? "", 10)
   return Number.isFinite(value) && value > 0 ? Math.min(value, 200) : 40
+}
+
+export function getMaxWorkSessions() {
+  const value = Number.parseInt(getSetting("workstation.maxSessions") ?? "", 10)
+  return Number.isFinite(value) && value > 0 ? Math.min(value, 32) : 8
 }

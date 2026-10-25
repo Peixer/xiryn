@@ -34,6 +34,9 @@ export async function register() {
     start() {
       setTelegramPolling(true)
       startRoutines()
+      void import("./lib/work-sessions")
+        .then(({ recoverWorkSessions }) => recoverWorkSessions())
+        .catch((error) => console.error("[xiryn] work sessions:", error))
       startWorkstationJanitor()
       startVaultSweep()
       startNotifyWebhook()

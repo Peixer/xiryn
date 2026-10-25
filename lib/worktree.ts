@@ -2,6 +2,9 @@ import { execFileSync } from "node:child_process"
 import path from "node:path"
 import { nanoid } from "nanoid"
 import { appendSessionOutput, getSession } from "./work-sessions"
+import { worktreeLocation } from "./worktree-path"
+
+export { worktreeLocation }
 
 export type GitRunner = (args: string[]) => Promise<string>
 export type WorktreeHandle = {
@@ -35,8 +38,7 @@ export async function createWorktree(opts: WorktreeOptions): Promise<WorktreeHan
   } = opts
   if (!path.isAbsolute(repoPath)) throw new Error("Repository path must be absolute")
   if (!/^[a-zA-Z0-9_-]+$/.test(taskId)) throw new Error("Invalid task id")
-  const branch = `${branchPrefix}/${taskId}`
-  const wtPath = path.posix.join("/tmp", `xiryn-wt-${taskId}`)
+  const { branch, path: wtPath } = worktreeLocation(branchPrefix, taskId)
   const git = (args: string[]) => runGit(["-C", repoPath, ...args])
   await git(["check-ref-format", "--branch", branch])
   let base = baseBranch

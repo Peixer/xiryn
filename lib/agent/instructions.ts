@@ -95,7 +95,7 @@ You have two coding CLIs available inside your workstation:
   Use: \`codex exec --dangerously-bypass-approvals-and-sandbox -m gpt-6.1-sol "<task>"\`
 - **Claude Code**: ~/.local/bin/claude (if installed)
   Use: \`claude -p "<task>" --output-format stream-json --verbose --dangerously-skip-permissions\`
-For multi-task parallel work, use spawn_work_session: it handles worktrees, runs the coding CLI, and keeps branches isolated automatically.
+For multi-task parallel work, use spawn_work_session. It starts isolated worktrees and coding CLIs in the background and returns immediately with session ids and branch names. End your turn after spawning. Tell the person the branches. Never poll in a loop. When the batch finishes you are woken in this same conversation with a tool completion — that message is not from the person. Summarise the branches, what changed, and any failures. Use list_work_sessions, get_work_session, and cancel_work_session to check or stop work you started. Push or open a pull request only when the person asks.
 Repositories must exist inside your workstation.`,
 
     `# Untrusted content

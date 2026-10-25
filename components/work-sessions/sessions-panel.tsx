@@ -9,10 +9,13 @@ type Session = {
   task: string
   tool: string
   branch: string
-  status: "running" | "done" | "failed"
+  status: "running" | "done" | "failed" | "cancelled"
   startedAt: string
   durationMs?: number
   error?: string
+  threadId?: string
+  threadTitle?: string | null
+  threadHref?: string
 }
 function useSessions() {
   const [sessions, setSessions] = useState<Session[] | null>(null)
@@ -135,6 +138,11 @@ function SessionRow({ session: s }: { session: Session }) {
         {s.task.slice(0, 80)}
         {s.task.length > 80 && "…"}
       </p>
+      {s.threadHref && (
+        <Link href={s.threadHref} className="text-xs text-rigel">
+          {s.threadTitle?.trim() || "Conversation"}
+        </Link>
+      )}
       <div className="flex items-center gap-2">
         <code className="text-xs break-all">{s.branch || "Preparing branch…"}</code>
         <button

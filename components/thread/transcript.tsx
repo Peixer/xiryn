@@ -11,6 +11,7 @@ import {
   ChevronRightIcon,
   CornerDownRightIcon,
   SendIcon,
+  SquareTerminalIcon,
 } from "lucide-react"
 import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom"
 
@@ -179,6 +180,30 @@ function Parts({
         }
         return null
       })}
+    </div>
+  )
+}
+
+function WorkSessionNotice({ message }: { message: XirynMessage }) {
+  const text = message.parts
+    .flatMap((part) => (part.type === "text" ? [part.text] : []))
+    .join("\n")
+    .replace(/^\[[^\]]+\]\s*/, "")
+  return (
+    <div className="flex flex-col items-center gap-2">
+      <div className="flex w-full items-center gap-3">
+        <span className="h-px flex-1 bg-rigel/25" />
+        <span className="flex items-center gap-1.5 font-mono text-[11px] text-rigel">
+          <SquareTerminalIcon className="size-3.5" />
+          coding sessions finished
+        </span>
+        <span className="h-px flex-1 bg-rigel/25" />
+      </div>
+      {text && (
+        <pre className="max-h-48 w-full overflow-auto rounded-md bg-muted/60 p-3 font-mono text-[11px] whitespace-pre-wrap text-muted-foreground">
+          {text.slice(0, 4000)}
+        </pre>
+      )}
     </div>
   )
 }
@@ -429,7 +454,9 @@ export function Transcript({
       >
         {messages.length === 0 && empty}
         {messages.map((message) =>
-          message.role === "user" ? (
+          message.role === "system" && message.metadata?.workSessions ? (
+            <WorkSessionNotice key={message.id} message={message} />
+          ) : message.role === "user" ? (
             <UserMessage
               key={message.id}
               message={message}
@@ -449,12 +476,13 @@ export function Transcript({
             />
           ) : null
         )}
-        {status === "submitted" && last?.role === "user" && (
-          <div className="flex items-center gap-2 pl-[30px] font-mono text-[12px]">
-            <span className="size-1.5 animate-pulse-dot rounded-full bg-rigel text-rigel" />
-            <span className="shimmer-text">booting turn…</span>
-          </div>
-        )}
+        {status === "submitted" &&
+          (last?.role === "user" || last?.metadata?.workSessions) && (
+            <div className="flex items-center gap-2 pl-[30px] font-mono text-[12px]">
+              <span className="size-1.5 animate-pulse-dot rounded-full bg-rigel text-rigel" />
+              <span className="shimmer-text">booting turn…</span>
+            </div>
+          )}
         {footer}
       </StickToBottom.Content>
       <ScrollToBottom />
