@@ -25,6 +25,8 @@ RUN apt-get update \
       bash-completion ca-certificates curl wget git jq less nano procps iproute2 \
       sudo tini tzdata unzip zip xz-utils openssh-client \
       python3 python3-pip python3-venv python-is-python3 \
+      # Screen recording — lets agents record demos and capture video evidence
+      ffmpeg \
  && rm -rf /var/lib/apt/lists/*
 
 # Node.js from the official build (Debian's is older and pulls in hundreds of
