@@ -4,13 +4,12 @@ The app can be installed from the https URL in front of Caddy (or from
 `http://127.0.0.1:6796` on the machine that runs it) and opened full screen,
 without the browser's address bar.
 
-On a phone-sized window, and whenever the site is installed
-(`display-mode: standalone`, fullscreen, or minimal-ui), Xiryn uses an app
-shell: a chat list, a full-screen conversation, and a bottom tab bar (Chat,
-Agents, Routines, Settings). On a phone the conversation uses the full width;
-the workbench panel does not keep a column beside it. The side-by-side
-workbench is unchanged on a wider window, including an installed app on a
-desktop or laptop.
+On a phone-sized window Xiryn uses an app shell: a chat list, a full-screen
+conversation, and a bottom tab bar (Chat, Agents, Routines, Settings). On a
+phone the conversation uses the full width; the workbench panel does not keep
+a column beside it. A wider window keeps the desktop layout — sidebar, status
+bar, and the side-by-side workbench — including an installed app on a desktop
+or laptop.
 
 ## Offline
 
@@ -150,8 +149,8 @@ like a login. Caddy basic auth stays the login.
 
 1. Open the https URL in Chrome or Edge and sign in.
 2. Use the install icon in the address bar, or the menu item **Install Xiryn**.
-3. The installed window uses the app shell. A wide browser tab keeps the
-   workbench.
+3. A wide installed window keeps the desktop layout. The phone shell is only
+   for a phone-sized viewport.
 
 ## Push
 

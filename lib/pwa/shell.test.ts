@@ -12,16 +12,17 @@ import {
   workbenchPlacement,
 } from "./shell"
 
-test("the app shell is for an installed window or a phone-sized viewport", () => {
+test("the app shell is only for a phone-sized viewport", () => {
   assert.equal(PHONE_MAX_WIDTH, 767)
   assert.equal(wantsAppShell({ displayMode: "browser", width: 1280 }), false)
   assert.equal(wantsAppShell({ displayMode: "browser", width: 390 }), true)
   assert.equal(wantsAppShell({ displayMode: "browser", width: 767 }), true)
   assert.equal(wantsAppShell({ displayMode: "browser", width: 768 }), false)
-  assert.equal(wantsAppShell({ displayMode: "standalone", width: 1440 }), true)
-  assert.equal(wantsAppShell({ displayMode: "fullscreen", width: 1440 }), true)
-  assert.equal(wantsAppShell({ displayMode: "minimal-ui", width: 1440 }), true)
-  assert.equal(wantsAppShell({ navigatorStandalone: true, width: 1440 }), true)
+  assert.equal(wantsAppShell({ displayMode: "standalone", width: 390 }), true)
+  assert.equal(wantsAppShell({ displayMode: "standalone", width: 1440 }), false)
+  assert.equal(wantsAppShell({ displayMode: "fullscreen", width: 1440 }), false)
+  assert.equal(wantsAppShell({ displayMode: "minimal-ui", width: 1440 }), false)
+  assert.equal(wantsAppShell({ navigatorStandalone: true, width: 1440 }), false)
   assert.equal(isThreadPath("/a/agent/thread"), true)
   assert.equal(isThreadPath("/s/squad/thread"), true)
   assert.equal(isThreadPath("/a/agent"), false)
@@ -54,6 +55,18 @@ test("phone CSS collapses the workbench panel, and wider windows do not", () => 
   assert.match(phone[0], /\[data-panel\]:has\(> \.xiryn-chat-panel\)/)
   assert.doesNotMatch(css, /max-width:\s*1099px/)
   assert.doesNotMatch(css, /html\[data-xiryn-app="1"\] \[data-panel\]/)
+  const wide = css.replace(/@media \(max-width: 767px\) \{[\s\S]*?\n\}/g, "")
+  assert.doesNotMatch(wide, /html\[data-xiryn-app="1"\]/)
+})
+
+test("the boot script marks the app shell from viewport width only", () => {
+  const layout = fs.readFileSync(
+    path.join(import.meta.dirname, "../../app/layout.tsx"),
+    "utf8"
+  )
+  assert.match(layout, /max-width: 767px/)
+  assert.doesNotMatch(layout, /display-mode: standalone/)
+  assert.doesNotMatch(layout, /standalone\|\|phone/)
 })
 
 test("the phone settings menu has an Update version entry", () => {
