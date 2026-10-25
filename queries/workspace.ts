@@ -125,6 +125,7 @@ export function getNavigation() {
       role: agent.role,
       glyph: agent.glyph,
       model: agent.model,
+      category: agent.category,
       instructions: agent.instructions,
       latestThreadId: latest.get(agent.id) ?? null,
       busy: busy.has(agent.id),
@@ -161,6 +162,7 @@ export function getAgentOverview() {
       glyph: agent.glyph,
       // What the agent was set to, and what it will actually run on
       model: agent.model,
+      category: agent.category,
       effectiveModel: resolveModelSpec(agent.model),
       instructions: agent.instructions,
       createdAt: agent.createdAt.toISOString(),

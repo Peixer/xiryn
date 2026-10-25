@@ -53,6 +53,7 @@ COPY rootfs/ /
 # Only Xiryn's own: node and cloudflared live in the same folder.
 RUN sed -i 's/\r$//' /usr/local/bin/xiryn-* /usr/local/bin/browser /etc/chromium.d/xiryn \
  && chmod +x /usr/local/bin/xiryn-* /usr/local/bin/browser \
+ && mkdir -p /home/xiryn/.coding-creds /home/xiryn/.local/bin \
  && chown -R xiryn:xiryn /home/xiryn
 
 USER xiryn

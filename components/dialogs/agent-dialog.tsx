@@ -23,6 +23,11 @@ import { reportDeletion } from "@/components/agents/delete-feedback"
 import { Confirm } from "@/components/confirm"
 import { Glyph } from "@/components/glyph"
 import { ModelPicker } from "@/components/model-picker"
+import {
+  CATEGORY_LABELS,
+  CATEGORY_DESCRIPTIONS,
+  type AgentCategory,
+} from "@/lib/agent-categories"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -142,6 +147,7 @@ function AgentForm({ agent, template }: { agent?: NavAgent; template?: AgentTemp
       role: agent?.role ?? template?.role ?? "",
       instructions: agent?.instructions ?? template?.instructions ?? "",
       model: agent?.model ?? "",
+      category: agent?.category ?? "general",
       glyph: initialGlyph,
     },
   })
@@ -179,7 +185,6 @@ function AgentForm({ agent, template }: { agent?: NavAgent; template?: AgentTemp
   })
 
   const instructions = useWatch({ control: form.control, name: "instructions" }) ?? ""
-  const glyphValue = useWatch({ control: form.control, name: "glyph" }) ?? initialGlyph
 
   const filteredTemplates = agentTemplates.filter((t) => t.category === activeCategory)
 
@@ -335,6 +340,43 @@ function AgentForm({ agent, template }: { agent?: NavAgent; template?: AgentTemp
                     Workstation tasks need a model that supports tools and images.
                   </FieldDescription>
                   {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                </Field>
+              )}
+            />
+
+            <Controller
+              name="category"
+              control={form.control}
+              render={({ field }) => (
+                <Field>
+                  <fieldset className="space-y-3">
+                    <legend className="mb-2 text-sm font-medium">Category</legend>
+                    {(Object.keys(CATEGORY_LABELS) as AgentCategory[]).map((category) => (
+                      <label key={category} className="flex items-start gap-3 text-sm">
+                        <input
+                          type="radio"
+                          name={field.name}
+                          value={category}
+                          checked={field.value === category}
+                          onChange={() => field.onChange(category)}
+                          onBlur={field.onBlur}
+                          ref={field.ref}
+                        />
+                        <span>
+                          <span className="font-medium">{CATEGORY_LABELS[category]}</span>
+                          <span className="block text-muted-foreground">
+                            {CATEGORY_DESCRIPTIONS[category]}
+                          </span>
+                          {category === "coding" && (
+                            <span className="block text-muted-foreground">
+                              The first coding agent you create owns the credentials.
+                              Others get read-only access.
+                            </span>
+                          )}
+                        </span>
+                      </label>
+                    ))}
+                  </fieldset>
                 </Field>
               )}
             />

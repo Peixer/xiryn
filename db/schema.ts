@@ -25,6 +25,10 @@ export const agents = sqliteTable("agents", {
   instructions: text(),
   // "provider/model". Null falls back to the workspace default.
   model: text(),
+  // Category determines default capabilities and coding credential access.
+  category: text({ enum: ["general", "coding", "research", "assistant"] })
+    .notNull()
+    .default("general"),
   // Seed for the agent's generated glyph
   glyph: text()
     .notNull()
@@ -319,6 +323,7 @@ export const agentInputSchema = createInsertSchema(agents, {
       .max(120, "Keep it under 120 characters."),
   instructions: (s) => s.trim().max(6000, "Keep it under 6000 characters."),
   model: () => z.union([modelSpecSchema, z.literal("")]),
+  category: z.enum(["general", "coding", "research", "assistant"]).default("general"),
 }).omit({ id: true, workstationId: true, createdAt: true, updatedAt: true })
 
 export const squadInputSchema = createInsertSchema(squads, {

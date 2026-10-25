@@ -105,7 +105,7 @@ The script copies the vault key from `/var/lib/xiryn/.xiryn`, the install's `.xi
 
 Settings → **Update version** on a wide browser (the item sits in the settings list between Remote access and System). On a phone, or in the installed app, open the **Settings** tab — it shows a dot when a newer commit is on the branch — and tap **Update version** at the top of that screen. The row carries a **New** badge in the same case. Switch and roll back open an approval card on that screen, with full-width Approve and Decline buttons.
 
-**Update** builds the colour that is not serving: fetch the pinned commit, `npm ci`, `npm run build`, copy a snapshot of the live database, migrate that copy, start the unit, and run the health check. Progress is streamed on the same screen. The live process keeps taking requests.
+**Update** builds the colour that is not serving: fetch the pinned commit, remove `.next`, `npm ci --include=dev`, `npm run build`, copy a snapshot of the live database, migrate that copy, start the unit, and run the health check. Progress is streamed on the same screen. The live process keeps taking requests.
 
 **Switch** asks you to approve that exact commit. After you approve, the helper marks the live colour read-only. That is not only the proxy: the process refuses further database writes, waits for in-flight turns to finish, and the helper holds a write lock on the live database until the snapshot is taken and the previous colour has stopped. It then takes the final database snapshot, migrates it, reloads Caddy, and checks health. It writes the new active colour while the maintenance file is still there, stops the previous colour, then removes the file. The colour that is now serving starts Telegram, routines, and the janitor. The previous process is stopped so a build that does not know this rule cannot keep polling. If the health check fails, Caddy is put back, the previous colour is left running, and the phase is `rolled_back`.
 
@@ -131,3 +131,12 @@ curl -fsS -H 'Host: 127.0.0.1' http://127.0.0.1:6796/api/health
 ```
 
 The ports above are blue's. Green's app port is 6896. `/etc/xiryn/active` is a label for people; Caddy follows `/etc/caddy/xiryn-upstreams.caddy`.
+
+
+## Cutover persistence and old workarounds
+
+Switch and rollback enable the serving colour, disable the other colour, and atomically replace `/etc/xiryn/active`. The installer also enables only the active colour. On an existing install it uses `state.json` (the worker authority) before the legacy active label, repairs that label, and leaves the serving process and Caddy configuration alone. It installs a Caddy systemd drop-in with `After=tailscaled.service` for Tailscale Serve setups forwarding to `127.0.0.1:8088`; this ordering takes effect on the next service start.
+
+The helper checks health repeatedly for up to 60 seconds after starting a candidate. Once this helper is installed, the manual `/usr/local/sbin/xiryn-wait-health` and `/etc/systemd/system/xiryn-{blue,green}.service.d/10-wait-health.conf` can be removed; run `sudo systemctl daemon-reload` afterward. Remove only those manual drop-ins, preserving other custom settings. The `include=dev` line in `/home/xiryn/.npmrc` can also be removed: CI installs explicitly include dev dependencies and do not use a production environment.
+
+Quiesce acknowledgements live at `/var/lib/xiryn/deploy/quiesce-<colour>.json` (or under `XIRYN_DEPLOY_DIR`). `quiesce.ts` reads them only to acknowledge a snapshot freeze; workers follow `state.json` and the maintenance file. Ending maintenance deletes both colour acknowledgements, including after a failed switch.

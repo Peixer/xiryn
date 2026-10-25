@@ -42,6 +42,7 @@ function harness(start: DeployState, behaviour: Partial<Host> = {}) {
     migrate: () => ({ journalCount: 10, appliedCount: 10 }),
     startColour: (colour) => calls.push(`start:${colour}`),
     stopColour: (colour) => calls.push(`stop:${colour}`),
+    activateColour: (colour) => calls.push(`activate:${colour}`),
     pause: () => {},
     health: () => ({ ok: true, status: "ok" }),
     smoke: () => ({ ok: true, detail: "ok" }),
@@ -229,6 +230,7 @@ test("an approved switch leaves the previous colour recorded for rollback", () =
   assert.equal(box.state().phase, "active")
   assert.equal(box.state().active, "green")
   assert.equal(box.state().previous, "blue")
+  assert.ok(box.calls.includes("activate:green"))
   assert.equal(box.state().switchedAt, "2026-10-24T08:00:00.000Z")
   const stopped = box.calls.indexOf("stop:blue")
   const opened = box.calls.lastIndexOf("maintenance-off")
@@ -287,6 +289,7 @@ test("rollback starts a stopped previous colour and then stops the one it leaves
   )
   assert.equal(result.ok, true)
   assert.equal(box.state().active, "blue")
+  assert.ok(box.calls.includes("activate:blue"))
   const start = box.calls.indexOf("start:blue")
   const caddy = box.calls.indexOf("caddy:blue")
   const stop = box.calls.indexOf("stop:green")
@@ -392,3 +395,20 @@ test("switch refuses a final snapshot whose migrations were skipped", () => {
   assert.equal(box.calls.filter((call) => call === "freeze").length, 1)
   assert.equal(box.calls.filter((call) => call === "unfreeze").length, 1)
 })
+
+for (const recover of [true, false]) {
+  test(`prepare waits for boot and ${recover ? "recovers" : "times out"}`, () => {
+    let checks = 0
+    const waits: number[] = []
+    const box = harness(initialState({ activeSha: ACTIVE }), {
+      health: () => ({ ok: ++checks > 4 && recover, status: "booting" }),
+      pause: (ms) => {
+        waits.push(ms)
+      },
+    })
+    assert.equal(runPrepare(box.host, request({})).ok, recover)
+    assert.equal(checks, recover ? 5 : 31)
+    assert.ok(waits.every((ms) => ms === 2000))
+    if (!recover) assert.ok(box.calls.includes("stop:green"))
+  })
+}

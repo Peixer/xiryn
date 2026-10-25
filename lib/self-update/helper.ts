@@ -41,6 +41,7 @@ export type Host = {
   migrate(colour: Colour): MigrateReport
   startColour(colour: Colour): void
   stopColour(colour: Colour): void
+  activateColour(colour: Colour): void
   // Short wait while a colour that was just started answers /api/health.
   pause(ms: number): void
   health(colour: Colour): { ok: boolean; status: string }
@@ -128,10 +129,11 @@ function stopQuietly(host: Host, colour: Colour) {
 
 function awaitHealthy(host: Host, colour: Colour) {
   let last = { ok: false, status: "down" }
-  for (let attempt = 0; attempt < 8; attempt++) {
+  const deadline = host.now() + 60_000
+  for (let attempt = 0; attempt < 31; attempt++) {
     last = host.health(colour)
-    if (last.ok) return last
-    host.pause(400)
+    if (last.ok || host.now() >= deadline) return last
+    if (attempt < 30) host.pause(Math.min(2000, deadline - host.now()))
   }
   return last
 }
@@ -250,7 +252,7 @@ export function runPrepare(host: Host, request: HelperRequest) {
     }
     note(host, "start", `Starting ${colour}.`)
     host.startColour(colour)
-    const health = host.health(colour)
+    const health = awaitHealthy(host, colour)
     const smoke = host.smoke(colour)
     if (!health.ok || !smoke.ok) {
       host.stopColour(colour)
@@ -396,7 +398,7 @@ export function runSwitch(host: Host, request: HelperRequest) {
     note(host, "caddy", `Pointing the proxy at ${candidate}.`)
     host.pointCaddy(candidate)
     host.reloadCaddy()
-    const health = host.health(candidate)
+    const health = awaitHealthy(host, candidate)
     const smoke = host.smoke(candidate)
     if (!health.ok || !smoke.ok) {
       const error = !health.ok ? `Health check failed (${health.status}).` : smoke.detail
@@ -431,6 +433,7 @@ export function runSwitch(host: Host, request: HelperRequest) {
       type: "switch_ok",
       at: new Date(host.now()).toISOString(),
     })
+    host.activateColour(candidate)
     host.writeState(active)
     // Maintenance is still on, so the new colour has not started workers.
     // Stop the outgoing process before lifting it: an older build does not
@@ -457,6 +460,7 @@ export function runSwitch(host: Host, request: HelperRequest) {
     try {
       host.restoreCaddy()
       host.reloadCaddy()
+      host.activateColour(state.active)
     } catch {
       // The audit line records the original failure. The proxy file is the backup.
     }
@@ -584,6 +588,7 @@ export function runRollback(host: Host, request: HelperRequest) {
       return { ok: false as const, error }
     }
     const rolled = transition(host.readState(), { type: "rollback_ok" })
+    host.activateColour(previous)
     host.writeState(rolled)
     note(host, "stop", `Stopping ${outgoing}. Only ${previous} runs background work.`)
     stopQuietly(host, outgoing)
@@ -603,6 +608,7 @@ export function runRollback(host: Host, request: HelperRequest) {
     try {
       host.restoreCaddy()
       host.reloadCaddy()
+      host.activateColour(state.active)
     } catch {
       // recorded below
     }

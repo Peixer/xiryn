@@ -324,7 +324,7 @@ function nodeAllowed(rest, layout2) {
 function serviceInnerAllowed(rest, layout2) {
   const [bin, ...args] = rest;
   if (bin === "git") return colourGitAllowed(args, layout2);
-  if (bin === "npm" && args[0] === "--prefix" && isColourDir(layout2, args[1] ?? "") && (same(args.slice(2), ["ci", "--no-audit", "--no-fund"]) || same(args.slice(2), ["run", "build"]))) {
+  if (bin === "npm" && args[0] === "--prefix" && isColourDir(layout2, args[1] ?? "") && (same(args.slice(2), ["ci", "--include=dev", "--no-audit", "--no-fund"]) || same(args.slice(2), ["run", "build"]))) {
     return true;
   }
   return bin === "node" && nodeAllowed(args, layout2);
@@ -365,7 +365,7 @@ function commandAllowed(argv, layout2, user = "xiryn") {
     }
     return false;
   }
-  if (bin === "systemctl" && (rest[0] === "start" || rest[0] === "stop" || rest[0] === "is-active") && rest.length === 2) {
+  if (bin === "systemctl" && ["start", "stop", "is-active", "enable", "disable"].includes(rest[0]) && rest.length === 2) {
     return rest[1] === colourUnit("blue") || rest[1] === colourUnit("green");
   }
   if (bin === "caddy" && same(rest, ["reload", "--config", layout2.caddyfile])) return true;
@@ -720,10 +720,11 @@ function stopQuietly(host, colour) {
 }
 function awaitHealthy(host, colour) {
   let last = { ok: false, status: "down" };
-  for (let attempt = 0; attempt < 8; attempt++) {
+  const deadline = host.now() + 6e4;
+  for (let attempt = 0; attempt < 31; attempt++) {
     last = host.health(colour);
-    if (last.ok) return last;
-    host.pause(400);
+    if (last.ok || host.now() >= deadline) return last;
+    if (attempt < 30) host.pause(Math.min(2e3, deadline - host.now()));
   }
   return last;
 }
@@ -840,7 +841,7 @@ function runPrepare(host, request) {
     }
     note(host, "start", `Starting ${colour}.`);
     host.startColour(colour);
-    const health = host.health(colour);
+    const health = awaitHealthy(host, colour);
     const smoke = host.smoke(colour);
     if (!health.ok || !smoke.ok) {
       host.stopColour(colour);
@@ -979,7 +980,7 @@ function runSwitch(host, request) {
     note(host, "caddy", `Pointing the proxy at ${candidate}.`);
     host.pointCaddy(candidate);
     host.reloadCaddy();
-    const health = host.health(candidate);
+    const health = awaitHealthy(host, candidate);
     const smoke = host.smoke(candidate);
     if (!health.ok || !smoke.ok) {
       const error = !health.ok ? `Health check failed (${health.status}).` : smoke.detail;
@@ -1014,6 +1015,7 @@ function runSwitch(host, request) {
       type: "switch_ok",
       at: new Date(host.now()).toISOString()
     });
+    host.activateColour(candidate);
     host.writeState(active);
     note(
       host,
@@ -1037,6 +1039,7 @@ function runSwitch(host, request) {
     try {
       host.restoreCaddy();
       host.reloadCaddy();
+      host.activateColour(state.active);
     } catch {
     }
     releaseFreeze(host, frozen);
@@ -1159,6 +1162,7 @@ function runRollback(host, request) {
       return { ok: false, error };
     }
     const rolled = transition(host.readState(), { type: "rollback_ok" });
+    host.activateColour(previous);
     host.writeState(rolled);
     note(host, "stop", `Stopping ${outgoing}. Only ${previous} runs background work.`);
     stopQuietly(host, outgoing);
@@ -1178,6 +1182,7 @@ function runRollback(host, request) {
     try {
       host.restoreCaddy();
       host.reloadCaddy();
+      host.activateColour(state.active);
     } catch {
     }
     if (started) stopQuietly(host, previous);
@@ -1466,7 +1471,7 @@ function serviceEnv(layout2) {
     XDG_CACHE_HOME: dirs.xdgCache,
     XDG_CONFIG_HOME: dirs.xdgConfig,
     NEXT_TELEMETRY_DISABLED: "1",
-    NODE_ENV: "production"
+    NODE_ENV: "development"
   };
 }
 function runRoot(layout2, argv) {
@@ -1496,7 +1501,10 @@ function runAsService(layout2, argv) {
   return execFileSync(wrapped[0], wrapped.slice(1), {
     encoding: "utf8",
     timeout: 30 * 6e4,
-    env: serviceEnv(layout2)
+    env: {
+      ...serviceEnv(layout2),
+      ...argv[0] === "npm" && argv.includes("build") ? { NODE_ENV: "production" } : {}
+    }
   });
 }
 function mode(file, bits) {
@@ -1585,10 +1593,8 @@ function createSystemHost(layout2 = loadLayout()) {
   let writer = null;
   const writeState = (state) => {
     fs4.mkdirSync(dir2, { recursive: true, mode: 493 });
-    const tmp = path3.join(dir2, ".state.json.tmp");
-    fs4.writeFileSync(tmp, `${JSON.stringify(state)}
-`, { mode: 420 });
-    fs4.renameSync(tmp, stateFile);
+    writeAtomicNoFollow(stateFile, `${JSON.stringify(state)}
+`);
     mode(stateFile, 420);
   };
   return {
@@ -1604,20 +1610,28 @@ function createSystemHost(layout2 = loadLayout()) {
     writeState,
     progress(step, message) {
       fs4.mkdirSync(dir2, { recursive: true, mode: 493 });
-      fs4.appendFileSync(
+      const fd = fs4.openSync(
         progressFile,
-        `${JSON.stringify({ ts: (/* @__PURE__ */ new Date()).toISOString(), step: redact(step), message: redact(message) })}
-`,
-        { mode: 416 }
+        fs4.constants.O_WRONLY | fs4.constants.O_CREAT | fs4.constants.O_APPEND | fs4.constants.O_NOFOLLOW,
+        416
       );
+      try {
+        fs4.writeSync(
+          fd,
+          `${JSON.stringify({ ts: (/* @__PURE__ */ new Date()).toISOString(), step: redact(step), message: redact(message) })}
+`
+        );
+      } finally {
+        fs4.closeSync(fd);
+      }
     },
     audit(entry) {
       fs4.mkdirSync(auditDir, { recursive: true, mode: 472 });
       const line = formatAudit({ ...entry, ts: entry.ts ?? (/* @__PURE__ */ new Date()).toISOString() });
       const name = `${Date.now()}-${entry.op}-${entry.result}.json`;
       const file = path3.join(auditDir, name);
-      fs4.writeFileSync(file, `${line}
-`, { mode: 384 });
+      writeAtomicNoFollow(file, `${line}
+`, 384);
       mode(file, 384);
     },
     fetchTip() {
@@ -1681,8 +1695,17 @@ function createSystemHost(layout2 = loadLayout()) {
       ownService(dest);
     },
     installAndBuild(dest) {
+      fs4.rmSync(path3.join(dest, ".next"), { recursive: true, force: true });
       ownService(dest);
-      runAsService(layout2, ["npm", "--prefix", dest, "ci", "--no-audit", "--no-fund"]);
+      runAsService(layout2, [
+        "npm",
+        "--prefix",
+        dest,
+        "ci",
+        "--include=dev",
+        "--no-audit",
+        "--no-fund"
+      ]);
       runAsService(layout2, ["npm", "--prefix", dest, "run", "build"]);
       ownService(dest);
     },
@@ -1733,6 +1756,14 @@ function createSystemHost(layout2 = loadLayout()) {
     stopColour(colour) {
       runRoot(layout2, ["systemctl", "stop", colourUnit(colour)]);
     },
+    activateColour(colour) {
+      const old = colour === "blue" ? "green" : "blue";
+      runRoot(layout2, ["systemctl", "enable", colourUnit(colour)]);
+      runRoot(layout2, ["systemctl", "disable", colourUnit(old)]);
+      const activeFile = path3.join(path3.dirname(layout2.maintenanceFile), "active");
+      writeAtomicNoFollow(activeFile, `${colour}
+`);
+    },
     pause(ms) {
       if (ms <= 0) return;
       Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
@@ -1772,14 +1803,15 @@ function createSystemHost(layout2 = loadLayout()) {
           recursive: true,
           mode: 493
         });
-        fs4.writeFileSync(layout2.maintenanceFile, `read-only
+        writeAtomicNoFollow(layout2.maintenanceFile, `read-only
 ${maintenanceToken}
-`, {
-          mode: 420
-        });
-      } else if (fs4.existsSync(layout2.maintenanceFile)) {
+`);
+      } else {
         maintenanceToken = null;
-        fs4.rmSync(layout2.maintenanceFile);
+        fs4.rmSync(layout2.maintenanceFile, { force: true });
+        for (const colour of ["blue", "green"]) {
+          fs4.rmSync(path3.join(dir2, `quiesce-${colour}.json`), { force: true });
+        }
       }
     },
     waitUntilQuiescent(colours) {
@@ -1868,17 +1900,17 @@ ${maintenanceToken}
       const body = caddySnippet({ app, desktop, standbyApp, standbyDesktop });
       if (fs4.existsSync(layout2.caddySnippet)) {
         caddyBackup = `${layout2.caddySnippet}.bak`;
-        fs4.copyFileSync(layout2.caddySnippet, caddyBackup);
+        copyFileNoFollow(layout2.caddySnippet, caddyBackup);
         mode(caddyBackup, 420);
       }
-      fs4.writeFileSync(layout2.caddySnippet, body, { mode: 420 });
+      writeAtomicNoFollow(layout2.caddySnippet, body);
     },
     reloadCaddy() {
       runRoot(layout2, ["caddy", "reload", "--config", layout2.caddyfile]);
     },
     restoreCaddy() {
       if (caddyBackup && fs4.existsSync(caddyBackup)) {
-        fs4.copyFileSync(caddyBackup, layout2.caddySnippet);
+        copyFileNoFollow(caddyBackup, layout2.caddySnippet);
       }
     },
     backup(label) {
@@ -1915,8 +1947,8 @@ ${maintenanceToken}
         }
       }
       const note2 = path3.join(dest, "label.txt");
-      fs4.writeFileSync(note2, `${label}
-`, { mode: 384 });
+      writeAtomicNoFollow(note2, `${label}
+`, 384);
       mode(note2, 384);
       fs4.chownSync(note2, 0, 0);
     },
@@ -1930,8 +1962,8 @@ ${maintenanceToken}
     },
     writeRelease(release) {
       const file = path3.join(dir2, "release.json");
-      fs4.writeFileSync(file, `${JSON.stringify(release)}
-`, { mode: 420 });
+      writeAtomicNoFollow(file, `${JSON.stringify(release)}
+`);
     },
     changelog(from, to) {
       if (!from || !isSha(from) || !isSha(to) || from === to) {
@@ -1967,18 +1999,61 @@ ${maintenanceToken}
     }
   };
 }
+function writeAtomicNoFollow(dest, content, permissions = 420) {
+  const tmp = `${dest}.tmp.${process.pid}`;
+  try {
+    fs4.unlinkSync(tmp);
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+  const fd = fs4.openSync(
+    tmp,
+    fs4.constants.O_WRONLY | fs4.constants.O_CREAT | fs4.constants.O_EXCL | fs4.constants.O_NOFOLLOW,
+    permissions
+  );
+  try {
+    fs4.writeFileSync(fd, content);
+  } finally {
+    fs4.closeSync(fd);
+  }
+  try {
+    fs4.renameSync(tmp, dest);
+  } finally {
+    fs4.rmSync(tmp, { force: true });
+  }
+}
+function copyFileNoFollow(src, dest) {
+  const stat = fs4.lstatSync(src);
+  if (stat.isSymbolicLink()) throw new Error(`Refusing to copy symlink: ${src}`);
+  if (!stat.isFile()) throw new Error(`Refusing to copy non-regular file: ${src}`);
+  const fd = fs4.openSync(src, fs4.constants.O_RDONLY | fs4.constants.O_NOFOLLOW);
+  try {
+    if (!fs4.fstatSync(fd).isFile())
+      throw new Error(`Refusing to copy non-regular file: ${src}`);
+    writeAtomicNoFollow(dest, fs4.readFileSync(fd), 384);
+  } finally {
+    fs4.closeSync(fd);
+  }
+}
 function copyPrivate(from, to) {
-  fs4.copyFileSync(from, to);
+  copyFileNoFollow(from, to);
   fs4.chownSync(to, 0, 0);
   mode(to, 384);
 }
 function sealRoot(target) {
+  const inspect = (file) => {
+    const stat = fs4.lstatSync(file);
+    if (stat.isSymbolicLink()) throw new Error(`Refusing to copy symlink: ${file}`);
+    if (stat.isDirectory()) {
+      for (const name of fs4.readdirSync(file)) inspect(path3.join(file, name));
+    } else if (!stat.isFile()) {
+      throw new Error(`Refusing to copy non-regular file: ${file}`);
+    }
+  };
+  inspect(target);
   const visit = (file) => {
     const stat = fs4.lstatSync(file);
-    if (stat.isSymbolicLink()) {
-      fs4.lchownSync(file, 0, 0);
-      return;
-    }
+    if (stat.isSymbolicLink()) throw new Error(`Refusing to copy symlink: ${file}`);
     fs4.chownSync(file, 0, 0);
     if (stat.isDirectory()) {
       fs4.chmodSync(file, 448);
