@@ -255,6 +255,7 @@ test("spawned commands are pinned to the layout", () => {
         "--prefix",
         layout.blueDir,
         "ci",
+        "--include=dev",
         "--no-audit",
         "--no-fund",
       ]),

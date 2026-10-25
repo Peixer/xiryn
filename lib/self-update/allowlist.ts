@@ -251,7 +251,7 @@ function serviceInnerAllowed(rest: readonly string[], layout: Layout) {
     bin === "npm" &&
     args[0] === "--prefix" &&
     isColourDir(layout, args[1] ?? "") &&
-    (same(args.slice(2), ["ci", "--no-audit", "--no-fund"]) ||
+    (same(args.slice(2), ["ci", "--include=dev", "--no-audit", "--no-fund"]) ||
       same(args.slice(2), ["run", "build"]))
   ) {
     return true
@@ -325,7 +325,7 @@ export function commandAllowed(argv: readonly string[], layout: Layout, user = "
   }
   if (
     bin === "systemctl" &&
-    (rest[0] === "start" || rest[0] === "stop" || rest[0] === "is-active") &&
+    ["start", "stop", "is-active", "enable", "disable"].includes(rest[0]) &&
     rest.length === 2
   ) {
     return rest[1] === colourUnit("blue") || rest[1] === colourUnit("green")

@@ -131,6 +131,11 @@ exit 0
       path.join(fakeBin, "npm"),
       `#!/bin/sh
 set -eu
+if [ "\${3:-}" = "ci" ]; then
+  [ "\${4:-}" = "--include=dev" ] || exit 241
+  [ "\${NODE_ENV:-}" != production ] || exit 242
+  [ ! -e "$2/.next" ] || exit 244
+fi
 cache="\${npm_config_cache:-$HOME/.npm}"
 if ! mkdir -p "$cache/probe"; then exit 243; fi
 printf '%s\\n' wrote > "$cache/probe/wrote"
@@ -272,6 +277,10 @@ printf '%s\\n' '{"status":"ok"}'
           .isFile(),
         true
       )
+      fs.mkdirSync(path.join(layout.greenDir, ".next/cache"), { recursive: true })
+      fs.writeFileSync(path.join(layout.greenDir, ".next/cache/stale"), "stale")
+      host.installAndBuild(layout.greenDir)
+      assert.equal(fs.existsSync(path.join(layout.greenDir, ".next/cache/stale")), false)
       host.backup("switch")
 
       assert.equal(fs.statSync(layout.backupDir).uid, 0)

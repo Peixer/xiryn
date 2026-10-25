@@ -98,7 +98,7 @@ function serviceEnv(layout: Layout): NodeJS.ProcessEnv {
     XDG_CACHE_HOME: dirs.xdgCache,
     XDG_CONFIG_HOME: dirs.xdgConfig,
     NEXT_TELEMETRY_DISABLED: "1",
-    NODE_ENV: "production",
+    NODE_ENV: "development",
   }
 }
 
@@ -133,7 +133,10 @@ function runAsService(layout: Layout, argv: readonly string[]) {
   return execFileSync(wrapped[0], wrapped.slice(1), {
     encoding: "utf8",
     timeout: 30 * 60_000,
-    env: serviceEnv(layout),
+    env: {
+      ...serviceEnv(layout),
+      ...(argv[0] === "npm" && argv.includes("build") ? { NODE_ENV: "production" } : {}),
+    },
   })
 }
 
@@ -345,8 +348,17 @@ export function createSystemHost(layout = loadLayout()): Host {
       ownService(dest)
     },
     installAndBuild(dest) {
+      fs.rmSync(path.join(dest, ".next"), { recursive: true, force: true })
       ownService(dest)
-      runAsService(layout, ["npm", "--prefix", dest, "ci", "--no-audit", "--no-fund"])
+      runAsService(layout, [
+        "npm",
+        "--prefix",
+        dest,
+        "ci",
+        "--include=dev",
+        "--no-audit",
+        "--no-fund",
+      ])
       runAsService(layout, ["npm", "--prefix", dest, "run", "build"])
       ownService(dest)
     },
@@ -400,6 +412,15 @@ export function createSystemHost(layout = loadLayout()): Host {
     stopColour(colour) {
       runRoot(layout, ["systemctl", "stop", colourUnit(colour)])
     },
+    activateColour(colour) {
+      const old = colour === "blue" ? "green" : "blue"
+      runRoot(layout, ["systemctl", "enable", colourUnit(colour)])
+      runRoot(layout, ["systemctl", "disable", colourUnit(old)])
+      const activeFile = path.join(path.dirname(layout.maintenanceFile), "active")
+      const tmp = `${activeFile}.tmp`
+      fs.writeFileSync(tmp, `${colour}\n`, { mode: 0o644 })
+      fs.renameSync(tmp, activeFile)
+    },
     pause(ms) {
       if (ms <= 0) return
       Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
@@ -443,9 +464,14 @@ export function createSystemHost(layout = loadLayout()): Host {
         fs.writeFileSync(layout.maintenanceFile, `read-only\n${maintenanceToken}\n`, {
           mode: 0o644,
         })
-      } else if (fs.existsSync(layout.maintenanceFile)) {
+      } else {
         maintenanceToken = null
-        fs.rmSync(layout.maintenanceFile)
+        fs.rmSync(layout.maintenanceFile, { force: true })
+        // Acks are read by waitForQuiescence in quiesce.ts, not worker state.
+        // Remove both colours after maintenance, including aborted cutovers.
+        for (const colour of ["blue", "green"]) {
+          fs.rmSync(path.join(dir, `quiesce-${colour}.json`), { force: true })
+        }
       }
     },
     waitUntilQuiescent(colours) {

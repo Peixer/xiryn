@@ -324,7 +324,7 @@ function nodeAllowed(rest, layout2) {
 function serviceInnerAllowed(rest, layout2) {
   const [bin, ...args] = rest;
   if (bin === "git") return colourGitAllowed(args, layout2);
-  if (bin === "npm" && args[0] === "--prefix" && isColourDir(layout2, args[1] ?? "") && (same(args.slice(2), ["ci", "--no-audit", "--no-fund"]) || same(args.slice(2), ["run", "build"]))) {
+  if (bin === "npm" && args[0] === "--prefix" && isColourDir(layout2, args[1] ?? "") && (same(args.slice(2), ["ci", "--include=dev", "--no-audit", "--no-fund"]) || same(args.slice(2), ["run", "build"]))) {
     return true;
   }
   return bin === "node" && nodeAllowed(args, layout2);
@@ -365,7 +365,7 @@ function commandAllowed(argv, layout2, user = "xiryn") {
     }
     return false;
   }
-  if (bin === "systemctl" && (rest[0] === "start" || rest[0] === "stop" || rest[0] === "is-active") && rest.length === 2) {
+  if (bin === "systemctl" && ["start", "stop", "is-active", "enable", "disable"].includes(rest[0]) && rest.length === 2) {
     return rest[1] === colourUnit("blue") || rest[1] === colourUnit("green");
   }
   if (bin === "caddy" && same(rest, ["reload", "--config", layout2.caddyfile])) return true;
@@ -720,10 +720,11 @@ function stopQuietly(host, colour) {
 }
 function awaitHealthy(host, colour) {
   let last = { ok: false, status: "down" };
-  for (let attempt = 0; attempt < 8; attempt++) {
+  const deadline = host.now() + 6e4;
+  for (let attempt = 0; attempt < 31; attempt++) {
     last = host.health(colour);
-    if (last.ok) return last;
-    host.pause(400);
+    if (last.ok || host.now() >= deadline) return last;
+    if (attempt < 30) host.pause(Math.min(2e3, deadline - host.now()));
   }
   return last;
 }
@@ -840,7 +841,7 @@ function runPrepare(host, request) {
     }
     note(host, "start", `Starting ${colour}.`);
     host.startColour(colour);
-    const health = host.health(colour);
+    const health = awaitHealthy(host, colour);
     const smoke = host.smoke(colour);
     if (!health.ok || !smoke.ok) {
       host.stopColour(colour);
@@ -979,7 +980,7 @@ function runSwitch(host, request) {
     note(host, "caddy", `Pointing the proxy at ${candidate}.`);
     host.pointCaddy(candidate);
     host.reloadCaddy();
-    const health = host.health(candidate);
+    const health = awaitHealthy(host, candidate);
     const smoke = host.smoke(candidate);
     if (!health.ok || !smoke.ok) {
       const error = !health.ok ? `Health check failed (${health.status}).` : smoke.detail;
@@ -1014,6 +1015,7 @@ function runSwitch(host, request) {
       type: "switch_ok",
       at: new Date(host.now()).toISOString()
     });
+    host.activateColour(candidate);
     host.writeState(active);
     note(
       host,
@@ -1037,6 +1039,7 @@ function runSwitch(host, request) {
     try {
       host.restoreCaddy();
       host.reloadCaddy();
+      host.activateColour(state.active);
     } catch {
     }
     releaseFreeze(host, frozen);
@@ -1159,6 +1162,7 @@ function runRollback(host, request) {
       return { ok: false, error };
     }
     const rolled = transition(host.readState(), { type: "rollback_ok" });
+    host.activateColour(previous);
     host.writeState(rolled);
     note(host, "stop", `Stopping ${outgoing}. Only ${previous} runs background work.`);
     stopQuietly(host, outgoing);
@@ -1178,6 +1182,7 @@ function runRollback(host, request) {
     try {
       host.restoreCaddy();
       host.reloadCaddy();
+      host.activateColour(state.active);
     } catch {
     }
     if (started) stopQuietly(host, previous);
@@ -1466,7 +1471,7 @@ function serviceEnv(layout2) {
     XDG_CACHE_HOME: dirs.xdgCache,
     XDG_CONFIG_HOME: dirs.xdgConfig,
     NEXT_TELEMETRY_DISABLED: "1",
-    NODE_ENV: "production"
+    NODE_ENV: "development"
   };
 }
 function runRoot(layout2, argv) {
@@ -1496,7 +1501,10 @@ function runAsService(layout2, argv) {
   return execFileSync(wrapped[0], wrapped.slice(1), {
     encoding: "utf8",
     timeout: 30 * 6e4,
-    env: serviceEnv(layout2)
+    env: {
+      ...serviceEnv(layout2),
+      ...argv[0] === "npm" && argv.includes("build") ? { NODE_ENV: "production" } : {}
+    }
   });
 }
 function mode(file, bits) {
@@ -1681,8 +1689,17 @@ function createSystemHost(layout2 = loadLayout()) {
       ownService(dest);
     },
     installAndBuild(dest) {
+      fs4.rmSync(path3.join(dest, ".next"), { recursive: true, force: true });
       ownService(dest);
-      runAsService(layout2, ["npm", "--prefix", dest, "ci", "--no-audit", "--no-fund"]);
+      runAsService(layout2, [
+        "npm",
+        "--prefix",
+        dest,
+        "ci",
+        "--include=dev",
+        "--no-audit",
+        "--no-fund"
+      ]);
       runAsService(layout2, ["npm", "--prefix", dest, "run", "build"]);
       ownService(dest);
     },
@@ -1733,6 +1750,16 @@ function createSystemHost(layout2 = loadLayout()) {
     stopColour(colour) {
       runRoot(layout2, ["systemctl", "stop", colourUnit(colour)]);
     },
+    activateColour(colour) {
+      const old = colour === "blue" ? "green" : "blue";
+      runRoot(layout2, ["systemctl", "enable", colourUnit(colour)]);
+      runRoot(layout2, ["systemctl", "disable", colourUnit(old)]);
+      const activeFile = path3.join(path3.dirname(layout2.maintenanceFile), "active");
+      const tmp = `${activeFile}.tmp`;
+      fs4.writeFileSync(tmp, `${colour}
+`, { mode: 420 });
+      fs4.renameSync(tmp, activeFile);
+    },
     pause(ms) {
       if (ms <= 0) return;
       Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
@@ -1777,9 +1804,12 @@ ${maintenanceToken}
 `, {
           mode: 420
         });
-      } else if (fs4.existsSync(layout2.maintenanceFile)) {
+      } else {
         maintenanceToken = null;
-        fs4.rmSync(layout2.maintenanceFile);
+        fs4.rmSync(layout2.maintenanceFile, { force: true });
+        for (const colour of ["blue", "green"]) {
+          fs4.rmSync(path3.join(dir2, `quiesce-${colour}.json`), { force: true });
+        }
       }
     },
     waitUntilQuiescent(colours) {

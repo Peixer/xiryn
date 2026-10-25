@@ -49,7 +49,7 @@ test("a re-run installs the helper before it reports blue/green is already insta
   const marker = 'echo "Blue/green is already installed'
   const at = src.indexOf(marker)
   assert.notEqual(at, -1)
-  const blockStart = src.lastIndexOf('if [[ -f "$ACTIVE"', at)
+  const blockStart = src.lastIndexOf('if [[ ( -f "$ACTIVE"', at)
   assert.notEqual(blockStart, -1)
   const block = src.slice(blockStart, at)
   assert.match(block, /\n\s*install_helper\n/)

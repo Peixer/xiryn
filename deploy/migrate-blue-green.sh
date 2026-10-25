@@ -16,7 +16,7 @@ VAULT=/etc/xiryn/vault
 DEPLOY=/var/lib/xiryn/deploy
 STATE_FILE="${XIRYN_STATE_FILE:-$DEPLOY/state.json}"
 CONF=/etc/xiryn-deploy.conf
-ACTIVE=/etc/xiryn/active
+ACTIVE="${XIRYN_ACTIVE_FILE:-/etc/xiryn/active}"
 SRC="$(cd "$(dirname "$0")" && pwd)"
 
 # Production .env names XIRYN_DATA_DIR=/opt/xiryn/data. That path is shared and
@@ -305,6 +305,52 @@ if [[ "${XIRYN_HELPER_ONLY:-}" == "1" ]]; then
   exit 0
 fi
 
+# state.json controls worker ownership. Prefer it over the legacy label,
+# which older helpers did not refresh on cutover.
+installed_colour() {
+  local colour
+  colour="$(node -e '
+    try {
+      const state = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"));
+      if (state.active === "blue" || state.active === "green") process.stdout.write(state.active);
+    } catch {}
+  ' "$STATE_FILE")"
+  if [[ -z "$colour" && -f "$ACTIVE" ]]; then
+    colour="$(tr -d '[:space:]' < "$ACTIVE")"
+  fi
+  if [[ "$colour" != blue && "$colour" != green ]]; then
+    echo "Cannot determine the serving colour. Check $STATE_FILE and $ACTIVE." >&2
+    return 1
+  fi
+  printf '%s' "$colour"
+}
+
+if [[ "${XIRYN_ACTIVE_ONLY:-}" == 1 ]]; then
+  installed_colour
+  exit $?
+fi
+
+# Tailscale Serve owns the tailnet listener and forwards to Caddy on :8088.
+# Order their startup without changing the serving Caddyfile on an upgrade.
+install_caddy_ordering() {
+  local dest="${XIRYN_CADDY_DROPIN_DIR:-/etc/systemd/system/caddy.service.d}"
+  install -d -m 0755 "$dest"
+  install -m 0644 "$SRC/caddy-tailscale.conf" "$dest/10-tailscale.conf"
+}
+
+enable_active_colour() {
+  local colour="$1" other=green
+  [[ "$colour" == green ]] && other=blue
+  systemctl enable "xiryn-${colour}.service"
+  systemctl disable "xiryn-${other}.service"
+}
+
+if [[ "${XIRYN_ENABLE_ONLY:-}" == blue || "${XIRYN_ENABLE_ONLY:-}" == green ]]; then
+  install_caddy_ordering
+  enable_active_colour "$XIRYN_ENABLE_ONLY"
+  exit 0
+fi
+
 if [[ "$(id -u)" -ne 0 ]]; then
   echo "Run this as root: sudo bash deploy/migrate-blue-green.sh" >&2
   exit 1
@@ -377,12 +423,14 @@ install_runtime_dirs() {
 install_colour_files() {
   install -d -m 0755 /etc/xiryn
   write_colour_env
+  install_caddy_ordering
   install -m 0644 "$SRC/xiryn-blue.service" /etc/systemd/system/xiryn-blue.service
   install -m 0644 "$SRC/xiryn-green.service" /etc/systemd/system/xiryn-green.service
   strip_colour_env
 }
 
-if [[ -f "$ACTIVE" && -d "$BLUE" && -f /etc/systemd/system/xiryn-blue.service ]]; then
+if [[ ( -f "$ACTIVE" || -f "$STATE_FILE" ) && -d "$BLUE" && -f /etc/systemd/system/xiryn-blue.service ]]; then
+  active="$(installed_colour)"
   ensure_mirror
   install -d -o xiryn -g xiryn -m 0700 "$GREEN_DATA"
   install -d -m 0755 "$GREEN"
@@ -390,19 +438,16 @@ if [[ -f "$ACTIVE" && -d "$BLUE" && -f /etc/systemd/system/xiryn-blue.service ]]
   install_colour_files
   install -m 0644 "$SRC/xiryn-deploy.service" /etc/systemd/system/xiryn-deploy.service
   install_helper
-  active="$(tr -d '[:space:]' < "$ACTIVE")"
   tree="$BLUE"
-  if [[ "$active" == "green" ]]; then
-    tree="$GREEN"
-  fi
-  if [[ "$active" != "blue" && "$active" != "green" ]]; then
-    active=blue
-    tree="$BLUE"
-  fi
+  [[ "$active" == green ]] && tree="$GREEN"
+  printf '%s\n' "$active" > "${ACTIVE}.tmp"
+  chmod 644 "${ACTIVE}.tmp"
+  mv -f "${ACTIVE}.tmp" "$ACTIVE"
   if ! write_install_state "$(deployed_sha "$tree")" "$active"; then
     echo "The update screen still has no commit. The colour was left running." >&2
   fi
   systemctl daemon-reload
+  enable_active_colour "$active"
   refresh_deploy_path
   echo "Blue/green is already installed (active: ${active})."
   echo "Replaced the root helper, the lock script, and the root-owned better-sqlite3 under /usr/local/lib/xiryn."
@@ -547,7 +592,8 @@ if [[ -f /etc/caddy/Caddyfile && ! -f /etc/caddy/Caddyfile.pre-bluegreen ]]; the
 fi
 
 systemctl daemon-reload
-systemctl enable xiryn-blue.service xiryn-deploy.path
+enable_active_colour blue
+systemctl enable xiryn-deploy.path
 systemctl start xiryn-deploy.path
 
 echo "Restarting onto blue. The old unit stops only after blue is enabled."
@@ -557,7 +603,8 @@ systemctl restart xiryn-blue.service
 # Up to 90s. Next can take a while to listen after a cold start.
 for _ in $(seq 1 45); do
   if curl -fsS --max-time 3 -H 'Host: 127.0.0.1' http://127.0.0.1:6796/api/health >/dev/null; then
-    echo blue > "$ACTIVE"
+    printf 'blue\n' > "${ACTIVE}.tmp"
+    mv -f "${ACTIVE}.tmp" "$ACTIVE"
     chmod 644 "$ACTIVE"
     echo "Blue answered /api/health."
     echo "Point Caddy at the snippet in deploy/Caddyfile.bluegreen, then: systemctl reload caddy"
@@ -568,6 +615,7 @@ for _ in $(seq 1 45); do
 done
 
 echo "Blue did not become healthy. Re-enabling the previous unit." >&2
+systemctl disable --now xiryn-blue.service || true
 systemctl enable xiryn.service || true
 systemctl start xiryn.service || true
 exit 1
