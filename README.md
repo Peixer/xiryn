@@ -3,7 +3,7 @@
 </p>
 
 <h1 align="center">Xiryn</h1>
-
+    fd
 <p align="center">
   <strong>The open-source personal agent. It does everything Muse, Grok Bot and Dots do — on your own computer.</strong><br>
   Each agent gets its own Linux desktop in Docker, so it works in the background and never interrupts what you're doing on your laptop.<br>
