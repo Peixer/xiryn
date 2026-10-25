@@ -24,6 +24,11 @@ import {
 } from "@/lib/mcp/approval"
 import { clip } from "@/lib/mcp/approval-preview"
 import { answerPayment, answerSecret, type VaultMarker } from "@/lib/vault-requests"
+import { backgroundWorkAllowed } from "@/lib/self-update/duty-gate"
+import {
+  isRollbackRequest,
+  rollbackCallbackDecision,
+} from "@/lib/self-update/rollback-confirm"
 import { getTakeoverLink } from "@/lib/workstation"
 import { resolveModelSpec } from "@/lib/providers/registry"
 import {
@@ -68,6 +73,8 @@ type BridgeState = {
   rejected: string | null
   // Wrong pairing codes since the last rotation
   failedPairs: number
+  // False while this process is not the active colour.
+  polling: boolean
   // A one-time code an agent asked for: the next reply is stored, not sent
   awaitingCode?: {
     threadId: string
@@ -89,6 +96,7 @@ const state = (globalForBridge.__xirynTelegram ??= {
   rejected: null,
   failedPairs: 0,
   awaitingCode: null,
+  polling: true,
 } as BridgeState)
 
 const COMMANDS = [
@@ -163,9 +171,26 @@ export type TelegramStatus = ReturnType<typeof telegramStatus>
 
 /* ─────────────────────────── lifecycle ────────────────────────── */
 
+// The idle colour must not poll. Settings and boot both come through here.
+export function setTelegramPolling(enabled: boolean) {
+  state.polling = enabled
+  if (!enabled) {
+    state.generation++
+    state.controller?.abort()
+    state.controller = null
+    return
+  }
+  syncTelegram()
+}
+
 // Starts, restarts or stops polling so it matches the configured token.
 // Safe to call any number of times.
 export function syncTelegram() {
+  if (!backgroundWorkAllowed()) {
+    if (state.polling !== false) setTelegramPolling(false)
+    return
+  }
+  if (state.polling === false) return
   const token = getSetting("telegram.botToken") ?? null
   if (token === state.token && (state.controller || !token || state.rejected === token))
     return
@@ -531,9 +556,12 @@ async function handleCallback(token: string, query: TgCallbackQuery) {
   }
   const pay = query.data?.match(/^pay:([\w-]+):([\w-]+)$/)
   if (pay) return handlePayment(token, query, pay[1], pay[2])
-  const act = query.data?.match(/^act:([\w-]+):(yes|no)$/)
-  if (act)
-    return handleAction(token, query, act[1], act[2] === "yes" ? "approve" : "decline")
+  const act = query.data?.match(/^act:([\w-]+):(yes|no|discard)$/)
+  if (act) {
+    const verb = act[2]
+    if (verb !== "yes" && verb !== "no" && verb !== "discard") return
+    return handleAction(token, query, act[1], verb)
+  }
   const match = query.data?.match(/^use:(a|s):(.+)$/)
   if (!match) return
   const [, kind, id] = match
@@ -1202,6 +1230,7 @@ export async function notifyAction({
   const owner = ownerId()
   if (!token || !owner) return
   const inApp = threadLink(approval.threadId, agent.id, squadId)
+  const rollback = isRollbackRequest(approval.tool, approval.args)
   const sent = await callTelegram<TgMessage>(token, "sendMessage", {
     chat_id: owner,
     parse_mode: "HTML",
@@ -1209,13 +1238,18 @@ export async function notifyAction({
       `<b>${escape(agent.name)}</b> wants to do this`,
       fitTelegram(escape(approvalCardText(approval))),
       "",
-      "Nothing is sent until you approve.",
+      rollback
+        ? "Approving discards data written since the switch."
+        : "Nothing is sent until you approve.",
       `<a href="${escape(inApp)}">Open in Xiryn</a>`,
     ].join("\n"),
     reply_markup: {
       inline_keyboard: [
         [
-          { text: "Approve", callback_data: `act:${approval.id}:yes` },
+          {
+            text: rollback ? "Discard and roll back" : "Approve",
+            callback_data: `act:${approval.id}:${rollback ? "discard" : "yes"}`,
+          },
           { text: "Decline", callback_data: `act:${approval.id}:no` },
         ],
       ],
@@ -1239,9 +1273,22 @@ async function handleAction(
   token: string,
   query: TgCallbackQuery,
   approvalId: string,
-  choice: "approve" | "decline"
+  verb: "yes" | "no" | "discard"
 ) {
   const chatId = query.message?.chat.id
+  const pending = getActionApproval(approvalId)
+  const decision = rollbackCallbackDecision({
+    isRollback: pending ? isRollbackRequest(pending.tool, pending.args) : false,
+    verb,
+  })
+  if (!decision.ok) {
+    await callTelegram(token, "answerCallbackQuery", {
+      callback_query_id: query.id,
+      text: decision.error.slice(0, 190),
+    }).catch(() => {})
+    return
+  }
+  const choice = decision.choice
   let outcome: ReturnType<typeof answerAction>
   try {
     outcome = answerAction(approvalId, choice)

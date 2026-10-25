@@ -23,7 +23,10 @@ test("prepare, build, switch, and roll back walk the documented phases", () => {
   assert.equal(state.maintenance, true)
   assert.equal(state.active, "blue")
 
-  state = transition(state, { type: "switch_ok" })
+  state = transition(state, {
+    type: "switch_ok",
+    at: "2026-10-24T08:00:00.000Z",
+  })
   assert.equal(state.phase, "active")
   assert.equal(state.active, "green")
   assert.equal(state.activeSha, SHA_B)
@@ -31,6 +34,7 @@ test("prepare, build, switch, and roll back walk the documented phases", () => {
   assert.equal(state.previousSha, SHA_A)
   assert.equal(state.maintenance, false)
   assert.equal(state.candidate, null)
+  assert.equal(state.switchedAt, "2026-10-24T08:00:00.000Z")
 
   state = transition(state, { type: "rollback_begin" })
   assert.equal(state.phase, "switching")
@@ -40,6 +44,7 @@ test("prepare, build, switch, and roll back walk the documented phases", () => {
   assert.equal(state.activeSha, SHA_A)
   assert.equal(state.candidate, "green")
   assert.equal(state.candidateSha, SHA_B)
+  assert.equal(state.switchedAt, null)
 })
 
 test("a failed health check after switch lands on rolled_back without changing colour", () => {
@@ -79,6 +84,20 @@ test("switch and rollback are refused from the wrong phase", () => {
       }),
     TransitionError
   )
+})
+
+test("switch_ok rejects a timestamp that is not UTC", () => {
+  let state = transition(initialState({ activeSha: SHA_A }), {
+    type: "prepare",
+    sha: SHA_B,
+  })
+  state = transition(state, { type: "build_ok" })
+  state = transition(state, { type: "switch_begin" })
+  assert.throws(
+    () => transition(state, { type: "switch_ok", at: "yesterday" }),
+    TransitionError
+  )
+  assert.equal(transition(state, { type: "switch_ok" }).switchedAt, null)
 })
 
 test("aborting a switch before the proxy moves returns to ready", () => {

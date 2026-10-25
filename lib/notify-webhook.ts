@@ -364,3 +364,8 @@ export function startNotifyWebhook() {
   )
   globalForNotify.__xirynNotifyWebhook = { unsubscribe }
 }
+
+export function stopNotifyWebhook() {
+  globalForNotify.__xirynNotifyWebhook?.unsubscribe()
+  globalForNotify.__xirynNotifyWebhook = undefined
+}

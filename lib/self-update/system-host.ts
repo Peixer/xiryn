@@ -2,6 +2,8 @@ import { execFileSync } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
 
+import Database from "better-sqlite3"
+
 import { formatAudit } from "@/lib/self-update/audit"
 import { commandAllowed, serviceArgv, serviceUserName } from "@/lib/self-update/allowlist"
 import { summarizeChangelog } from "@/lib/self-update/changelog"
@@ -15,7 +17,9 @@ import {
 } from "@/lib/self-update/layout"
 import { redact, redactError } from "@/lib/self-update/redact"
 import { isSha } from "@/lib/self-update/sha"
+import { dutyIsAware } from "@/lib/self-update/duty"
 import { initialState, type DeployState } from "@/lib/self-update/state"
+import { waitForQuiescence } from "@/lib/self-update/write-freeze"
 import type { Host } from "@/lib/self-update/helper"
 
 function serviceAccount() {
@@ -150,6 +154,8 @@ export function createSystemHost(layout = loadLayout()): Host {
   const progressFile = path.join(dir, "progress.jsonl")
   const auditDir = path.join(dir, "audit")
   let caddyBackup: string | null = null
+  let maintenanceToken: string | null = null
+  let writer: Database.Database | null = null
 
   const writeState = (state: DeployState) => {
     fs.mkdirSync(dir, { recursive: true, mode: 0o755 })
@@ -305,6 +311,10 @@ export function createSystemHost(layout = loadLayout()): Host {
     stopColour(colour) {
       runRoot(layout, ["systemctl", "stop", colourUnit(colour)])
     },
+    pause(ms) {
+      if (ms <= 0) return
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
+    },
     health(colour) {
       const port = colour === "blue" ? layout.bluePort : layout.greenPort
       try {
@@ -336,13 +346,61 @@ export function createSystemHost(layout = loadLayout()): Host {
     },
     setMaintenance(on) {
       if (on) {
+        maintenanceToken = String(Date.now())
         fs.mkdirSync(path.dirname(layout.maintenanceFile), {
           recursive: true,
           mode: 0o755,
         })
-        fs.writeFileSync(layout.maintenanceFile, "read-only\n", { mode: 0o644 })
+        fs.writeFileSync(layout.maintenanceFile, `read-only\n${maintenanceToken}\n`, {
+          mode: 0o644,
+        })
       } else if (fs.existsSync(layout.maintenanceFile)) {
+        maintenanceToken = null
         fs.rmSync(layout.maintenanceFile)
+      }
+    },
+    waitUntilQuiescent(colours) {
+      const now = Date.now()
+      const waiting = colours.filter((colour) => dutyIsAware(dir, colour, now))
+      if (waiting.length === 0) return
+      const ready = waitForQuiescence({
+        acks: waiting.map((colour) => ({
+          file: path.join(dir, `quiesce-${colour}.json`),
+          token: maintenanceToken,
+        })),
+        timeoutMs: 25_000,
+        sleep: (ms) => this.pause(ms),
+        now: () => Date.now(),
+      })
+      if (!ready) {
+        this.progress(
+          "quiesce",
+          "In-flight work did not finish in time. Writers stay blocked until the snapshot is done."
+        )
+      }
+    },
+    freezeWrites(colour) {
+      if (writer) return
+      const dbPath = path.join(colourData(layout, colour), "xiryn.db")
+      if (!fs.existsSync(dbPath)) return
+      const db = new Database(dbPath)
+      try {
+        db.pragma("busy_timeout = 30000")
+        db.exec("BEGIN IMMEDIATE")
+      } catch (error) {
+        db.close()
+        throw error
+      }
+      writer = db
+    },
+    unfreezeWrites() {
+      if (!writer) return
+      const db = writer
+      writer = null
+      try {
+        db.exec("ROLLBACK")
+      } finally {
+        db.close()
       }
     },
     pointCaddy(active) {
@@ -368,7 +426,7 @@ export function createSystemHost(layout = loadLayout()): Host {
       }
     },
     backup(label) {
-      if (label !== "prepare" && label !== "switch") {
+      if (label !== "prepare" && label !== "switch" && label !== "rollback") {
         throw new Error("Refusing a backup label outside the allow-list.")
       }
       const stamp = new Date().toISOString().replace(/[:.]/g, "-")

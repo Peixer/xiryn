@@ -7,6 +7,7 @@ import { startTurn, subscribe, TurnError } from "@/lib/agent/runtime"
 import type { XirynMessage } from "@/lib/agent/tools"
 import { routineRunPrompt } from "@/lib/hooks"
 import { nextRun } from "@/lib/schedule"
+import { backgroundWorkAllowed } from "@/lib/self-update/duty-gate"
 
 // Runs routines when they're due. Xiryn has to be running for that: a run
 // missed by a few hours (the computer was asleep) still happens when it's
@@ -17,9 +18,17 @@ const CATCH_UP = 6 * 3_600_000
 const RETRY_BUSY = 5 * 60_000
 
 const globalForRoutines = globalThis as unknown as {
-  __xirynRoutines?: { timer: ReturnType<typeof setInterval> | null; running: Set<string> }
+  __xirynRoutines?: {
+    timer: ReturnType<typeof setInterval> | null
+    running: Set<string>
+    epoch: number
+  }
 }
-const state = (globalForRoutines.__xirynRoutines ??= { timer: null, running: new Set() })
+const state = (globalForRoutines.__xirynRoutines ??= {
+  timer: null,
+  running: new Set(),
+  epoch: 0,
+})
 
 function update(id: string, values: Partial<Routine>) {
   db.update(routines).set(values).where(eq(routines.id, id)).run()
@@ -133,6 +142,10 @@ export function isRoutineRunning(id: string) {
   return state.running.has(id)
 }
 
+export function routinesBusy() {
+  return state.running.size > 0
+}
+
 async function tick() {
   const now = new Date()
   const due = db
@@ -169,10 +182,20 @@ async function tick() {
 }
 
 export function startRoutines() {
+  if (!backgroundWorkAllowed()) return
   if (state.timer) return
-  state.timer = setInterval(() => {
+  const epoch = state.epoch ?? 0
+  const run = () => {
+    if ((state.epoch ?? 0) !== epoch) return
     tick().catch((error) => console.error("[xiryn] routines:", error))
-  }, TICK)
+  }
+  state.timer = setInterval(run, TICK)
   state.timer.unref?.()
-  tick().catch((error) => console.error("[xiryn] routines:", error))
+  run()
+}
+
+export function stopRoutines() {
+  state.epoch = (state.epoch ?? 0) + 1
+  if (state.timer) clearInterval(state.timer)
+  state.timer = null
 }

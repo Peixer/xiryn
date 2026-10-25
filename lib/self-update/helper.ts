@@ -1,9 +1,9 @@
 import {
   gateSelfUpdate,
-  publicOp,
   type GateApproval,
   type SelfUpdateArgs,
 } from "@/lib/self-update/approval-gate"
+import { buildSelfUpdateArgs } from "@/lib/self-update/submit"
 import type { AuditEntry } from "@/lib/self-update/audit"
 import { migrationGap } from "@/lib/self-update/migrations"
 import { validatePinnedSha } from "@/lib/self-update/sha"
@@ -41,9 +41,16 @@ export type Host = {
   migrate(colour: Colour): MigrateReport
   startColour(colour: Colour): void
   stopColour(colour: Colour): void
+  // Short wait while a colour that was just started answers /api/health.
+  pause(ms: number): void
   health(colour: Colour): { ok: boolean; status: string }
   smoke(colour: Colour): { ok: boolean; detail: string }
   setMaintenance(on: boolean): void
+  // Colours running this build publish a beat and an ack. Others are skipped.
+  waitUntilQuiescent(colours: Colour[]): void
+  // Reserved lock on that colour's database. Held across the snapshot.
+  freezeWrites(colour: Colour): void
+  unfreezeWrites(): void
   pointCaddy(active: Colour): void
   reloadCaddy(): void
   restoreCaddy(): void
@@ -87,19 +94,7 @@ function argsFor(
   state: DeployState,
   sha: string
 ): SelfUpdateArgs {
-  const to =
-    request.op === "rollback"
-      ? state.previous
-      : request.op === "switch"
-        ? state.candidate
-        : state.candidate
-  return {
-    op: publicOp(request.op === "status" ? "prepare" : request.op),
-    sha,
-    from: state.active,
-    to: (to ?? state.active) as Colour,
-    branch: state.branch,
-  }
+  return buildSelfUpdateArgs(state, request.op === "status" ? "prepare" : request.op, sha)
 }
 
 function approvalOf(row: ApprovalRow | null): GateApproval | null {
@@ -111,6 +106,34 @@ function approvalOf(row: ApprovalRow | null): GateApproval | null {
     status: row.status,
     expiresAt: row.expiresAt,
   }
+}
+
+function releaseFreeze(host: Host, frozen: { on: boolean }) {
+  if (!frozen.on) return
+  frozen.on = false
+  try {
+    host.unfreezeWrites()
+  } catch (error) {
+    note(host, "freeze", redactError(error))
+  }
+}
+
+function stopQuietly(host: Host, colour: Colour) {
+  try {
+    host.stopColour(colour)
+  } catch (error) {
+    note(host, "stop", `Could not stop ${colour}: ${redactError(error)}`)
+  }
+}
+
+function awaitHealthy(host: Host, colour: Colour) {
+  let last = { ok: false, status: "down" }
+  for (let attempt = 0; attempt < 8; attempt++) {
+    last = host.health(colour)
+    if (last.ok) return last
+    host.pause(400)
+  }
+  return last
 }
 
 function failBuild(host: Host, state: DeployState, error: string) {
@@ -339,14 +362,21 @@ export function runSwitch(host: Host, request: HelperRequest) {
     error: null,
   })
   const candidate = switching.candidate!
+  const frozen = { on: false }
   try {
     note(host, "maintenance", "The active colour is read-only.")
+    note(host, "quiesce", "Waiting until the live database stops changing.")
+    host.waitUntilQuiescent([switching.active, candidate])
+    note(host, "freeze", "Blocking writers for the snapshot.")
+    host.freezeWrites(switching.active)
+    frozen.on = true
     host.backup("switch")
     note(host, "snapshot", "Taking the final database snapshot.")
     host.snapshotDb(switching.active, candidate)
     const report = host.migrate(candidate)
     const gap = migrationGap(report)
     if (!gap.ok) {
+      releaseFreeze(host, frozen)
       host.setMaintenance(false)
       const aborted = transition(host.readState(), {
         type: "switch_abort",
@@ -377,6 +407,7 @@ export function runSwitch(host: Host, request: HelperRequest) {
       )
       host.restoreCaddy()
       host.reloadCaddy()
+      releaseFreeze(host, frozen)
       host.setMaintenance(false)
       const rolled = transition(host.readState(), { type: "switch_fail", error })
       host.writeState(rolled)
@@ -396,9 +427,22 @@ export function runSwitch(host: Host, request: HelperRequest) {
       })
       return { ok: false as const, error }
     }
-    host.setMaintenance(false)
-    const active = transition(host.readState(), { type: "switch_ok" })
+    const active = transition(host.readState(), {
+      type: "switch_ok",
+      at: new Date(host.now()).toISOString(),
+    })
     host.writeState(active)
+    // Maintenance is still on, so the new colour has not started workers.
+    // Stop the outgoing process before lifting it: an older build does not
+    // read deploy state and would keep polling Telegram.
+    note(
+      host,
+      "stop",
+      `Stopping ${switching.active}. Only ${candidate} runs background work.`
+    )
+    stopQuietly(host, switching.active)
+    releaseFreeze(host, frozen)
+    host.setMaintenance(false)
     record(host, active, {
       op: "switch",
       result: "ok",
@@ -406,7 +450,7 @@ export function runSwitch(host: Host, request: HelperRequest) {
       sha,
       error: null,
     })
-    note(host, "active", `${candidate} is serving. The previous colour is still running.`)
+    note(host, "active", `${candidate} is serving.`)
     return { ok: true as const }
   } catch (error) {
     const message = redactError(error)
@@ -416,6 +460,7 @@ export function runSwitch(host: Host, request: HelperRequest) {
     } catch {
       // The audit line records the original failure. The proxy file is the backup.
     }
+    releaseFreeze(host, frozen)
     host.setMaintenance(false)
     const current = host.readState()
     const rolled =
@@ -483,15 +528,25 @@ export function runRollback(host: Host, request: HelperRequest) {
     error: null,
   })
   const previous = switching.previous!
+  const outgoing = switching.active
+  let started = false
+  const frozen = { on: false }
   try {
-    note(host, "caddy", `Pointing the proxy back at ${previous}.`)
-    host.pointCaddy(previous)
-    host.reloadCaddy()
-    const health = host.health(previous)
+    note(host, "quiesce", "Waiting until the live database stops changing.")
+    host.waitUntilQuiescent([outgoing])
+    host.freezeWrites(outgoing)
+    frozen.on = true
+    let health = host.health(previous)
+    if (!health.ok) {
+      note(host, "start", `Starting ${previous}.`)
+      started = true
+      host.startColour(previous)
+      health = awaitHealthy(host, previous)
+    }
     if (!health.ok) {
       const error = `Health check failed (${health.status}).`
-      host.restoreCaddy()
-      host.reloadCaddy()
+      if (started) stopQuietly(host, previous)
+      releaseFreeze(host, frozen)
       host.setMaintenance(false)
       const stayed = transition(host.readState(), { type: "rollback_fail", error })
       host.writeState(stayed)
@@ -504,9 +559,36 @@ export function runRollback(host: Host, request: HelperRequest) {
       })
       return { ok: false as const, error }
     }
-    host.setMaintenance(false)
+    note(host, "backup", "Keeping a backup of the database rollback will stop serving.")
+    host.backup("rollback")
+    note(host, "caddy", `Pointing the proxy back at ${previous}.`)
+    host.pointCaddy(previous)
+    host.reloadCaddy()
+    health = awaitHealthy(host, previous)
+    if (!health.ok) {
+      const error = `Health check failed (${health.status}).`
+      host.restoreCaddy()
+      host.reloadCaddy()
+      if (started) stopQuietly(host, previous)
+      releaseFreeze(host, frozen)
+      host.setMaintenance(false)
+      const stayed = transition(host.readState(), { type: "rollback_fail", error })
+      host.writeState(stayed)
+      record(host, stayed, {
+        op: "rollback",
+        result: "failed",
+        actor: "helper",
+        sha,
+        error,
+      })
+      return { ok: false as const, error }
+    }
     const rolled = transition(host.readState(), { type: "rollback_ok" })
     host.writeState(rolled)
+    note(host, "stop", `Stopping ${outgoing}. Only ${previous} runs background work.`)
+    stopQuietly(host, outgoing)
+    releaseFreeze(host, frozen)
+    host.setMaintenance(false)
     record(host, rolled, {
       op: "rollback",
       result: "ok",
@@ -524,6 +606,8 @@ export function runRollback(host: Host, request: HelperRequest) {
     } catch {
       // recorded below
     }
+    if (started) stopQuietly(host, previous)
+    releaseFreeze(host, frozen)
     host.setMaintenance(false)
     const current = host.readState()
     const stayed =

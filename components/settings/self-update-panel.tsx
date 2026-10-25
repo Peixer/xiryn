@@ -5,6 +5,7 @@ import { CheckIcon, XIcon } from "lucide-react"
 
 import { decideSelfUpdate, stageSelfUpdate, startSelfUpdate } from "@/actions/self-update"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Spinner } from "@/components/ui/spinner"
 import type { SelfUpdateView } from "@/lib/self-update/status"
 import { cn } from "@/lib/utils"
@@ -27,7 +28,9 @@ export function SelfUpdatePanel({
     op: "switch" | "rollback"
     approvalId: string
     summary: string
+    impact: string | null
   } | null>(null)
+  const [confirmDiscard, setConfirmDiscard] = React.useState(false)
   const cardRef = React.useRef<HTMLDivElement>(null)
 
   React.useEffect(() => {
@@ -75,6 +78,7 @@ export function SelfUpdatePanel({
   const stage = async (op: "switch" | "rollback") => {
     setBusy(op)
     setError(null)
+    setConfirmDiscard(false)
     const result = await stageSelfUpdate(op)
     setBusy(null)
     if (!result.ok) {
@@ -86,7 +90,12 @@ export function SelfUpdatePanel({
       return
     }
     if ("approvalId" in result && result.approvalId && result.summary) {
-      setCard({ op, approvalId: result.approvalId, summary: result.summary })
+      setCard({
+        op,
+        approvalId: result.approvalId,
+        summary: result.summary,
+        impact: result.impact ?? null,
+      })
     }
   }
 
@@ -186,16 +195,32 @@ export function SelfUpdatePanel({
           <pre className="font-sans text-[15px] leading-relaxed break-words whitespace-pre-wrap">
             {card.summary}
           </pre>
+          {card.op === "rollback" && card.impact && (
+            <p className="text-[13px] leading-relaxed break-words whitespace-pre-wrap">
+              {card.impact}
+            </p>
+          )}
+          {card.op === "rollback" && (
+            <label className="flex items-start gap-2 text-[13px] leading-relaxed">
+              <Checkbox
+                checked={confirmDiscard}
+                onCheckedChange={(checked) => setConfirmDiscard(checked === true)}
+                className="mt-0.5"
+              />
+              <span>Discard data written since the switch</span>
+            </label>
+          )}
           <div className="flex flex-col gap-2 sm:flex-row">
             <Button
               className="min-h-12"
-              disabled={!!busy}
+              disabled={!!busy || (card.op === "rollback" && !confirmDiscard)}
               onClick={() =>
                 run("approve", async () => {
                   const result = await decideSelfUpdate(
                     card.approvalId,
                     "approve",
-                    card.op
+                    card.op,
+                    card.op === "rollback" ? confirmDiscard : undefined
                   )
                   if (result.ok) setCard(null)
                   return result

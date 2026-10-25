@@ -40,15 +40,19 @@ function harness(start: DeployState, behaviour: Partial<Host> = {}) {
     installAndBuild: () => calls.push("build"),
     snapshotDb: () => calls.push("snapshot"),
     migrate: () => ({ journalCount: 10, appliedCount: 10 }),
-    startColour: () => calls.push("start"),
-    stopColour: () => calls.push("stop"),
+    startColour: (colour) => calls.push(`start:${colour}`),
+    stopColour: (colour) => calls.push(`stop:${colour}`),
+    pause: () => {},
     health: () => ({ ok: true, status: "ok" }),
     smoke: () => ({ ok: true, detail: "ok" }),
     setMaintenance: (on) => calls.push(on ? "maintenance-on" : "maintenance-off"),
+    waitUntilQuiescent: () => calls.push("quiesce"),
+    freezeWrites: () => calls.push("freeze"),
+    unfreezeWrites: () => calls.push("unfreeze"),
     pointCaddy: (colour) => calls.push(`caddy:${colour}`),
     reloadCaddy: () => calls.push("reload"),
     restoreCaddy: () => calls.push("restore"),
-    backup: () => calls.push("backup"),
+    backup: (label) => calls.push(`backup:${label}`),
     readApproval: () => null,
     takeApproval: (id) => {
       const read = behaviour.readApproval ?? (() => null)
@@ -180,6 +184,15 @@ test("a failed post-switch health check restores the proxy", () => {
   assert.equal(box.state().phase, "rolled_back")
   assert.equal(box.state().active, "blue")
   assert.equal(box.state().maintenance, false)
+  assert.equal(
+    box.calls.some((call) => call.startsWith("stop:")),
+    false
+  )
+  const freeze = box.calls.indexOf("freeze")
+  const snapshot = box.calls.indexOf("snapshot")
+  const unfreeze = box.calls.indexOf("unfreeze")
+  const opened = box.calls.lastIndexOf("maintenance-off")
+  assert.ok(freeze >= 0 && freeze < snapshot && snapshot < unfreeze && unfreeze < opened)
 })
 
 test("an approved switch leaves the previous colour recorded for rollback", () => {
@@ -216,6 +229,107 @@ test("an approved switch leaves the previous colour recorded for rollback", () =
   assert.equal(box.state().phase, "active")
   assert.equal(box.state().active, "green")
   assert.equal(box.state().previous, "blue")
+  assert.equal(box.state().switchedAt, "2026-10-24T08:00:00.000Z")
+  const stopped = box.calls.indexOf("stop:blue")
+  const opened = box.calls.lastIndexOf("maintenance-off")
+  const quiesce = box.calls.indexOf("quiesce")
+  const freeze = box.calls.indexOf("freeze")
+  const snapshot = box.calls.indexOf("snapshot")
+  const unfreeze = box.calls.indexOf("unfreeze")
+  assert.ok(quiesce >= 0 && quiesce < freeze && freeze < snapshot)
+  assert.ok(snapshot < stopped && stopped < unfreeze && unfreeze < opened)
+  assert.equal(box.calls.includes("stop:green"), false)
+})
+
+function approvedRollback(discardSince: string | null = null) {
+  const args = {
+    op: "rollback" as const,
+    sha: ACTIVE,
+    from: "green" as const,
+    to: "blue" as const,
+    branch: "main",
+    discardSince,
+  }
+  return {
+    tool: "request_self_update",
+    args: canonicalArgs(args),
+    argsHash: approvalArgsHash(args),
+    status: "approved",
+    expiresAt: Date.parse("2026-10-24T09:00:00.000Z"),
+  }
+}
+
+test("rollback starts a stopped previous colour and then stops the one it leaves", () => {
+  let up = false
+  const box = harness(
+    initialState({
+      phase: "active",
+      baseline: "active",
+      active: "green",
+      activeSha: TIP,
+      previous: "blue",
+      previousSha: ACTIVE,
+      branch: "main",
+      switchedAt: "2026-10-24T07:00:00.000Z",
+    }),
+    {
+      health: () => ({ ok: up, status: up ? "ok" : "down" }),
+      startColour: () => {
+        up = true
+        box.calls.push("start:blue")
+      },
+      readApproval: () => approvedRollback("2026-10-24T07:00:00.000Z"),
+    }
+  )
+  const result = runRollback(
+    box.host,
+    request({ op: "rollback", sha: ACTIVE, approvalId: "approval123" })
+  )
+  assert.equal(result.ok, true)
+  assert.equal(box.state().active, "blue")
+  const start = box.calls.indexOf("start:blue")
+  const caddy = box.calls.indexOf("caddy:blue")
+  const stop = box.calls.indexOf("stop:green")
+  const opened = box.calls.lastIndexOf("maintenance-off")
+  assert.ok(start >= 0 && start < caddy && caddy < stop && stop < opened)
+  const freeze = box.calls.indexOf("freeze")
+  const unfreeze = box.calls.indexOf("unfreeze")
+  const backup = box.calls.indexOf("backup:rollback")
+  assert.ok(freeze >= 0 && freeze < start && start < backup && backup < caddy)
+  assert.ok(stop < unfreeze && unfreeze < opened)
+  assert.equal(box.state().switchedAt, null)
+})
+
+test("a failed rollback stops a colour it had to start", () => {
+  const box = harness(
+    initialState({
+      phase: "active",
+      baseline: "active",
+      active: "green",
+      activeSha: TIP,
+      previous: "blue",
+      previousSha: ACTIVE,
+      branch: "main",
+    }),
+    {
+      health: () => ({ ok: false, status: "down" }),
+      readApproval: () => approvedRollback(),
+    }
+  )
+  const result = runRollback(
+    box.host,
+    request({ op: "rollback", sha: ACTIVE, approvalId: "approval123" })
+  )
+  assert.equal(result.ok, false)
+  assert.equal(box.state().active, "green")
+  assert.equal(box.calls.includes("start:blue"), true)
+  assert.equal(box.calls.includes("stop:blue"), true)
+  assert.equal(box.calls.includes("stop:green"), false)
+  assert.equal(box.state().maintenance, false)
+  assert.ok(box.calls.indexOf("unfreeze") > box.calls.indexOf("freeze"))
+  assert.ok(box.calls.indexOf("unfreeze") < box.calls.lastIndexOf("maintenance-off"))
+  assert.equal(box.calls.includes("backup:rollback"), false)
+  assert.equal(box.calls.includes("caddy:blue"), false)
 })
 
 test("rollback is refused without approval", () => {
@@ -272,4 +386,9 @@ test("switch refuses a final snapshot whose migrations were skipped", () => {
   assert.equal(box.calls.includes("caddy:green"), false)
   assert.equal(box.state().phase, "ready")
   assert.equal(box.state().active, "blue")
+  const freeze = box.calls.indexOf("freeze")
+  const unfreeze = box.calls.indexOf("unfreeze")
+  assert.ok(freeze >= 0 && freeze < unfreeze)
+  assert.equal(box.calls.filter((call) => call === "freeze").length, 1)
+  assert.equal(box.calls.filter((call) => call === "unfreeze").length, 1)
 })

@@ -9,6 +9,11 @@ import {
 } from "@/lib/agent/untrusted"
 import { getSetting, setSetting } from "@/lib/config"
 import { answerAction, approvalCardText, getActionApproval } from "@/lib/mcp/approval"
+import { formatDiscardImpact, loadDiscardImpact } from "@/lib/self-update/discard"
+import {
+  assertRollbackConfirmation,
+  isRollbackRequest,
+} from "@/lib/self-update/rollback-confirm"
 import { parseMcpConfig, readMcpConfig, writeMcpConfig } from "@/lib/mcp/config"
 import { driveAbout } from "@/lib/mcp/drive"
 import { disconnectGoogle, googleAccessToken, googleConnected } from "@/lib/mcp/google"
@@ -78,6 +83,7 @@ export async function connectorAction(approvalId: string) {
     summary: approval.summary,
     mode: parseWebApprovalMode(getSetting("security.webApproval")),
   })
+  const discardWarning = isRollbackRequest(approval.tool, approval.args)
   return {
     id: approval.id,
     tool: approval.tool,
@@ -90,15 +96,24 @@ export async function connectorAction(approvalId: string) {
     host: card.host,
     query: card.query,
     offerAllowDomain: card.offerAllowDomain,
+    discardWarning,
+    impact: discardWarning ? formatDiscardImpact(loadDiscardImpact()) : null,
   }
 }
 
 export async function decideConnectorAction(
   approvalId: string,
   choice: "approve" | "decline",
-  options?: { allowDomain?: boolean }
+  options?: { allowDomain?: boolean; confirmDiscard?: boolean }
 ) {
   try {
+    if (choice === "approve") {
+      const pending = getActionApproval(approvalId)
+      if (pending && isRollbackRequest(pending.tool, pending.args)) {
+        const refused = assertRollbackConfirmation("rollback", options?.confirmDiscard)
+        if (refused) return { ok: false as const, error: refused }
+      }
+    }
     const answer = answerAction(approvalId, choice)
     if (
       choice === "approve" &&

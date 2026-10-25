@@ -7,6 +7,8 @@ import { actionApprovals, threads } from "@/db/schema"
 import { decideAction, getActionApproval, requestOrTake } from "@/lib/mcp/approval"
 import { SELF_UPDATE_TOOL, type SelfUpdateArgs } from "@/lib/self-update/approval-gate"
 import type { HelperOp } from "@/lib/self-update/allowlist"
+import { formatDiscardImpact, loadDiscardImpact } from "@/lib/self-update/discard"
+import { assertRollbackConfirmation } from "@/lib/self-update/rollback-confirm"
 import { buildSelfUpdateArgs, submitSelfUpdate } from "@/lib/self-update/submit"
 import { deployDir, loadSelfUpdateView, readDeployState } from "@/lib/self-update/status"
 
@@ -118,13 +120,24 @@ export async function stageSelfUpdate(op: "switch" | "rollback") {
     ok: true as const,
     approvalId: gate.approval.id,
     summary: gate.approval.summary,
+    impact: op === "rollback" ? formatDiscardImpact(loadDiscardImpact()) : null,
+  }
+}
+
+function storedOp(args: string) {
+  try {
+    const parsed = JSON.parse(args) as { op?: unknown }
+    return typeof parsed.op === "string" ? parsed.op : null
+  } catch {
+    return null
   }
 }
 
 export async function decideSelfUpdate(
   approvalId: string,
   choice: "approve" | "decline",
-  op: "switch" | "rollback"
+  op: "switch" | "rollback",
+  confirmDiscard?: boolean
 ) {
   try {
     if (choice === "decline") {
@@ -138,6 +151,11 @@ export async function decideSelfUpdate(
     if (pending.status === "used") {
       return { ok: false as const, error: "This approval was already used." }
     }
+    if (storedOp(pending.args) !== op) {
+      return { ok: false as const, error: "That approval is not for this action." }
+    }
+    const refused = assertRollbackConfirmation(op, confirmDiscard)
+    if (refused) return { ok: false as const, error: refused }
     if (pending.status === "pending") decideAction(approvalId, "approved")
     else if (pending.status !== "approved") {
       return { ok: false as const, error: "Approve this exact version first." }

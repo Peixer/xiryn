@@ -392,16 +392,26 @@ function selfUpdatePreview(args: Record<string, unknown>) {
       : op === "rollback"
         ? "Roll back"
         : "Update"
-  return capCard(
-    [
-      verb,
-      `Branch: ${shown(oneLine(stringOf(args.branch)), FIELD_LIMIT)}`,
-      `Commit: ${shown(oneLine(stringOf(args.sha)), FIELD_LIMIT)}`,
-      `From: ${shown(oneLine(stringOf(args.from)), FIELD_LIMIT)}`,
-      `To: ${shown(oneLine(stringOf(args.to)), FIELD_LIMIT)}`,
-      "Nothing changes until you approve.",
-    ].join("\n")
-  )
+  const lines = [
+    verb,
+    `Branch: ${shown(oneLine(stringOf(args.branch)), FIELD_LIMIT)}`,
+    `Commit: ${shown(oneLine(stringOf(args.sha)), FIELD_LIMIT)}`,
+    `From: ${shown(oneLine(stringOf(args.from)), FIELD_LIMIT)}`,
+    `To: ${shown(oneLine(stringOf(args.to)), FIELD_LIMIT)}`,
+  ]
+  if (op === "rollback") {
+    const since = stringOf(args.discardSince)
+    lines.push(
+      since
+        ? `Data written since ${shown(oneLine(since), FIELD_LIMIT)} will be discarded.`
+        : "Data written since the switch will be discarded."
+    )
+    lines.push("Rows removed since then, including vault items, come back.")
+    lines.push("A backup of the database this rollback stops serving is kept.")
+    lines.push("Approve only if that loss is acceptable.")
+  }
+  lines.push("Nothing changes until you approve.")
+  return capCard(lines.join("\n"))
 }
 
 // Only the fields the person is approving. A secret is not one of them, and
