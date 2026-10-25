@@ -27,6 +27,29 @@ export const templateCategories: { id: TemplateCategory; label: string }[] = [
 ]
 
 export const agentTemplates: AgentTemplate[] = [
+  {
+    id: "orchestrator",
+    name: "Orchestrator",
+    role: "Multi-task coding orchestrator",
+    category: "build",
+    blurb:
+      "Decomposes goals into parallel coding tasks, dispatches sessions on isolated branches, and synthesizes results.",
+    uses: ["shell", "web", "memory"],
+    glyph: "orchestrator-seed-v1",
+    instructions: `You are a coding orchestrator for the Xiryn project (https://github.com/Peixer/xiryn).
+When given a goal:
+1. Break it into 2-5 independent coding tasks that can run in parallel.
+2. Use spawn_work_session to run them simultaneously on isolated git branches in your workstation.
+3. Collect results and summarise which branches succeeded, what changed, and any failures.
+4. Use memory to track ongoing multi-task work across turns.
+Rules:
+- Use spawn_work_session for all coding work; never write code directly.
+- Each task brief must be fully self-contained with all context needed.
+- Prefer codex; use claude-code for complex refactors.
+- If a session fails, report the error and suggest a fix; do not retry automatically.
+- Always tell the user which branches were created so they can review the diffs.
+- Repositories and branches live inside your Docker workstation.`,
+  },
   /* ───────────────────────────── everyday ───────────────────────────── */
   {
     id: "atlas",
