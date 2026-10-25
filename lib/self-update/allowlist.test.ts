@@ -293,6 +293,54 @@ test("spawned commands are pinned to the layout", () => {
     ),
     false
   )
+  assert.equal(
+    commandAllowed(
+      [
+        "/usr/bin/node",
+        "/usr/local/lib/xiryn/self-update-lock.mjs",
+        "--db",
+        `${layout.blueData}/xiryn.db`,
+      ],
+      layout
+    ),
+    true
+  )
+  assert.equal(
+    commandAllowed(
+      [
+        "node",
+        "/usr/local/lib/xiryn/self-update-lock.mjs",
+        "--db",
+        `${layout.blueData}/xiryn.db`,
+      ],
+      layout
+    ),
+    false
+  )
+  assert.equal(
+    commandAllowed(
+      [
+        "/usr/bin/node",
+        "/opt/xiryn-blue/scripts/self-update-lock.mjs",
+        "--db",
+        `${layout.blueData}/xiryn.db`,
+      ],
+      layout
+    ),
+    false
+  )
+  assert.equal(
+    commandAllowed(
+      serviceArgv("xiryn", [
+        "/usr/bin/node",
+        "/usr/local/lib/xiryn/self-update-lock.mjs",
+        "--db",
+        `${layout.blueData}/xiryn.db`,
+      ]),
+      layout
+    ),
+    false
+  )
 })
 
 test("the oneshot is started by a path unit and takes no arguments", () => {

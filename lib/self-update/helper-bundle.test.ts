@@ -32,6 +32,12 @@ test("the committed helper bundle matches a fresh build", () => {
     )
     assert.doesNotMatch(committed, /from\s+["']@\//)
     assert.doesNotMatch(committed, /node_modules/)
+    assert.doesNotMatch(committed, /better-sqlite3/)
+    assert.match(committed, /\/usr\/bin\/node/)
+    assert.match(committed, /self-update-lock\.mjs/)
+    assert.match(committed, /Waiting until the live database stops changing/)
+    assert.match(committed, /runs background work/)
+    assert.match(committed, /Keeping a backup of the database rollback will stop serving/)
   } finally {
     fs.rmSync(out, { force: true })
   }
@@ -68,6 +74,25 @@ test("the installed helper runs outside the repo and refuses a colour-tree progr
       fs.readFileSync(path.join(repo, "deploy/xiryn-helper.mjs"), "utf8")
     )
     assert.equal(fs.existsSync(path.join(lib, "xiryn-helper.ts")), false)
+    assert.equal(
+      fs.readFileSync(path.join(lib, "self-update-lock.mjs"), "utf8"),
+      fs.readFileSync(path.join(repo, "scripts/self-update-lock.mjs"), "utf8")
+    )
+    const sqliteCopy = path.join(lib, "node_modules", "better-sqlite3")
+    const native = path.join(sqliteCopy, "build", "Release", "better_sqlite3.node")
+    assert.equal(fs.existsSync(path.join(sqliteCopy, "lib", "index.js")), true)
+    assert.equal(fs.existsSync(native), true)
+    assert.equal(fs.lstatSync(sqliteCopy).isSymbolicLink(), false)
+    assert.equal(fs.lstatSync(native).isSymbolicLink(), false)
+    const loaded = spawnSync(
+      process.execPath,
+      [path.join(lib, "self-update-lock.mjs"), "--db", "/tmp/other.sqlite"],
+      {
+        encoding: "utf8",
+        env: { PATH: "/usr/bin:/bin", HOME: root, NODE_ENV: "test" },
+      }
+    )
+    assert.equal(loaded.status, 2, `${loaded.stdout}\n${loaded.stderr}`)
     assert.equal(fs.statSync(bin).mode & 0o111, 0o111)
 
     fs.writeFileSync(

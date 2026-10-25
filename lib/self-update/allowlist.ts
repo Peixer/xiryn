@@ -308,7 +308,21 @@ export function commandAllowed(argv: readonly string[], layout: Layout, user = "
     }
     return false
   }
-  if (bin === "git" || bin === "npm" || bin === "node") return false
+  if (bin === "git" || bin === "npm" || bin === "node" || bin === "/usr/bin/node") {
+    // The write lock stays root. Dropping to the service user would let
+    // that user kill it. Only system node and the root-owned script are
+    // accepted, so a `node` earlier on PATH cannot be substituted.
+    if (
+      bin === "/usr/bin/node" &&
+      rest[0] === "/usr/local/lib/xiryn/self-update-lock.mjs" &&
+      rest[1] === "--db" &&
+      rest.length === 3
+    ) {
+      const db = rest[2]
+      return db === `${layout.blueData}/xiryn.db` || db === `${layout.greenData}/xiryn.db`
+    }
+    return false
+  }
   if (
     bin === "systemctl" &&
     (rest[0] === "start" || rest[0] === "stop" || rest[0] === "is-active") &&

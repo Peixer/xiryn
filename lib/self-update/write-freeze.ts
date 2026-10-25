@@ -1,10 +1,19 @@
-import fs from "node:fs"
 import path from "node:path"
 
 import { connect } from "@/db"
 import { activeThreadIds } from "@/lib/agent/runtime"
 import { routinesBusy } from "@/lib/routines"
 import { processRole } from "@/lib/self-update/duty"
+import { readMaintenanceToken, writeQuiesce } from "@/lib/self-update/quiesce"
+
+export {
+  quiescenceSatisfied,
+  readMaintenanceToken,
+  readQuiesce,
+  waitForQuiescence,
+  writeQuiesce,
+  type QuiesceAck,
+} from "@/lib/self-update/quiesce"
 
 // Maintenance used to refuse only non-GET HTTP. Agent turns, routines, and
 // Telegram write on the same connection without going through the proxy.
@@ -16,78 +25,6 @@ type PragmaDb = { pragma: (source: string) => unknown }
 
 export function setWriteFrozen(sqlite: PragmaDb, frozen: boolean) {
   sqlite.pragma(`query_only = ${frozen ? "ON" : "OFF"}`)
-}
-
-export type QuiesceAck = {
-  colour: string
-  token: string | null
-  queryOnly: boolean
-  workers: "stopped"
-  activeRuns: number
-  at: number
-}
-
-export function readMaintenanceToken(file: string) {
-  try {
-    const token = fs.readFileSync(file, "utf8").split("\n")[1]?.trim() ?? ""
-    return token || null
-  } catch {
-    return null
-  }
-}
-
-export function writeQuiesce(file: string, ack: QuiesceAck) {
-  const dir = path.dirname(file)
-  try {
-    if (!fs.existsSync(dir)) return
-    const tmp = path.join(dir, `.${path.basename(file)}.${process.pid}.tmp`)
-    fs.writeFileSync(tmp, `${JSON.stringify(ack)}\n`, { mode: 0o644 })
-    fs.renameSync(tmp, file)
-  } catch {
-    // The helper still takes the database lock when this ack never arrives.
-  }
-}
-
-export function readQuiesce(file: string): QuiesceAck | null {
-  try {
-    const parsed = JSON.parse(fs.readFileSync(file, "utf8")) as Partial<QuiesceAck>
-    if (parsed.queryOnly !== true || parsed.workers !== "stopped") return null
-    if (typeof parsed.at !== "number") return null
-    if (typeof parsed.activeRuns !== "number") return null
-    return {
-      colour: typeof parsed.colour === "string" ? parsed.colour : "",
-      token: typeof parsed.token === "string" ? parsed.token : null,
-      queryOnly: true,
-      workers: "stopped",
-      activeRuns: parsed.activeRuns,
-      at: parsed.at,
-    }
-  } catch {
-    return null
-  }
-}
-
-export function quiescenceSatisfied(ack: QuiesceAck | null, token: string | null) {
-  if (!ack || ack.activeRuns !== 0) return false
-  if (token && ack.token !== token) return false
-  return true
-}
-
-export function waitForQuiescence(options: {
-  acks: Array<{ file: string; token: string | null }>
-  timeoutMs: number
-  sleep: (ms: number) => void
-  now: () => number
-}) {
-  const deadline = options.now() + options.timeoutMs
-  for (;;) {
-    const ready = options.acks.every((item) =>
-      quiescenceSatisfied(readQuiesce(item.file), item.token)
-    )
-    if (ready) return true
-    if (options.now() >= deadline) return false
-    options.sleep(50)
-  }
 }
 
 let drainEpoch = 0

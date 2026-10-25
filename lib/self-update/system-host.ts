@@ -1,8 +1,6 @@
-import { execFileSync } from "node:child_process"
+import { execFileSync, spawn, type ChildProcess } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
-
-import Database from "better-sqlite3"
 
 import { formatAudit } from "@/lib/self-update/audit"
 import { commandAllowed, serviceArgv, serviceUserName } from "@/lib/self-update/allowlist"
@@ -18,8 +16,8 @@ import {
 import { redact, redactError } from "@/lib/self-update/redact"
 import { isSha } from "@/lib/self-update/sha"
 import { dutyIsAware } from "@/lib/self-update/duty"
+import { waitForQuiescence } from "@/lib/self-update/quiesce"
 import { initialState, type DeployState } from "@/lib/self-update/state"
-import { waitForQuiescence } from "@/lib/self-update/write-freeze"
 import type { Host } from "@/lib/self-update/helper"
 
 function serviceAccount() {
@@ -142,6 +140,96 @@ function mode(file: string, bits: number) {
   fs.chmodSync(file, bits)
 }
 
+const LOCK_SCRIPT = "/usr/local/lib/xiryn/self-update-lock.mjs"
+const NODE_BIN = "/usr/bin/node"
+
+// The oneshot is root. A script or native module the service user can
+// replace must not be loaded into that process, or into a child it spawns.
+function rootControlled(file: string, kind: "file" | "dir") {
+  const stat = fs.lstatSync(file)
+  if (stat.isSymbolicLink() || stat.uid !== 0) return false
+  if ((stat.mode & 0o022) !== 0) return false
+  return kind === "dir" ? stat.isDirectory() : stat.isFile()
+}
+
+// /usr/bin/node is often a symlink to the distro binary. Follow it, and
+// refuse a target that lives in a colour tree.
+function systemNodeTrusted() {
+  let resolved = NODE_BIN
+  try {
+    resolved = fs.realpathSync(NODE_BIN)
+  } catch {
+    return false
+  }
+  const colour =
+    resolved === "/opt/xiryn" ||
+    resolved.startsWith("/opt/xiryn/") ||
+    resolved === "/opt/xiryn-blue" ||
+    resolved.startsWith("/opt/xiryn-blue/") ||
+    resolved === "/opt/xiryn-green" ||
+    resolved.startsWith("/opt/xiryn-green/")
+  if (colour) return false
+  try {
+    const stat = fs.statSync(resolved)
+    return stat.isFile() && stat.uid === 0 && (stat.mode & 0o022) === 0
+  } catch {
+    return false
+  }
+}
+
+function assertLockTrusted() {
+  if (typeof process.getuid !== "function" || process.getuid() !== 0) return
+  const lib = path.dirname(LOCK_SCRIPT)
+  if (
+    !systemNodeTrusted() ||
+    !rootControlled(LOCK_SCRIPT, "file") ||
+    !rootControlled(lib, "dir")
+  ) {
+    throw new Error("The database lock is not root-owned.")
+  }
+}
+
+function pipeFd(stream: NodeJS.ReadableStream | null) {
+  const fd = (stream as { _handle?: { fd?: number } } | null)?._handle?.fd
+  if (typeof fd !== "number") throw new Error("Could not watch the database lock.")
+  return fd
+}
+
+// libuv pipes are non-blocking. null means the child closed the pipe.
+function readChunk(fd: number) {
+  const buf = Buffer.alloc(1024)
+  try {
+    const n = fs.readSync(fd, buf, 0, buf.length, null)
+    if (n === 0) return null
+    return buf.subarray(0, n).toString("utf8")
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code
+    if (code === "EAGAIN" || code === "EWOULDBLOCK") return ""
+    throw error
+  }
+}
+
+function readLockLine(child: ChildProcess, timeoutMs: number) {
+  const outFd = pipeFd(child.stdout)
+  const errFd = pipeFd(child.stderr)
+  const deadline = Date.now() + timeoutMs
+  let out = ""
+  let err = ""
+  while (Date.now() < deadline) {
+    const next = readChunk(outFd)
+    const note = readChunk(errFd)
+    if (next === null) break
+    if (note) err += note
+    out += next
+    const line = out.split("\n")[0]?.trim()
+    if (line) return line
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20)
+  }
+  const rest = err.trim()
+  if (rest) return rest
+  return out.trim()
+}
+
 export function loadLayout(): Layout {
   const file = process.env.XIRYN_DEPLOY_CONF || "/etc/xiryn-deploy.conf"
   if (!fs.existsSync(file)) return DEFAULT_LAYOUT
@@ -155,7 +243,7 @@ export function createSystemHost(layout = loadLayout()): Host {
   const auditDir = path.join(dir, "audit")
   let caddyBackup: string | null = null
   let maintenanceToken: string | null = null
-  let writer: Database.Database | null = null
+  let writer: ChildProcess | null = null
 
   const writeState = (state: DeployState) => {
     fs.mkdirSync(dir, { recursive: true, mode: 0o755 })
@@ -383,25 +471,60 @@ export function createSystemHost(layout = loadLayout()): Host {
       if (writer) return
       const dbPath = path.join(colourData(layout, colour), "xiryn.db")
       if (!fs.existsSync(dbPath)) return
-      const db = new Database(dbPath)
+      const argv = [NODE_BIN, LOCK_SCRIPT, "--db", dbPath]
+      if (!commandAllowed(argv, layout, serviceUserName())) {
+        throw new Error("Refusing a command outside the helper allow-list.")
+      }
+      // Root, not the service user. The user cannot kill this process to
+      // drop the lock. /usr/bin/node loads the module beside the root-owned
+      // script, because this environment has no NODE_PATH.
+      assertLockTrusted()
+      const child = spawn(argv[0], argv.slice(1), {
+        env: {
+          PATH: "/usr/bin:/bin",
+          HOME: "/root",
+          NODE_ENV: "production",
+        },
+        stdio: ["pipe", "pipe", "pipe"],
+      })
+      child.on("error", () => {})
+      writer = child
       try {
-        db.pragma("busy_timeout = 30000")
-        db.exec("BEGIN IMMEDIATE")
+        const line = readLockLine(child, 35_000)
+        if (line !== "held") {
+          throw new Error(line || "The database lock did not start.")
+        }
       } catch (error) {
-        db.close()
+        writer = null
+        child.kill("SIGKILL")
         throw error
       }
-      writer = db
     },
     unfreezeWrites() {
-      if (!writer) return
-      const db = writer
+      const child = writer
+      if (!child) return
       writer = null
+      child.on("error", () => {})
       try {
-        db.exec("ROLLBACK")
-      } finally {
-        db.close()
+        child.stdin?.write("release\n")
+        child.stdin?.end()
+      } catch {
+        child.kill("SIGKILL")
+        return
       }
+      let fd: number
+      try {
+        fd = pipeFd(child.stdout)
+      } catch {
+        child.kill("SIGKILL")
+        return
+      }
+      const deadline = Date.now() + 5_000
+      while (Date.now() < deadline) {
+        if (readChunk(fd) === null) return
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20)
+      }
+      child.kill("SIGKILL")
     },
     pointCaddy(active) {
       const app = active === "blue" ? layout.bluePort : layout.greenPort
