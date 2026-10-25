@@ -9,6 +9,7 @@ import {
   HammerIcon,
   ArrowRightLeftIcon,
   AlertTriangleIcon,
+  CloudIcon,
 } from "lucide-react"
 
 import { decideSelfUpdate, stageSelfUpdate, startSelfUpdate } from "@/actions/self-update"
@@ -178,6 +179,26 @@ export function SelfUpdatePanel({
 
   return (
     <div className={cn("flex flex-col gap-4", layout === "phone" && "pb-4")}>
+      {!view?.configured &&
+        view?.githubUpdate &&
+        "enabled" in view.githubUpdate &&
+        view.githubUpdate.enabled &&
+        view.githubUpdate.available && (
+          <div className="flex items-start gap-3 rounded-xl border border-rigel/30 bg-rigel/10 p-4 text-sm">
+            <CloudIcon className="mt-0.5 size-4 text-rigel" />
+            <div>
+              <p className="font-medium text-rigel">
+                Update available on GitHub
+                {view.githubUpdate.behind !== null &&
+                  ` (${view.githubUpdate.behind} commit${view.githubUpdate.behind === 1 ? "" : "s"} behind)`}
+              </p>
+              <p className="mt-1 text-muted-foreground">
+                Pull the latest changes with{" "}
+                <code className="font-mono text-[12px]">git pull</code> and restart the app.
+              </p>
+            </div>
+          </div>
+        )}
       {!view?.configured && (
         <p className="text-[13px] leading-relaxed text-muted-foreground">
           This install is still a single copy. After{" "}
@@ -198,6 +219,18 @@ export function SelfUpdatePanel({
               view?.includesMigrations
                 ? view.migrations.join(", ")
                 : "none in this range",
+            ],
+            [
+              "GitHub status",
+              !view?.githubUpdate
+                ? "checking..."
+                : !("enabled" in view.githubUpdate) || !view.githubUpdate.enabled
+                  ? "disabled"
+                  : view.githubUpdate.available
+                    ? view.githubUpdate.behind !== null
+                      ? `${view.githubUpdate.behind} commit${view.githubUpdate.behind === 1 ? "" : "s"} behind`
+                      : "update available"
+                    : "up to date",
             ],
           ] as const
         ).map(([label, value]) => (

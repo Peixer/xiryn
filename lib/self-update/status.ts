@@ -15,6 +15,18 @@ import {
 
 export type ProgressLine = { ts: string; step: string; message: string }
 
+export type GithubUpdateInfo = {
+  available: boolean
+  behind: number | null
+  latestVersion: string | null
+  checkedAt: string
+}
+
+export type GithubUpdatePayload =
+  | (GithubUpdateInfo & { enabled: true })
+  | { enabled: false }
+  | null
+
 export type SelfUpdateView = {
   configured: boolean
   phase: Phase
@@ -34,6 +46,7 @@ export type SelfUpdateView = {
   maintenance: boolean
   standbyUrl: string | null
   logs: ProgressLine[]
+  githubUpdate?: GithubUpdatePayload
 }
 
 const PHASES = new Set([
