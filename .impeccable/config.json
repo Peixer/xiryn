@@ -1,0 +1,15 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": ["app/globals.css"],
+        "createdAt": "2026-10-25T12:55:39.354Z",
+        "reason": "Existing markdown blockquote uses a hairline left border; it is not a side-tab card. The desktop-layout fix does not change it."
+      }
+    ]
+  }
+}
