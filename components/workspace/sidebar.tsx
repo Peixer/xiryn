@@ -35,6 +35,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { feedbackMailto } from "@/lib/feedback"
 import { REPOSITORY_URL, STARS_SHOWN_FROM, UPDATE_GUIDE_URL } from "@/lib/project"
 import type { UpdateInfo } from "@/lib/updates"
+import { SessionsLink } from "@/components/work-sessions/sessions-panel"
 import { cn } from "@/lib/utils"
 
 // What the server last knew, then what GitHub says now: asked once each
@@ -258,6 +259,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto pb-4">
+        <SessionsLink />
         <Section
           label="Agents"
           count={nav.agents.length}

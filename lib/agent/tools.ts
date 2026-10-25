@@ -1,6 +1,7 @@
 import { tool, type InferUITools, type UIMessage } from "ai"
 import { asc, eq } from "drizzle-orm"
 import { z } from "zod"
+import { nanoid } from "nanoid"
 
 import { db } from "@/db"
 import {
@@ -1095,6 +1096,9 @@ export function createWorkSessionTools(env: ToolEnv) {
         const { createWorktree } = await import("@/lib/worktree")
         const { runCodingSession } = await import("@/lib/coding-session")
         const { runWorkstationCommand } = await import("@/lib/workstation")
+        const { upsertSession, appendSessionOutput, cleanupOldSessions } =
+          await import("@/lib/work-sessions")
+        cleanupOldSessions()
         const agent = env.current()
         const run = async (
           command: string[],
@@ -1117,6 +1121,19 @@ export function createWorkSessionTools(env: ToolEnv) {
           tasks.map(async (t) => {
             let wt: Awaited<ReturnType<typeof createWorktree>> | undefined
             const started = Date.now()
+            const tracked: import("@/lib/work-sessions").WorkSession = {
+              id: nanoid(),
+              agentId: agent.id,
+              agentName: agent.name,
+              task: t.brief,
+              tool: t.tool ?? "codex",
+              branch: "",
+              repoPath,
+              status: "running",
+              startedAt: new Date(started),
+              output: [],
+            }
+            upsertSession(tracked)
             try {
               wt = await createWorktree({
                 repoPath,
@@ -1124,11 +1141,13 @@ export function createWorkSessionTools(env: ToolEnv) {
                 branchPrefix: t.branch ?? "task",
                 runGit: (args) => run(["git", ...args]),
               })
+              tracked.branch = wt.branch
               const result = await runCodingSession({
                 tool: t.tool ?? "codex",
                 task: t.brief,
                 workdir: wt.path,
                 model: t.model,
+                onOutput: (line) => appendSessionOutput(tracked.id, `${line}\n`),
                 timeoutMs: (t.timeoutMinutes ?? 15) * 60_000,
                 run: async (command, opts) => {
                   // timeout executes inside Docker and kills the CLI process group there.
@@ -1169,6 +1188,10 @@ export function createWorkSessionTools(env: ToolEnv) {
                   )
               }
               if (result.ok) await wt.cleanup({ preserveBranch: true })
+              tracked.status = result.ok ? "done" : "failed"
+              tracked.error = result.error
+              tracked.finishedAt = new Date()
+              tracked.durationMs = Date.now() - started
               return {
                 task: t.brief,
                 branch: wt.branch,
@@ -1178,6 +1201,11 @@ export function createWorkSessionTools(env: ToolEnv) {
                 error: result.error,
               }
             } catch (err) {
+              tracked.status = "failed"
+              tracked.finishedAt = new Date()
+              tracked.durationMs = Date.now() - started
+              tracked.error =
+                err instanceof Error ? err.message.slice(0, 200) : String(err)
               return {
                 task: t.brief,
                 branch: wt?.branch ?? "unknown",
