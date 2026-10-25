@@ -30,4 +30,17 @@ fi
 # Make the documented codex command usable in subsequent shells.
 mkdir -p "$HOME/.local/bin"
 ln -sf "$HOME/codex-cli/node_modules/.bin/codex" "$HOME/.local/bin/codex"
+# Claude Code CLI (user-local fallback works without root).
+if ! command -v claude &>/dev/null && [ ! -x "$HOME/.local/bin/claude" ]; then
+  echo "Installing Claude Code CLI..."
+  if npm install -g @anthropic-ai/claude-code 2>/dev/null; then
+    :
+  elif npm install --prefix "$HOME/.local" @anthropic-ai/claude-code 2>/dev/null; then
+    ln -sf "$HOME/.local/node_modules/.bin/claude" "$HOME/.local/bin/claude"
+  else
+    echo "Claude Code install failed — install manually: npm install -g @anthropic-ai/claude-code"
+  fi
+else
+  echo "Claude Code CLI already available"
+fi
 echo "Coding tools ready"

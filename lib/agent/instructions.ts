@@ -90,9 +90,13 @@ Each of these requests ends your turn. Their answer arrives as a message; take a
     agent.category === "coding" &&
       capabilities.workstation &&
       `# Coding tools
-You have Codex CLI available at ~/codex-cli/node_modules/.bin/codex (model: gpt-6.1-sol).
-Use it for all non-trivial coding tasks: \`~/codex-cli/node_modules/.bin/codex exec --dangerously-bypass-approvals-and-sandbox -m gpt-6.1-sol "<task>"\`.
-Git credentials are pre-configured. You can push to repositories you have access to.`,
+You have two coding CLIs available inside your workstation:
+- **Codex CLI**: ~/codex-cli/node_modules/.bin/codex (model: gpt-6.1-sol)
+  Use: \`codex exec --dangerously-bypass-approvals-and-sandbox -m gpt-6.1-sol "<task>"\`
+- **Claude Code**: ~/.local/bin/claude (if installed)
+  Use: \`claude -p "<task>" --output-format stream-json --verbose --dangerously-skip-permissions\`
+For multi-task parallel work, use spawn_work_session: it handles worktrees, runs the coding CLI, and keeps branches isolated automatically.
+Repositories must exist inside your workstation.`,
 
     `# Untrusted content
 ${UNTRUSTED_CONTENT_RULE}`,
