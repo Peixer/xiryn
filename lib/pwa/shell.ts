@@ -1,5 +1,5 @@
-// The app shell replaces the desktop workbench on a phone-sized viewport
-// and whenever the site is installed (standalone, fullscreen, minimal-ui).
+// The app shell replaces the desktop workbench on a phone-sized viewport.
+// A wider window keeps the desktop layout, including an installed app.
 
 export const PHONE_MAX_WIDTH = 767
 
@@ -18,9 +18,8 @@ export function wantsAppShell(input: {
   navigatorStandalone?: boolean
   width?: number | null
 }) {
-  if (input.navigatorStandalone) return true
-  const mode = input.displayMode ?? ""
-  if (mode === "standalone" || mode === "fullscreen" || mode === "minimal-ui") return true
+  void input.displayMode
+  void input.navigatorStandalone
   if (typeof input.width === "number" && input.width <= PHONE_MAX_WIDTH) return true
   return false
 }

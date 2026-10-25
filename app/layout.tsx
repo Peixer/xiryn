@@ -105,7 +105,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <script
           dangerouslySetInnerHTML={{
             __html:
-              '(function(){function apply(){var standalone=false;try{standalone=matchMedia("(display-mode: standalone)").matches||matchMedia("(display-mode: fullscreen)").matches||matchMedia("(display-mode: minimal-ui)").matches||navigator.standalone===true}catch(e){}var phone=matchMedia("(max-width: 767px)").matches;document.documentElement.dataset.xirynApp=(standalone||phone)?"1":"0"}apply();addEventListener("resize",apply)})()',
+              '(function(){function apply(){var phone=false;try{phone=matchMedia("(max-width: 767px)").matches}catch(e){}document.documentElement.dataset.xirynApp=phone?"1":"0"}apply();addEventListener("resize",apply)})()',
           }}
         />
       </head>
