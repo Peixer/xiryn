@@ -194,7 +194,8 @@ export function SelfUpdatePanel({
               </p>
               <p className="mt-1 text-muted-foreground">
                 Pull the latest changes with{" "}
-                <code className="font-mono text-[12px]">git pull</code> and restart the app.
+                <code className="font-mono text-[12px]">git pull</code> and restart the
+                app.
               </p>
             </div>
           </div>

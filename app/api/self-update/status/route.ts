@@ -1,7 +1,4 @@
-import {
-  loadSelfUpdateView,
-  type GithubUpdatePayload,
-} from "@/lib/self-update/status"
+import { loadSelfUpdateView, type GithubUpdatePayload } from "@/lib/self-update/status"
 import { getUpdateInfo, updateChecksEnabled } from "@/lib/updates"
 
 export const dynamic = "force-dynamic"

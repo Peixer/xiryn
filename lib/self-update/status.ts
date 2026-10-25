@@ -23,9 +23,7 @@ export type GithubUpdateInfo = {
 }
 
 export type GithubUpdatePayload =
-  | (GithubUpdateInfo & { enabled: true })
-  | { enabled: false }
-  | null
+  (GithubUpdateInfo & { enabled: true }) | { enabled: false } | null
 
 export type SelfUpdateView = {
   configured: boolean
