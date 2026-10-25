@@ -48,8 +48,23 @@ async function github<T>(route: string): Promise<{ status: number; body: T | nul
   }
 }
 
-// The commit this copy is on, read straight from .git (no git needed)
+// The commit this copy is on, read from deploy state.json for blue-green installs
+// or straight from .git for single-copy installs
 function localCommit() {
+  try {
+    const deployDir = process.env.XIRYN_DEPLOY_DIR || "/var/lib/xiryn/deploy"
+    const statePath = path.join(deployDir, "state.json")
+    if (fs.existsSync(statePath)) {
+      const state = JSON.parse(fs.readFileSync(statePath, "utf8")) as {
+        activeSha?: unknown
+      }
+      if (typeof state.activeSha === "string" && /^[0-9a-f]{40}$/.test(state.activeSha)) {
+        return state.activeSha
+      }
+    }
+  } catch {
+    // Fall through to .git logic
+  }
   try {
     const gitDir = path.join(/*turbopackIgnore: true*/ process.cwd(), ".git")
     const head = fs.readFileSync(path.join(gitDir, "HEAD"), "utf8").trim()

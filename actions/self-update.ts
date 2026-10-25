@@ -133,6 +133,35 @@ function storedOp(args: string) {
   }
 }
 
+export async function checkForUpdates() {
+  const view = loadSelfUpdateView()
+  if (!view.configured) {
+    return {
+      ok: false as const,
+      error: "Self-update is not installed. See docs/self-update.md.",
+    }
+  }
+  const state = readDeployState()
+  if (state.phase === "building" || state.phase === "switching") {
+    return {
+      ok: false as const,
+      error: "An update is already in progress.",
+    }
+  }
+  const result = submitSelfUpdate({
+    deployDir: deployDir(),
+    state,
+    op: "status",
+    actor: "owner",
+    tip: null,
+    approval: null,
+    approvalId: null,
+    now: Date.now(),
+  })
+  if (!result.ok) return { ok: false as const, error: result.error }
+  return { ok: true as const }
+}
+
 export async function decideSelfUpdate(
   approvalId: string,
   choice: "approve" | "decline",
