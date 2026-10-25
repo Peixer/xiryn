@@ -19,8 +19,25 @@ export function assessLoginFill(input: {
   field: string
   pageHost: string | null
   approved: boolean
+  terminal?: boolean
 }): LoginFillStep {
   if (input.kind !== "login") return { action: "continue" }
+
+  // Terminal mode: no browser page to verify — always ask for approval
+  if (input.terminal) {
+    if (!input.approved) {
+      const fieldLabel = input.field.replace(/_/g, " ")
+      const site = input.site ?? "unknown site"
+      return {
+        action: "ask",
+        host: `terminal (login for ${site})`,
+        summary: `In terminal, fill the ${fieldLabel} for "${input.label}" (saved for ${site})`,
+      }
+    }
+    return { action: "fill", host: "terminal" }
+  }
+
+  // GUI mode: existing site-matching logic follows
   const host = input.pageHost
   if (!host || !sameSite(host, input.site)) {
     const where = host ?? "not a confirmed website"
@@ -51,6 +68,7 @@ export function loginApprovalArgs(input: {
   label: string
   x?: number
   y?: number
+  terminal?: boolean
 }) {
   const args: {
     id: string
@@ -59,6 +77,7 @@ export function loginApprovalArgs(input: {
     label: string
     x?: number
     y?: number
+    terminal?: boolean
   } = {
     id: input.id,
     field: input.field,
@@ -68,6 +87,9 @@ export function loginApprovalArgs(input: {
   if (input.x !== undefined && input.y !== undefined) {
     args.x = input.x
     args.y = input.y
+  }
+  if (input.terminal) {
+    args.terminal = true
   }
   return args
 }
@@ -81,6 +103,16 @@ export function vaultFillOutput(field: string, hint: string, host: string | null
   }
 }
 
+// What the tool returns for terminal mode. The path is a restricted temp file.
+export function vaultFillOutputTerminal(field: string, hint: string, path: string) {
+  return {
+    filled: field.replace(/_/g, " "),
+    item: hint,
+    mode: "terminal" as const,
+    path,
+  }
+}
+
 // What the model is allowed to see. Extra keys, including a value, are dropped.
 export function vaultFillForModel(output: {
   status?: unknown
@@ -89,6 +121,8 @@ export function vaultFillForModel(output: {
   filled?: unknown
   item?: unknown
   site?: unknown
+  mode?: unknown
+  path?: unknown
   [key: string]: unknown
 }) {
   if (output.status === "needs-approval") {
@@ -107,6 +141,17 @@ export function vaultFillForModel(output: {
       value: JSON.stringify({
         status: "rejected",
         reason: output.reason === ARGS_DIFFER_REASON ? ARGS_DIFFER_REASON : "Refused.",
+      }),
+    }
+  }
+  if (output.mode === "terminal") {
+    return {
+      type: "text" as const,
+      value: JSON.stringify({
+        filled: typeof output.filled === "string" ? output.filled : "",
+        item: typeof output.item === "string" ? output.item : "",
+        mode: "terminal",
+        path: typeof output.path === "string" ? output.path : "",
       }),
     }
   }

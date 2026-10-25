@@ -318,3 +318,63 @@ test("cards and other vault kinds keep their own gate", () => {
     "continue"
   )
 })
+
+test("terminal mode: asks for approval regardless of site match", () => {
+  const result = assessLoginFill({
+    kind: "login",
+    label: "GitHub PAT",
+    site: "github.com",
+    field: "password",
+    pageHost: null,
+    approved: false,
+    terminal: true,
+  })
+  assert.equal(result.action, "ask")
+  if (result.action === "ask") {
+    assert.ok(result.host.includes("terminal"))
+    assert.ok(result.summary.includes("terminal"))
+  }
+})
+
+test("terminal mode: allows fill after approval", () => {
+  const result = assessLoginFill({
+    kind: "login",
+    label: "GitHub PAT",
+    site: "github.com",
+    field: "password",
+    pageHost: null,
+    approved: true,
+    terminal: true,
+  })
+  assert.equal(result.action, "fill")
+  if (result.action === "fill") {
+    assert.equal(result.host, "terminal")
+  }
+})
+
+test("terminal mode: non-login kinds still pass through", () => {
+  const result = assessLoginFill({
+    kind: "identity",
+    label: "Personal details",
+    site: null,
+    field: "email",
+    pageHost: null,
+    approved: false,
+    terminal: true,
+  })
+  assert.equal(result.action, "continue")
+})
+
+test("vaultFillForModel handles terminal output", () => {
+  const out = vaultFillForModel({
+    filled: "password",
+    item: "•••@github.com",
+    mode: "terminal",
+    path: "/tmp/xiryn/vault/v-abc123",
+  })
+  assert.equal(out.type, "text")
+  const parsed = JSON.parse(out.value)
+  assert.equal(parsed.mode, "terminal")
+  assert.equal(parsed.path, "/tmp/xiryn/vault/v-abc123")
+  assert.ok(!("site" in parsed), "terminal output must not include site")
+})

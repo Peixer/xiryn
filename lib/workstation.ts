@@ -567,6 +567,33 @@ export function typeSecret(agentId: string, value: string) {
   )
 }
 
+const VAULT_TMP_DIR = "/tmp/xiryn/vault"
+
+// Writes a vault value to a restricted temp file inside the workstation.
+// The secret arrives via stdin (never in the process list), and the file is
+// created with mode 600 atomically (umask 077 inside a subshell). A background
+// job deletes it after 5 minutes.
+// Returns the absolute path to be used in shell commands like $(cat path).
+export async function writeSecretFile(agentId: string, value: string): Promise<string> {
+  const filename = `v-${randomBytes(12).toString("hex")}`
+  const filepath = `${VAULT_TMP_DIR}/${filename}`
+  await execOrThrow(
+    agentId,
+    [
+      "sh",
+      "-c",
+      // umask 077 in a subshell ensures the file is created with 600 from the
+      // start, closing the race window a separate chmod would have.
+      'mkdir -p "$1" && (umask 077; cat > "$2") && (sleep 300 && rm -f "$2") &',
+      "sh",
+      VAULT_TMP_DIR,
+      filepath,
+    ],
+    { input: value, timeoutMs: 30_000 }
+  )
+  return filepath
+}
+
 // Shows the focused field as dots, so a value from the vault doesn't appear
 // in screenshots or to anyone watching. Best effort: the fill already
 // happened either way.
