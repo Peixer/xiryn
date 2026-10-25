@@ -51,13 +51,45 @@ sudo systemctl reload caddy
 
 Open TCP 8443 from your IP if you want to browse the inactive colour before a switch. Until then it is only on the instance. The security group already allows 443 for the live site.
 
-The script is safe to run again. Once `/etc/xiryn/active` exists and `xiryn-blue.service` is installed, it makes sure the green directories, the pin mirror, and the cache and staging directories exist. It installs the current colour units, `/etc/xiryn/blue.env`, `/etc/xiryn/green.env`, and `xiryn-deploy.service`, strips the four per-colour variables from `shared.env` if they are present, and keeps the vault account already written into the colour files. If `state.json` has no commit yet, it writes one from the active colour's checkout. It reloads systemd and exits. It does not restart the colour that is serving. After a re-run, restart that colour so it reads the new files:
+The oneshot is `/usr/local/sbin/xiryn-helper`. It runs `/usr/bin/node` on `/usr/local/lib/xiryn/xiryn-helper.mjs`. That file is a bundle the installer copies out of the checkout and owns as root. `@/` imports are resolved when the bundle is built (`node scripts/bundle-xiryn-helper.mjs`). The colour trees belong to `xiryn`, so the oneshot does not execute `tsx` or TypeScript from those trees.
+
+The script is safe to run again. Once `/etc/xiryn/active` exists and `xiryn-blue.service` is installed, it makes sure the green directories, the pin mirror, and the cache and staging directories exist. It installs the current colour units, `/etc/xiryn/blue.env`, `/etc/xiryn/green.env`, and `xiryn-deploy.service`, strips the four per-colour variables from `shared.env` if they are present, and keeps the vault account already written into the colour files. It replaces `/usr/local/sbin/xiryn-helper` and `/usr/local/lib/xiryn/xiryn-helper.mjs`, and removes a leftover `/usr/local/lib/xiryn/xiryn-helper.ts`. If `state.json` has no commit yet, it writes one from the active colour's checkout. It reloads systemd, clears a start-limit failure on `xiryn-deploy.service` and `xiryn-deploy.path`, restarts the path unit, and exits. It does not restart the colour that is serving. After a re-run, restart that colour so it reads the new files:
 
 ```bash
 sudo systemctl restart xiryn-blue.service
 ```
 
 Use `xiryn-green.service` when `/etc/xiryn/active` says `green`.
+
+### Refresh the root helper
+
+Re-running the installer used to leave the already-installed helper untouched. Settings → Update version, Switch, Roll back, and the status refresh all go through that helper. Pull the tree the script reads from. `/opt/xiryn` is that tree when it is still on the machine. The serving colour is a detached commit, so leave `/opt/xiryn-blue` and `/opt/xiryn-green` as they are.
+
+`/opt/xiryn` is owned by `xiryn`. Root passes `safe.directory` so git will read it.
+
+```bash
+cd /opt/xiryn
+sudo git -c safe.directory=/opt/xiryn fetch origin
+sudo git -c safe.directory=/opt/xiryn checkout main
+sudo git -c safe.directory=/opt/xiryn pull --ff-only
+sudo bash deploy/migrate-blue-green.sh
+```
+
+That replaces the helper and runs:
+
+```bash
+sudo systemctl reset-failed xiryn-deploy.service xiryn-deploy.path
+sudo systemctl restart xiryn-deploy.path
+```
+
+Run those two `systemctl` commands yourself if the script could not talk to systemd. The serving colour does not need a restart for the helper itself.
+
+If `/opt/xiryn` is already gone, clone as root and run the script from the clone:
+
+```bash
+sudo git clone --depth 1 --branch main https://github.com/Peixer/xiryn.git /root/xiryn-helper-src
+sudo bash /root/xiryn-helper-src/deploy/migrate-blue-green.sh
+```
 
 What you still do by hand, because the script will not guess a customised Caddyfile or a security group:
 

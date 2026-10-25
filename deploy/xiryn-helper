@@ -1,6 +1,11 @@
 #!/bin/bash
 # Root-owned entrypoint for the oneshot. The app never calls this and never
 # gets sudo: xiryn-deploy.path starts it when a request file appears.
+#
+# The program is /usr/local/lib/xiryn/xiryn-helper.mjs, run with system node.
+# Colour trees are owned by the service user. Root must not exec tsx from
+# those trees, and must not load their TypeScript. @/ is resolved when the
+# bundle is built, not when this process starts.
 set -euo pipefail
 
 if [[ $# -ne 0 ]]; then
@@ -8,13 +13,66 @@ if [[ $# -ne 0 ]]; then
   exit 2
 fi
 
-helper=/usr/local/lib/xiryn/xiryn-helper.ts
-for root in /opt/xiryn-blue /opt/xiryn-green /opt/xiryn; do
-  tsx="$root/node_modules/.bin/tsx"
-  if [[ -x "$tsx" && -f "$helper" ]]; then
-    exec "$tsx" "$helper"
-  fi
-done
+# Tests point these at a copy. The systemd unit does not set them.
+helper="${XIRYN_HELPER_BUNDLE:-/usr/local/lib/xiryn/xiryn-helper.mjs}"
+node="${XIRYN_HELPER_NODE:-/usr/bin/node}"
 
-echo "tsx is not installed in a Xiryn colour, or the helper is not installed" >&2
-exit 1
+resolve_path() {
+  local path="$1"
+  local resolved=""
+  if resolved="$(readlink -f -- "$path" 2>/dev/null)"; then
+    printf '%s\n' "$resolved"
+  else
+    printf '%s\n' "$path"
+  fi
+}
+
+refuse_service_tree() {
+  local path="$1"
+  local label="$2"
+  case "$path" in
+    /opt/xiryn | /opt/xiryn/* | /opt/xiryn-blue | /opt/xiryn-blue/* | /opt/xiryn-green | /opt/xiryn-green/*)
+      echo "refusing to run ${label} from a colour tree" >&2
+      exit 1
+      ;;
+  esac
+}
+
+require_root_owned() {
+  local path="$1"
+  local label="$2"
+  local owner
+  owner="$(stat -c '%u' -- "$path")"
+  if [[ "$owner" != "0" ]]; then
+    echo "refusing to run ${label} that is not owned by root" >&2
+    exit 1
+  fi
+}
+
+helper_resolved="$(resolve_path "$helper")"
+node_resolved="$(resolve_path "$node")"
+refuse_service_tree "$helper" "the helper"
+refuse_service_tree "$helper_resolved" "the helper"
+refuse_service_tree "$node" "node"
+refuse_service_tree "$node_resolved" "node"
+
+if [[ ! -f "$helper_resolved" ]]; then
+  echo "xiryn-helper bundle is not installed" >&2
+  exit 1
+fi
+if [[ ! -x "$node_resolved" ]]; then
+  echo "node is not installed at ${node}" >&2
+  exit 1
+fi
+
+# The directory is root-owned on a server. A bundle or node the service user
+# can replace is not the oneshot.
+if [[ "$(id -u)" -eq 0 ]]; then
+  require_root_owned "$helper_resolved" "the helper"
+  require_root_owned "$node_resolved" "node"
+fi
+
+# A loader or a tsconfig from the environment would pull code out of a
+# checkout the service user can edit.
+exec env -u NODE_OPTIONS -u TSX_TSCONFIG_PATH -u NODE_PATH \
+  "$node_resolved" "$helper_resolved"
