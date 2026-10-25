@@ -56,7 +56,11 @@ test("a re-run installs the helper before it reports blue/green is already insta
   assert.match(block, /\n\s*refresh_deploy_path\n/)
 })
 
-test("the installed helper runs outside the repo and refuses a colour-tree program", () => {
+test("the installed helper runs outside the repo and refuses a colour-tree program", (t) => {
+  if (process.getuid?.() !== 0) {
+    t.skip("clean helper dependency installation requires root")
+    return
+  }
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "xiryn-helper-"))
   const bin = path.join(root, "sbin", "xiryn-helper")
   const lib = path.join(root, "lib")

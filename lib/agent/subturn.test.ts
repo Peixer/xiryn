@@ -148,7 +148,7 @@ const fakeAgent: Agent = {
   model: null,
   glyph: "test",
   workstationId: null,
-  codingTools: false,
+  category: "general",
   createdAt: new Date(),
   updatedAt: new Date(),
 }

@@ -1593,10 +1593,8 @@ function createSystemHost(layout2 = loadLayout()) {
   let writer = null;
   const writeState = (state) => {
     fs4.mkdirSync(dir2, { recursive: true, mode: 493 });
-    const tmp = path3.join(dir2, ".state.json.tmp");
-    fs4.writeFileSync(tmp, `${JSON.stringify(state)}
-`, { mode: 420 });
-    fs4.renameSync(tmp, stateFile);
+    writeAtomicNoFollow(stateFile, `${JSON.stringify(state)}
+`);
     mode(stateFile, 420);
   };
   return {
@@ -1612,20 +1610,28 @@ function createSystemHost(layout2 = loadLayout()) {
     writeState,
     progress(step, message) {
       fs4.mkdirSync(dir2, { recursive: true, mode: 493 });
-      fs4.appendFileSync(
+      const fd = fs4.openSync(
         progressFile,
-        `${JSON.stringify({ ts: (/* @__PURE__ */ new Date()).toISOString(), step: redact(step), message: redact(message) })}
-`,
-        { mode: 416 }
+        fs4.constants.O_WRONLY | fs4.constants.O_CREAT | fs4.constants.O_APPEND | fs4.constants.O_NOFOLLOW,
+        416
       );
+      try {
+        fs4.writeSync(
+          fd,
+          `${JSON.stringify({ ts: (/* @__PURE__ */ new Date()).toISOString(), step: redact(step), message: redact(message) })}
+`
+        );
+      } finally {
+        fs4.closeSync(fd);
+      }
     },
     audit(entry) {
       fs4.mkdirSync(auditDir, { recursive: true, mode: 472 });
       const line = formatAudit({ ...entry, ts: entry.ts ?? (/* @__PURE__ */ new Date()).toISOString() });
       const name = `${Date.now()}-${entry.op}-${entry.result}.json`;
       const file = path3.join(auditDir, name);
-      fs4.writeFileSync(file, `${line}
-`, { mode: 384 });
+      writeAtomicNoFollow(file, `${line}
+`, 384);
       mode(file, 384);
     },
     fetchTip() {
@@ -1755,10 +1761,8 @@ function createSystemHost(layout2 = loadLayout()) {
       runRoot(layout2, ["systemctl", "enable", colourUnit(colour)]);
       runRoot(layout2, ["systemctl", "disable", colourUnit(old)]);
       const activeFile = path3.join(path3.dirname(layout2.maintenanceFile), "active");
-      const tmp = `${activeFile}.tmp`;
-      fs4.writeFileSync(tmp, `${colour}
-`, { mode: 420 });
-      fs4.renameSync(tmp, activeFile);
+      writeAtomicNoFollow(activeFile, `${colour}
+`);
     },
     pause(ms) {
       if (ms <= 0) return;
@@ -1799,11 +1803,9 @@ function createSystemHost(layout2 = loadLayout()) {
           recursive: true,
           mode: 493
         });
-        fs4.writeFileSync(layout2.maintenanceFile, `read-only
+        writeAtomicNoFollow(layout2.maintenanceFile, `read-only
 ${maintenanceToken}
-`, {
-          mode: 420
-        });
+`);
       } else {
         maintenanceToken = null;
         fs4.rmSync(layout2.maintenanceFile, { force: true });
@@ -1898,17 +1900,17 @@ ${maintenanceToken}
       const body = caddySnippet({ app, desktop, standbyApp, standbyDesktop });
       if (fs4.existsSync(layout2.caddySnippet)) {
         caddyBackup = `${layout2.caddySnippet}.bak`;
-        fs4.copyFileSync(layout2.caddySnippet, caddyBackup);
+        copyFileNoFollow(layout2.caddySnippet, caddyBackup);
         mode(caddyBackup, 420);
       }
-      fs4.writeFileSync(layout2.caddySnippet, body, { mode: 420 });
+      writeAtomicNoFollow(layout2.caddySnippet, body);
     },
     reloadCaddy() {
       runRoot(layout2, ["caddy", "reload", "--config", layout2.caddyfile]);
     },
     restoreCaddy() {
       if (caddyBackup && fs4.existsSync(caddyBackup)) {
-        fs4.copyFileSync(caddyBackup, layout2.caddySnippet);
+        copyFileNoFollow(caddyBackup, layout2.caddySnippet);
       }
     },
     backup(label) {
@@ -1945,8 +1947,8 @@ ${maintenanceToken}
         }
       }
       const note2 = path3.join(dest, "label.txt");
-      fs4.writeFileSync(note2, `${label}
-`, { mode: 384 });
+      writeAtomicNoFollow(note2, `${label}
+`, 384);
       mode(note2, 384);
       fs4.chownSync(note2, 0, 0);
     },
@@ -1960,8 +1962,8 @@ ${maintenanceToken}
     },
     writeRelease(release) {
       const file = path3.join(dir2, "release.json");
-      fs4.writeFileSync(file, `${JSON.stringify(release)}
-`, { mode: 420 });
+      writeAtomicNoFollow(file, `${JSON.stringify(release)}
+`);
     },
     changelog(from, to) {
       if (!from || !isSha(from) || !isSha(to) || from === to) {
@@ -1997,18 +1999,61 @@ ${maintenanceToken}
     }
   };
 }
+function writeAtomicNoFollow(dest, content, permissions = 420) {
+  const tmp = `${dest}.tmp.${process.pid}`;
+  try {
+    fs4.unlinkSync(tmp);
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+  const fd = fs4.openSync(
+    tmp,
+    fs4.constants.O_WRONLY | fs4.constants.O_CREAT | fs4.constants.O_EXCL | fs4.constants.O_NOFOLLOW,
+    permissions
+  );
+  try {
+    fs4.writeFileSync(fd, content);
+  } finally {
+    fs4.closeSync(fd);
+  }
+  try {
+    fs4.renameSync(tmp, dest);
+  } finally {
+    fs4.rmSync(tmp, { force: true });
+  }
+}
+function copyFileNoFollow(src, dest) {
+  const stat = fs4.lstatSync(src);
+  if (stat.isSymbolicLink()) throw new Error(`Refusing to copy symlink: ${src}`);
+  if (!stat.isFile()) throw new Error(`Refusing to copy non-regular file: ${src}`);
+  const fd = fs4.openSync(src, fs4.constants.O_RDONLY | fs4.constants.O_NOFOLLOW);
+  try {
+    if (!fs4.fstatSync(fd).isFile())
+      throw new Error(`Refusing to copy non-regular file: ${src}`);
+    writeAtomicNoFollow(dest, fs4.readFileSync(fd), 384);
+  } finally {
+    fs4.closeSync(fd);
+  }
+}
 function copyPrivate(from, to) {
-  fs4.copyFileSync(from, to);
+  copyFileNoFollow(from, to);
   fs4.chownSync(to, 0, 0);
   mode(to, 384);
 }
 function sealRoot(target) {
+  const inspect = (file) => {
+    const stat = fs4.lstatSync(file);
+    if (stat.isSymbolicLink()) throw new Error(`Refusing to copy symlink: ${file}`);
+    if (stat.isDirectory()) {
+      for (const name of fs4.readdirSync(file)) inspect(path3.join(file, name));
+    } else if (!stat.isFile()) {
+      throw new Error(`Refusing to copy non-regular file: ${file}`);
+    }
+  };
+  inspect(target);
   const visit = (file) => {
     const stat = fs4.lstatSync(file);
-    if (stat.isSymbolicLink()) {
-      fs4.lchownSync(file, 0, 0);
-      return;
-    }
+    if (stat.isSymbolicLink()) throw new Error(`Refusing to copy symlink: ${file}`);
     fs4.chownSync(file, 0, 0);
     if (stat.isDirectory()) {
       fs4.chmodSync(file, 448);

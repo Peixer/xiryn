@@ -117,7 +117,7 @@ async function inspect(name: string): Promise<Inspection | null> {
 
 async function create(agentId: string, tag: string) {
   const agent = db
-    .select({ name: agents.name, codingTools: agents.codingTools })
+    .select({ id: agents.id, name: agents.name, category: agents.category })
     .from(agents)
     .where(eq(agents.id, agentId))
     .get()
@@ -929,7 +929,7 @@ export function stopWorkstationJanitor() {
 const codingSetupPending = new Map<string, Promise<void>>()
 export async function ensureCodingTools(agentId: string) {
   const agent = db.select().from(agents).where(eq(agents.id, agentId)).get()
-  if (!agent?.codingTools) return
+  if (agent?.category !== "coding") return
   let pending = codingSetupPending.get(agentId)
   if (!pending) {
     pending = (async () => {

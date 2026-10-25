@@ -251,9 +251,8 @@ export function createSystemHost(layout = loadLayout()): Host {
 
   const writeState = (state: DeployState) => {
     fs.mkdirSync(dir, { recursive: true, mode: 0o755 })
-    const tmp = path.join(dir, ".state.json.tmp")
-    fs.writeFileSync(tmp, `${JSON.stringify(state)}\n`, { mode: 0o644 })
-    fs.renameSync(tmp, stateFile)
+    // Exclusive temporary creation prevents planted symlinks from redirecting writes.
+    writeAtomicNoFollow(stateFile, `${JSON.stringify(state)}\n`)
     mode(stateFile, 0o644)
   }
 
@@ -270,18 +269,31 @@ export function createSystemHost(layout = loadLayout()): Host {
     writeState,
     progress(step, message) {
       fs.mkdirSync(dir, { recursive: true, mode: 0o755 })
-      fs.appendFileSync(
+      // O_NOFOLLOW rejects a planted progress symlink without reading its target.
+      const fd = fs.openSync(
         progressFile,
-        `${JSON.stringify({ ts: new Date().toISOString(), step: redact(step), message: redact(message) })}\n`,
-        { mode: 0o640 }
+        fs.constants.O_WRONLY |
+          fs.constants.O_CREAT |
+          fs.constants.O_APPEND |
+          fs.constants.O_NOFOLLOW,
+        0o640
       )
+      try {
+        fs.writeSync(
+          fd,
+          `${JSON.stringify({ ts: new Date().toISOString(), step: redact(step), message: redact(message) })}\n`
+        )
+      } finally {
+        fs.closeSync(fd)
+      }
     },
     audit(entry) {
       fs.mkdirSync(auditDir, { recursive: true, mode: 0o730 })
       const line = formatAudit({ ...entry, ts: entry.ts ?? new Date().toISOString() })
       const name = `${Date.now()}-${entry.op}-${entry.result}.json`
       const file = path.join(auditDir, name)
-      fs.writeFileSync(file, `${line}\n`, { mode: 0o600 })
+      // Exclusive temporary creation prevents symlink-directed root writes.
+      writeAtomicNoFollow(file, `${line}\n`, 0o600)
       mode(file, 0o600)
     },
     fetchTip() {
@@ -417,9 +429,8 @@ export function createSystemHost(layout = loadLayout()): Host {
       runRoot(layout, ["systemctl", "enable", colourUnit(colour)])
       runRoot(layout, ["systemctl", "disable", colourUnit(old)])
       const activeFile = path.join(path.dirname(layout.maintenanceFile), "active")
-      const tmp = `${activeFile}.tmp`
-      fs.writeFileSync(tmp, `${colour}\n`, { mode: 0o644 })
-      fs.renameSync(tmp, activeFile)
+      // Replace the directory entry without following a planted symlink.
+      writeAtomicNoFollow(activeFile, `${colour}\n`)
     },
     pause(ms) {
       if (ms <= 0) return
@@ -461,9 +472,8 @@ export function createSystemHost(layout = loadLayout()): Host {
           recursive: true,
           mode: 0o755,
         })
-        fs.writeFileSync(layout.maintenanceFile, `read-only\n${maintenanceToken}\n`, {
-          mode: 0o644,
-        })
+        // Exclusive temporary creation prevents symlink-directed root writes.
+        writeAtomicNoFollow(layout.maintenanceFile, `read-only\n${maintenanceToken}\n`)
       } else {
         maintenanceToken = null
         fs.rmSync(layout.maintenanceFile, { force: true })
@@ -562,17 +572,18 @@ export function createSystemHost(layout = loadLayout()): Host {
       const body = caddySnippet({ app, desktop, standbyApp, standbyDesktop })
       if (fs.existsSync(layout.caddySnippet)) {
         caddyBackup = `${layout.caddySnippet}.bak`
-        fs.copyFileSync(layout.caddySnippet, caddyBackup)
+        copyFileNoFollow(layout.caddySnippet, caddyBackup)
         mode(caddyBackup, 0o644)
       }
-      fs.writeFileSync(layout.caddySnippet, body, { mode: 0o644 })
+      // Exclusive temporary creation prevents symlink-directed root writes.
+      writeAtomicNoFollow(layout.caddySnippet, body)
     },
     reloadCaddy() {
       runRoot(layout, ["caddy", "reload", "--config", layout.caddyfile])
     },
     restoreCaddy() {
       if (caddyBackup && fs.existsSync(caddyBackup)) {
-        fs.copyFileSync(caddyBackup, layout.caddySnippet)
+        copyFileNoFollow(caddyBackup, layout.caddySnippet)
       }
     },
     backup(label) {
@@ -613,7 +624,8 @@ export function createSystemHost(layout = loadLayout()): Host {
         }
       }
       const note = path.join(dest, "label.txt")
-      fs.writeFileSync(note, `${label}\n`, { mode: 0o600 })
+      // Exclusive temporary creation prevents symlink-directed root writes.
+      writeAtomicNoFollow(note, `${label}\n`, 0o600)
       mode(note, 0o600)
       fs.chownSync(note, 0, 0)
     },
@@ -627,7 +639,8 @@ export function createSystemHost(layout = loadLayout()): Host {
     },
     writeRelease(release) {
       const file = path.join(dir, "release.json")
-      fs.writeFileSync(file, `${JSON.stringify(release)}\n`, { mode: 0o644 })
+      // Exclusive temporary creation prevents symlink-directed root writes.
+      writeAtomicNoFollow(file, `${JSON.stringify(release)}\n`)
     },
     changelog(from, to) {
       if (!from || !isSha(from) || !isSha(to) || from === to) {
@@ -664,19 +677,77 @@ export function createSystemHost(layout = loadLayout()): Host {
   }
 }
 
+// O_EXCL makes a racing symlink fail rather than following it. Rename replaces
+// a destination symlink itself. Private writes retain their restrictive mode.
+export function writeAtomicNoFollow(
+  dest: string,
+  content: string | Buffer,
+  permissions = 0o644
+) {
+  const tmp = `${dest}.tmp.${process.pid}`
+  try {
+    fs.unlinkSync(tmp)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error
+  }
+  const fd = fs.openSync(
+    tmp,
+    fs.constants.O_WRONLY |
+      fs.constants.O_CREAT |
+      fs.constants.O_EXCL |
+      fs.constants.O_NOFOLLOW,
+    permissions
+  )
+  try {
+    fs.writeFileSync(fd, content)
+  } finally {
+    fs.closeSync(fd)
+  }
+  try {
+    fs.renameSync(tmp, dest)
+  } finally {
+    fs.rmSync(tmp, { force: true })
+  }
+}
+
+export function copyFileNoFollow(src: string, dest: string) {
+  // Staging is service-writable: never follow links into root files.
+  const stat = fs.lstatSync(src)
+  if (stat.isSymbolicLink()) throw new Error(`Refusing to copy symlink: ${src}`)
+  if (!stat.isFile()) throw new Error(`Refusing to copy non-regular file: ${src}`)
+  const fd = fs.openSync(src, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW)
+  try {
+    if (!fs.fstatSync(fd).isFile())
+      throw new Error(`Refusing to copy non-regular file: ${src}`)
+    // Atomic replacement also avoids following an attacker-planted destination.
+    writeAtomicNoFollow(dest, fs.readFileSync(fd), 0o600)
+  } finally {
+    fs.closeSync(fd)
+  }
+}
+
 function copyPrivate(from: string, to: string) {
-  fs.copyFileSync(from, to)
+  copyFileNoFollow(from, to)
   fs.chownSync(to, 0, 0)
   mode(to, 0o600)
 }
 
-function sealRoot(target: string) {
+export function sealRoot(target: string) {
+  // Reject the entire staged tree before ownership changes: a planted link could
+  // redirect later secret backups to arbitrary root-writable files.
+  const inspect = (file: string) => {
+    const stat = fs.lstatSync(file)
+    if (stat.isSymbolicLink()) throw new Error(`Refusing to copy symlink: ${file}`)
+    if (stat.isDirectory()) {
+      for (const name of fs.readdirSync(file)) inspect(path.join(file, name))
+    } else if (!stat.isFile()) {
+      throw new Error(`Refusing to copy non-regular file: ${file}`)
+    }
+  }
+  inspect(target)
   const visit = (file: string) => {
     const stat = fs.lstatSync(file)
-    if (stat.isSymbolicLink()) {
-      fs.lchownSync(file, 0, 0)
-      return
-    }
+    if (stat.isSymbolicLink()) throw new Error(`Refusing to copy symlink: ${file}`)
     fs.chownSync(file, 0, 0)
     if (stat.isDirectory()) {
       fs.chmodSync(file, 0o700)

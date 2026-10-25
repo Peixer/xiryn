@@ -212,46 +212,32 @@ fi
 # A built better-sqlite3 the lock script can load without trusting a colour
 # tree at runtime. Prefer this checkout. A package root that is a symlink
 # is skipped so the copy cannot be redirected.
-sqlite_module_dir() {
-  local candidate
-  for candidate in \
-    "$SRC/../node_modules" \
-    "$ROOT/node_modules" \
-    "$BLUE/node_modules" \
-    "$GREEN/node_modules"
-  do
-    [[ -d "$candidate/better-sqlite3" && -d "$candidate/bindings" && -d "$candidate/file-uri-to-path" ]] || continue
-    [[ -f "$candidate/better-sqlite3/build/Release/better_sqlite3.node" ]] || continue
-    [[ -L "$candidate/better-sqlite3" || -L "$candidate/bindings" || -L "$candidate/file-uri-to-path" ]] && continue
-    [[ -L "$candidate/better-sqlite3/build/Release/better_sqlite3.node" ]] && continue
-    printf '%s\n' "$candidate"
-    return 0
+# Never promote service-writable dependencies into the root-executed helper.
+# Install locked packages afresh in a private root-owned directory instead.
+build_helper_deps() (
+  set -e
+  local dest_lib="$1" build_dir
+  build_dir="$(mktemp -d /root/xiryn-helper-deps-XXXXXX)"
+  trap 'rm -rf "$build_dir"' EXIT
+  cp "$SRC/../package.json" "$SRC/../package-lock.json" "$build_dir/"
+  (cd "$build_dir" && npm ci --omit=dev --ignore-scripts=false)
+  rm -rf "$dest_lib/node_modules"
+  install -d -m 0755 "$dest_lib/node_modules"
+  local package
+  for package in better-sqlite3 bindings file-uri-to-path; do
+    cp -a "$build_dir/node_modules/$package" "$dest_lib/node_modules/$package"
   done
-  return 1
-}
+)
 
 install_helper_files() {
-  local dest_lib src_nm
+  local dest_lib
   dest_lib="${XIRYN_HELPER_LIB_DIR:-/usr/local/lib/xiryn}"
   install -d -m 0755 "$dest_lib"
   install -m 0644 "$SRC/../scripts/self-update-snapshot.mjs" "$dest_lib/self-update-snapshot.mjs"
   install -m 0644 "$SRC/../scripts/self-update-migrate.mjs" "$dest_lib/self-update-migrate.mjs"
   install -m 0644 "$SRC/../scripts/self-update-approval.mjs" "$dest_lib/self-update-approval.mjs"
   install -m 0644 "$SRC/../scripts/self-update-lock.mjs" "$dest_lib/self-update-lock.mjs"
-  src_nm="$(sqlite_module_dir)" || {
-    echo "No built better-sqlite3 to copy under ${dest_lib}/node_modules." >&2
-    echo "Run npm ci in this checkout, then run the installer again." >&2
-    exit 1
-  }
-  rm -rf "$dest_lib/node_modules"
-  install -d -m 0755 "$dest_lib/node_modules"
-  cp -aL "$src_nm/better-sqlite3" "$dest_lib/node_modules/better-sqlite3"
-  cp -aL "$src_nm/bindings" "$dest_lib/node_modules/bindings"
-  cp -aL "$src_nm/file-uri-to-path" "$dest_lib/node_modules/file-uri-to-path"
-  if [[ -L "$dest_lib/node_modules/better-sqlite3" || -L "$dest_lib/node_modules/better-sqlite3/build/Release/better_sqlite3.node" ]]; then
-    echo "The copied better-sqlite3 is still a symlink." >&2
-    exit 1
-  fi
+  build_helper_deps "$dest_lib"
   if [[ "$(id -u)" -eq 0 ]]; then
     chown -R root:root \
       "$dest_lib/node_modules" \

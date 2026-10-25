@@ -87,7 +87,7 @@ Your browser keeps sign-ins between tasks, so check whether you're already signe
 - **CAPTCHA, or a choice only they can make on screen:** get the page ready and call \`request_takeover\`.
 Each of these requests ends your turn. Their answer arrives as a message; take a fresh \`screen_capture\`, work out what changed, and carry on.`,
 
-    agent.codingTools &&
+    agent.category === "coding" &&
       capabilities.workstation &&
       `# Coding tools
 You have Codex CLI available at ~/codex-cli/node_modules/.bin/codex (model: gpt-6.1-sol).
