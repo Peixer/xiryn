@@ -51,9 +51,9 @@ sudo systemctl reload caddy
 
 Open TCP 8443 from your IP if you want to browse the inactive colour before a switch. Until then it is only on the instance. The security group already allows 443 for the live site.
 
-The oneshot is `/usr/local/sbin/xiryn-helper`. It runs `/usr/bin/node` on `/usr/local/lib/xiryn/xiryn-helper.mjs`. That file is a bundle the installer copies out of the checkout and owns as root. `@/` imports are resolved when the bundle is built (`node scripts/bundle-xiryn-helper.mjs`). The colour trees belong to `xiryn`, so the oneshot does not execute `tsx` or TypeScript from those trees.
+The oneshot is `/usr/local/sbin/xiryn-helper`. It runs `/usr/bin/node` on `/usr/local/lib/xiryn/xiryn-helper.mjs`. That file is a bundle the installer copies out of the checkout and owns as root. `@/` imports are resolved when the bundle is built (`node scripts/bundle-xiryn-helper.mjs`). The colour trees belong to `xiryn`, so the oneshot does not execute `tsx`, TypeScript, or `better-sqlite3` from those trees. The snapshot write lock is a separate root process: `/usr/bin/node /usr/local/lib/xiryn/self-update-lock.mjs`. That script and the `better-sqlite3` it loads live under `/usr/local/lib/xiryn`, which the installer copies out of this checkout and then owns as root. When the oneshot itself is root, it refuses the lock unless that script, `/usr/bin/node`, and the copied native module are root-owned and not symlinks. The copy prefers this checkout's `node_modules` after `npm ci`. It falls back to `/opt/xiryn` or a colour tree only when the checkout has no built module, and that fallback is frozen at install time.
 
-The script is safe to run again. Once `/etc/xiryn/active` exists and `xiryn-blue.service` is installed, it makes sure the green directories, the pin mirror, and the cache and staging directories exist. It installs the current colour units, `/etc/xiryn/blue.env`, `/etc/xiryn/green.env`, and `xiryn-deploy.service`, strips the four per-colour variables from `shared.env` if they are present, and keeps the vault account already written into the colour files. It replaces `/usr/local/sbin/xiryn-helper` and `/usr/local/lib/xiryn/xiryn-helper.mjs`, and removes a leftover `/usr/local/lib/xiryn/xiryn-helper.ts`. If `state.json` has no commit yet, it writes one from the active colour's checkout. It reloads systemd, clears a start-limit failure on `xiryn-deploy.service` and `xiryn-deploy.path`, restarts the path unit, and exits. It does not restart the colour that is serving. After a re-run, restart that colour so it reads the new files:
+The script is safe to run again. Once `/etc/xiryn/active` exists and `xiryn-blue.service` is installed, it makes sure the green directories, the pin mirror, and the cache and staging directories exist. It installs the current colour units, `/etc/xiryn/blue.env`, `/etc/xiryn/green.env`, and `xiryn-deploy.service`, strips the four per-colour variables from `shared.env` if they are present, and keeps the vault account already written into the colour files. It replaces `/usr/local/sbin/xiryn-helper` and `/usr/local/lib/xiryn/xiryn-helper.mjs`, removes a leftover `/usr/local/lib/xiryn/xiryn-helper.ts`, and refreshes the root-owned snapshot, migrate, approval, and lock scripts plus `/usr/local/lib/xiryn/node_modules`. If `state.json` has no commit yet, it writes one from the active colour's checkout. It reloads systemd, clears a start-limit failure on `xiryn-deploy.service` and `xiryn-deploy.path`, restarts the path unit, and exits. It does not restart the colour that is serving. After a re-run, restart that colour so it reads the new files:
 
 ```bash
 sudo systemctl restart xiryn-blue.service
@@ -72,10 +72,11 @@ cd /opt/xiryn
 sudo git -c safe.directory=/opt/xiryn fetch origin
 sudo git -c safe.directory=/opt/xiryn checkout main
 sudo git -c safe.directory=/opt/xiryn pull --ff-only
+sudo npm ci --no-audit --no-fund
 sudo bash deploy/migrate-blue-green.sh
 ```
 
-That replaces the helper and runs:
+`npm ci` builds `better-sqlite3` for this machine before the installer copies it under `/usr/local/lib/xiryn/node_modules`. Run it as root so that copy is not taken from a `node_modules` the `xiryn` user edited after the pull. The script then replaces the helper and runs:
 
 ```bash
 sudo systemctl reset-failed xiryn-deploy.service xiryn-deploy.path
@@ -88,6 +89,7 @@ If `/opt/xiryn` is already gone, clone as root and run the script from the clone
 
 ```bash
 sudo git clone --depth 1 --branch main https://github.com/Peixer/xiryn.git /root/xiryn-helper-src
+sudo npm ci --no-audit --no-fund --prefix /root/xiryn-helper-src
 sudo bash /root/xiryn-helper-src/deploy/migrate-blue-green.sh
 ```
 

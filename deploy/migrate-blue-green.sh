@@ -209,6 +209,60 @@ fi
 # root runs it with system node and never loads @/ from a colour tree.
 # A later run replaces the copy. The old TypeScript file is removed so
 # nothing still points root at an unresolved @/ import.
+# A built better-sqlite3 the lock script can load without trusting a colour
+# tree at runtime. Prefer this checkout. A package root that is a symlink
+# is skipped so the copy cannot be redirected.
+sqlite_module_dir() {
+  local candidate
+  for candidate in \
+    "$SRC/../node_modules" \
+    "$ROOT/node_modules" \
+    "$BLUE/node_modules" \
+    "$GREEN/node_modules"
+  do
+    [[ -d "$candidate/better-sqlite3" && -d "$candidate/bindings" && -d "$candidate/file-uri-to-path" ]] || continue
+    [[ -f "$candidate/better-sqlite3/build/Release/better_sqlite3.node" ]] || continue
+    [[ -L "$candidate/better-sqlite3" || -L "$candidate/bindings" || -L "$candidate/file-uri-to-path" ]] && continue
+    [[ -L "$candidate/better-sqlite3/build/Release/better_sqlite3.node" ]] && continue
+    printf '%s\n' "$candidate"
+    return 0
+  done
+  return 1
+}
+
+install_helper_files() {
+  local dest_lib src_nm
+  dest_lib="${XIRYN_HELPER_LIB_DIR:-/usr/local/lib/xiryn}"
+  install -d -m 0755 "$dest_lib"
+  install -m 0644 "$SRC/../scripts/self-update-snapshot.mjs" "$dest_lib/self-update-snapshot.mjs"
+  install -m 0644 "$SRC/../scripts/self-update-migrate.mjs" "$dest_lib/self-update-migrate.mjs"
+  install -m 0644 "$SRC/../scripts/self-update-approval.mjs" "$dest_lib/self-update-approval.mjs"
+  install -m 0644 "$SRC/../scripts/self-update-lock.mjs" "$dest_lib/self-update-lock.mjs"
+  src_nm="$(sqlite_module_dir)" || {
+    echo "No built better-sqlite3 to copy under ${dest_lib}/node_modules." >&2
+    echo "Run npm ci in this checkout, then run the installer again." >&2
+    exit 1
+  }
+  rm -rf "$dest_lib/node_modules"
+  install -d -m 0755 "$dest_lib/node_modules"
+  cp -aL "$src_nm/better-sqlite3" "$dest_lib/node_modules/better-sqlite3"
+  cp -aL "$src_nm/bindings" "$dest_lib/node_modules/bindings"
+  cp -aL "$src_nm/file-uri-to-path" "$dest_lib/node_modules/file-uri-to-path"
+  if [[ -L "$dest_lib/node_modules/better-sqlite3" || -L "$dest_lib/node_modules/better-sqlite3/build/Release/better_sqlite3.node" ]]; then
+    echo "The copied better-sqlite3 is still a symlink." >&2
+    exit 1
+  fi
+  if [[ "$(id -u)" -eq 0 ]]; then
+    chown -R root:root \
+      "$dest_lib/node_modules" \
+      "$dest_lib/self-update-snapshot.mjs" \
+      "$dest_lib/self-update-migrate.mjs" \
+      "$dest_lib/self-update-approval.mjs" \
+      "$dest_lib/self-update-lock.mjs"
+    chmod -R u+rwX,go-w,go+rX "$dest_lib/node_modules"
+  fi
+}
+
 install_helper() {
   local bin dest_lib bundle
   bin="${XIRYN_HELPER_BIN:-/usr/local/sbin/xiryn-helper}"
@@ -226,6 +280,7 @@ install_helper() {
   rm -f "$bin" "$dest_lib/xiryn-helper.mjs" "$dest_lib/xiryn-helper.ts"
   install -m 0755 "$SRC/xiryn-helper" "$bin"
   install -m 0644 "$bundle" "$dest_lib/xiryn-helper.mjs"
+  install_helper_files
 }
 
 # Replacing the program does not clear a start-limit failure. The path unit
@@ -350,7 +405,7 @@ if [[ -f "$ACTIVE" && -d "$BLUE" && -f /etc/systemd/system/xiryn-blue.service ]]
   systemctl daemon-reload
   refresh_deploy_path
   echo "Blue/green is already installed (active: ${active})."
-  echo "Replaced the root helper with the bundle at /usr/local/lib/xiryn/xiryn-helper.mjs."
+  echo "Replaced the root helper, the lock script, and the root-owned better-sqlite3 under /usr/local/lib/xiryn."
   if [[ "$active" == "blue" || "$active" == "green" ]]; then
     echo "Restart the serving colour so it loads its env file: systemctl restart xiryn-${active}.service"
   else
@@ -454,9 +509,6 @@ EOF
 fi
 
 install_helper
-install -m 0644 "$SRC/../scripts/self-update-snapshot.mjs" /usr/local/lib/xiryn/self-update-snapshot.mjs
-install -m 0644 "$SRC/../scripts/self-update-migrate.mjs" /usr/local/lib/xiryn/self-update-migrate.mjs
-install -m 0644 "$SRC/../scripts/self-update-approval.mjs" /usr/local/lib/xiryn/self-update-approval.mjs
 install_colour_files
 write_install_state "$sha" blue
 install -m 0644 "$SRC/xiryn-deploy.service" /etc/systemd/system/xiryn-deploy.service
