@@ -7,6 +7,9 @@ services:
     env_file: .env
     # The image USER is node. The engine socket is not mounted here.
     user: node
+    # Chromium inside agents needs at least 256 MB of /dev/shm to avoid renderer crashes (Error code 9)
+    # Agent containers get 1g via lib/workstation.ts.
+    shm_size: "256mb"
     environment:
       DOCKER_HOST: tcp://docker-socket-proxy:2375
       # buildx 0.38 defaults to a BuildKit container that pulls
