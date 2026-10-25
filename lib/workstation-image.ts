@@ -11,6 +11,35 @@ import { docker, dockerRaw, ensureEngine } from "@/lib/docker"
 
 export const IMAGE_REPO = "xiryn-workstation"
 
+// buildx writes activity, instance, and history files under ~/.docker/buildx
+// unless this is set. The colour units point it at a directory outside the
+// home directory, because ProtectHome=read-only makes ~/.docker read-only.
+export const BUILDX_STATE_DIR = "/var/lib/xiryn/docker/buildx"
+
+export function describeWorkstationBuildFailure(error: unknown): string {
+  const detail = error instanceof Error ? error.message : String(error)
+  const homeBlocked =
+    /read-only file system|\bEROFS\b/i.test(detail) || /\.docker\/buildx\//.test(detail)
+  const next = homeBlocked
+    ? `Buildx tried to write under the service user's home, which ProtectHome keeps read-only. Set BUILDX_CONFIG=${BUILDX_STATE_DIR}, create that directory mode 0700 owned by the service user, and list it on ReadWritePaths. The blue/green installer does this. Then remove /etc/systemd/system/xiryn-blue.service.d/20-docker-config.conf and the green copy, and reload systemd.`
+    : "Rebuild it from Settings → Workstations. An agent desktop is created only after the image exists."
+  return `The workstation image did not build. Pages and other features keep serving. ${next} (${detail})`
+}
+
+export function logWorkstationBuildFailure(error: unknown): void {
+  console.error(`[xiryn] ${describeWorkstationBuildFailure(error)}`)
+}
+
+// Startup and Settings start a build and continue. The rejection is logged
+// inside buildImage; swallowing it here is what keeps a failed build off the
+// process and off page loads.
+export function observeWorkstationBuild(build: Promise<string>): Promise<void> {
+  return build.then(
+    () => undefined,
+    () => undefined
+  )
+}
+
 const SOURCE = path.join(/*turbopackIgnore: true*/ process.cwd(), "workstation")
 const LOG_LINES = 80
 
@@ -111,9 +140,10 @@ export function buildImage(): Promise<string> {
       shared.last = {
         state: "failed",
         tag,
-        error: error instanceof Error ? error.message : String(error),
+        error: describeWorkstationBuildFailure(error),
         log: status.log,
       }
+      logWorkstationBuildFailure(error)
       throw error
     }
     shared.last = null

@@ -22,7 +22,8 @@ export async function register() {
   const { startNotifyWebhook, stopNotifyWebhook } = await import("./lib/notify-webhook")
   const { startWebPush, stopWebPush } = await import("./lib/web-push")
   const { probeEngine } = await import("./lib/docker")
-  const { buildImage, getImageState } = await import("./lib/workstation-image")
+  const { buildImage, getImageState, observeWorkstationBuild } =
+    await import("./lib/workstation-image")
 
   let imageAttempted = false
   const globalForDuty = globalThis as unknown as {
@@ -45,8 +46,11 @@ export async function register() {
           return getImageState().then((image) => {
             if (image.state !== "absent") return
             console.log("[xiryn] building the agent workstation image (first run only)…")
-            return buildImage().then((tag) =>
-              console.log(`[xiryn] workstation image ready: ${tag}`)
+            observeWorkstationBuild(
+              buildImage().then((tag) => {
+                console.log(`[xiryn] workstation image ready: ${tag}`)
+                return tag
+              })
             )
           })
         })

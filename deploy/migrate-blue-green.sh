@@ -337,6 +337,26 @@ if [[ "${XIRYN_ENABLE_ONLY:-}" == blue || "${XIRYN_ENABLE_ONLY:-}" == green ]]; 
   exit 0
 fi
 
+# docker buildx writes builder activity, instance files, and history under
+# ~/.docker/buildx. ProtectHome=read-only makes that path read-only. The
+# colour units set BUILDX_CONFIG to this directory. It has to exist and be
+# owned by xiryn before a unit starts: systemd creates a missing
+# ReadWritePaths directory as root, and buildx then cannot write it.
+BUILDX_STATE="${XIRYN_BUILDX_STATE:-/var/lib/xiryn/docker/buildx}"
+
+install_buildx_state() {
+  if [[ "$(id -u)" -eq 0 ]] && id xiryn >/dev/null 2>&1; then
+    install -d -o xiryn -g xiryn -m 0700 "$BUILDX_STATE"
+  else
+    install -d -m 0700 "$BUILDX_STATE"
+  fi
+}
+
+if [[ "${XIRYN_BUILDX_ONLY:-}" == "1" ]]; then
+  install_buildx_state
+  exit 0
+fi
+
 if [[ "$(id -u)" -ne 0 ]]; then
   echo "Run this as root: sudo bash deploy/migrate-blue-green.sh" >&2
   exit 1
@@ -403,6 +423,7 @@ install_runtime_dirs() {
   install -d -o xiryn -g xiryn -m 0700 \
     "$DEPLOY" "$DEPLOY/inbox" "$DEPLOY/audit" \
     "$DEPLOY/npm-cache" "$DEPLOY/cache" "$DEPLOY/config" "$DEPLOY/staging"
+  install_buildx_state
   install -d -o root -g root -m 0700 /var/backups/xiryn
 }
 

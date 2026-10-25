@@ -68,6 +68,7 @@ test("each colour keeps its own data dir when shared.env names /opt/xiryn/data",
     "XIRYN_DESKTOP_PROXY_PORT=2",
     "XIRYN_VAULT_KEY_DIR=/opt/xiryn/.xiryn",
     "XIRYN_DEPLOY_DIR=/tmp/nope",
+    "BUILDX_CONFIG=/home/xiryn/.docker",
     "OPENAI_API_KEY=present",
     "",
   ].join("\n")
@@ -97,6 +98,7 @@ test("each colour keeps its own data dir when shared.env names /opt/xiryn/data",
     assert.equal(env.OPENAI_API_KEY, "present")
     assert.equal(env.NODE_ENV, "production")
     assert.notEqual(env.XIRYN_DATA_DIR, "/opt/xiryn/data")
+    assert.equal(env.BUILDX_CONFIG, "/var/lib/xiryn/docker/buildx")
   }
 })
 

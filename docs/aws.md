@@ -125,7 +125,7 @@ The unit adds a sandbox around the Node process:
 
 - `NoNewPrivileges=true` (already present)
 - `PrivateTmp=true`
-- `ProtectSystem=strict`, with write access only to `/opt/xiryn/data` (the database, `XIRYN_DATA_DIR`), `/var/lib/xiryn` (the service home, including `~/.xiryn` for the vault key), `/opt/xiryn/.next/cache` (Next.js runtime cache), and the engine socket (`/run/docker.sock`, `/var/run/docker.sock`)
+- `ProtectSystem=strict`, with write access only to `/opt/xiryn/data` (the database, `XIRYN_DATA_DIR`), `/var/lib/xiryn` (the service home, including `~/.xiryn` for the vault key), `/opt/xiryn/.next/cache` (Next.js runtime cache), `/var/lib/xiryn/docker/buildx` (buildx state; the unit sets `BUILDX_CONFIG` to that path because `ProtectHome=read-only` makes `~/.docker/buildx` unwritable), and the engine socket (`/run/docker.sock`, `/var/run/docker.sock`)
 - `ProtectHome=read-only`
 - `UMask=0077`
 - `RestrictSUIDSGID=true`
@@ -139,7 +139,8 @@ The unit adds a sandbox around the Node process:
 
 ```bash
 sudo install -d -o xiryn -g xiryn -m 0700 \
-  /opt/xiryn/data /opt/xiryn/.next/cache /var/lib/xiryn/.xiryn
+  /opt/xiryn/data /opt/xiryn/.next/cache /var/lib/xiryn/.xiryn \
+  /var/lib/xiryn/docker/buildx
 sudo cp /opt/xiryn/deploy/xiryn.service /etc/systemd/system/xiryn.service
 sudo systemctl daemon-reload
 sudo systemctl restart xiryn

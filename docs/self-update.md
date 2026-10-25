@@ -26,6 +26,8 @@ Git, npm, and node that touch a colour tree or its database run as the `xiryn` u
 
 `xiryn-deploy.service` keeps `ProtectHome=read-only`, so npm and Next cannot write `~/.npm` or `~/.cache`. The helper sets `npm_config_cache=/var/lib/xiryn/deploy/npm-cache`, `XDG_CACHE_HOME=/var/lib/xiryn/deploy/cache`, `XDG_CONFIG_HOME=/var/lib/xiryn/deploy/config`, and `NEXT_TELEMETRY_DISABLED=1`. The install script creates those directories owned by `xiryn`. They are on the unit's `ReadWritePaths`. systemd bind-mounts each of those paths into the helper, so `rmdir` or `rename` of the directory itself returns `EBUSY`. The helper empties the inactive colour tree, the colour data directories, staging, and a backup stamp, and leaves the directories in place. It does not widen `ReadWritePaths` to `/opt`: that parent also holds anything else installed there.
 
+The colour units also keep `ProtectHome=read-only`. `docker build` is buildx, and buildx writes its builder activity, instance files, and history under `~/.docker/buildx` (the activity update creates `/home/xiryn/.docker/buildx/activity/.tmp-…`). That home is not writable, so the workstation image build fails before it talks to the daemon. The units set `BUILDX_CONFIG=/var/lib/xiryn/docker/buildx` and list that directory on `ReadWritePaths`. The docker CLI still reads `~/.docker/config.json`, so registry auth and proxies stay where they are. Each colour env file sets the same `BUILDX_CONFIG` after `shared.env`, so a value in the shared file cannot point buildx back at the home directory. The legacy `xiryn.service` sets the same variable; its `EnvironmentFile=` is `/opt/xiryn/.env`, which overrides the unit, so do not set `BUILDX_CONFIG` in that file to a path under the home directory. The deploy helper does not build the workstation image and does not get this directory. The installer creates `/var/lib/xiryn/docker/buildx` mode 0700, owner `xiryn`, on a first install and on a re-run. A re-run does not restart either colour.
+
 `/var/backups/xiryn` stays root and mode 0700. The service user cannot create a backup there. Prepare and the pre-switch backup snapshot the database as `xiryn` into `/var/lib/xiryn/deploy/staging/<stamp>`, then root moves that directory to `/var/backups/xiryn/<stamp>-prepare`, `-switch`, or `-rollback`, chowns it to root, and sets the directory to mode 700 and the files to mode 600. The shared env and the vault key are copied in that last step, still as root.
 
 ## Install it once on the existing server
@@ -138,5 +140,16 @@ The ports above are blue's. Green's app port is 6896. `/etc/xiryn/active` is a l
 Switch and rollback enable the serving colour, disable the other colour, and atomically replace `/etc/xiryn/active`. The installer also enables only the active colour. On an existing install it uses `state.json` (the worker authority) before the legacy active label, repairs that label, and leaves the serving process and Caddy configuration alone. It installs a Caddy systemd drop-in with `After=tailscaled.service` for Tailscale Serve setups forwarding to `127.0.0.1:8088`; this ordering takes effect on the next service start.
 
 The helper checks health repeatedly for up to 60 seconds after starting a candidate. Once this helper is installed, the manual `/usr/local/sbin/xiryn-wait-health` and `/etc/systemd/system/xiryn-{blue,green}.service.d/10-wait-health.conf` can be removed; run `sudo systemctl daemon-reload` afterward. Remove only those manual drop-ins, preserving other custom settings. The `include=dev` line in `/home/xiryn/.npmrc` can also be removed: CI installs explicitly include dev dependencies and do not use a production environment.
+
+After this installer has created `/var/lib/xiryn/docker/buildx` and installed the units, the manual drop-in that only adds `ReadWritePaths=/home/xiryn/.docker` is unused. Remove it, then reload systemd. Leave any other files in those drop-in directories.
+
+```bash
+sudo rm -f \
+  /etc/systemd/system/xiryn-blue.service.d/20-docker-config.conf \
+  /etc/systemd/system/xiryn-green.service.d/20-docker-config.conf
+sudo systemctl daemon-reload
+```
+
+Do that after `deploy/migrate-blue-green.sh`, not before. The serving colour does not have to be restarted for Update to pick this up: Update starts the other colour, and that new process reads the unit. Restart a colour when you want that already-running process to leave the old mount namespace. Do not restart it in the gap after deleting the drop-in and before the installer has run.
 
 Quiesce acknowledgements live at `/var/lib/xiryn/deploy/quiesce-<colour>.json` (or under `XIRYN_DEPLOY_DIR`). `quiesce.ts` reads them only to acknowledge a snapshot freeze; workers follow `state.json` and the maintenance file. Ending maintenance deletes both colour acknowledgements, including after a failed switch.
