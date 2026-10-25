@@ -42,7 +42,7 @@ function asUser(argv: readonly string[], home: string) {
 }
 
 test(
-  "prepare succeeds when backups are root-only and the service home is read-only",
+  "prepare succeeds when the colour directory is a mount point and backups are root-only",
   { skip: CHILD, timeout: 180_000 },
   (t) => {
     const gap = privilegeGap()
@@ -78,7 +78,7 @@ test(
 )
 
 test(
-  "backup staging and npm caches let prepare finish under production permissions",
+  "backup staging and npm caches let prepare finish when the colour directory cannot be removed",
   { skip: !CHILD, timeout: 180_000 },
   () => {
     ensureServiceUser(USER, process.env.XIRYN_USERADD ?? "")
@@ -200,6 +200,26 @@ printf '%s\\n' '{"status":"ok"}'
     fs.chownSync(layout.backupDir, 0, 0)
     fs.chmodSync(layout.backupDir, 0o700)
     copyHelperTree(layout.blueDir, runtime)
+    fs.mkdirSync(layout.greenDir)
+    fs.writeFileSync(path.join(layout.greenDir, "stale.txt"), "old\n")
+    fs.mkdirSync(path.join(layout.greenDir, "nested"))
+    fs.writeFileSync(path.join(layout.greenDir, "nested", "old.txt"), "old\n")
+    const outside = path.join(root, "outside.txt")
+    fs.writeFileSync(outside, "keep\n")
+    fs.symlinkSync(outside, path.join(layout.greenDir, "link"))
+    const greenInode = fs.statSync(layout.greenDir).ino
+    const realRm = fs.rmSync
+    fs.rmSync = ((target: fs.PathLike, options?: fs.RmOptions) => {
+      if (path.resolve(String(target)) === path.resolve(layout.greenDir)) {
+        const error = new Error(
+          `EBUSY: resource busy or locked, rmdir '${layout.greenDir}'`
+        ) as NodeJS.ErrnoException
+        error.code = "EBUSY"
+        error.syscall = "rmdir"
+        throw error
+      }
+      return realRm(target, options)
+    }) as typeof fs.rmSync
     const snapshotScript = path.join(
       layout.blueDir,
       "scripts",
@@ -238,6 +258,11 @@ printf '%s\\n' '{"status":"ok"}'
       })
       assert.equal(result.ok, true, result.ok ? "" : result.error)
       assert.equal(host.readState().phase, "ready")
+      assert.equal(fs.statSync(layout.greenDir).ino, greenInode)
+      assert.equal(fs.existsSync(path.join(layout.greenDir, "stale.txt")), false)
+      assert.equal(fs.existsSync(path.join(layout.greenDir, "nested")), false)
+      assert.equal(fs.existsSync(path.join(layout.greenDir, "link")), false)
+      assert.equal(fs.readFileSync(outside, "utf8"), "keep\n")
       const migrated = path.join(layout.greenDir, "scripts", "self-update-migrate.mjs")
       assert.equal(fs.lstatSync(migrated).isSymbolicLink(), false)
       assert.equal(fs.lstatSync(migrated).isFile(), true)
@@ -286,6 +311,7 @@ printf '%s\\n' '{"status":"ok"}'
       )
       assert.equal(fs.existsSync(path.join(home, ".npm")), false)
     } finally {
+      fs.rmSync = realRm
       fs.chmodSync(home, homeMode)
       fs.rmSync(root, { recursive: true, force: true })
     }

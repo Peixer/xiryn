@@ -38,6 +38,7 @@ test("the committed helper bundle matches a fresh build", () => {
     assert.match(committed, /Waiting until the live database stops changing/)
     assert.match(committed, /runs background work/)
     assert.match(committed, /Keeping a backup of the database rollback will stop serving/)
+    assert.match(committed, /EBUSY/)
   } finally {
     fs.rmSync(out, { force: true })
   }

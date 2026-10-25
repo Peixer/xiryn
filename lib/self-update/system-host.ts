@@ -16,6 +16,7 @@ import {
 import { redact, redactError } from "@/lib/self-update/redact"
 import { isSha } from "@/lib/self-update/sha"
 import { dutyIsAware } from "@/lib/self-update/duty"
+import { relocateTree, resetDirectory } from "@/lib/self-update/mount-root"
 import { waitForQuiescence } from "@/lib/self-update/quiesce"
 import { initialState, type DeployState } from "@/lib/self-update/state"
 import type { Host } from "@/lib/self-update/helper"
@@ -311,8 +312,8 @@ export function createSystemHost(layout = loadLayout()): Host {
       const pack = `git -c ${safe} upload-pack`
       const ref = `+refs/heads/${layout.branch}:refs/remotes/pin/${layout.branch}`
       if (!fs.existsSync(path.join(dest, ".git"))) {
-        fs.rmSync(dest, { recursive: true, force: true })
-        fs.mkdirSync(dest, { recursive: true, mode: 0o755 })
+        // ReadWritePaths bind-mounts this directory. rmdir returns EBUSY.
+        resetDirectory(dest)
         ownService(dest)
         runAsService(layout, [
           "git",
@@ -575,7 +576,7 @@ export function createSystemHost(layout = loadLayout()): Host {
       fs.mkdirSync(layout.backupDir, { recursive: true, mode: 0o700 })
       fs.chownSync(layout.backupDir, 0, 0)
       mode(layout.backupDir, 0o700)
-      moveTree(stage, dest)
+      relocateTree(layout, stage, dest)
       sealRoot(dest)
       if (fs.existsSync(layout.sharedEnv))
         copyPrivate(layout.sharedEnv, path.join(dest, "shared.env"))
@@ -641,17 +642,6 @@ function copyPrivate(from: string, to: string) {
   fs.copyFileSync(from, to)
   fs.chownSync(to, 0, 0)
   mode(to, 0o600)
-}
-
-function moveTree(from: string, to: string) {
-  try {
-    fs.renameSync(from, to)
-  } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code
-    if (code !== "EXDEV") throw error
-    fs.cpSync(from, to, { recursive: true })
-    fs.rmSync(from, { recursive: true, force: true })
-  }
 }
 
 function sealRoot(target: string) {

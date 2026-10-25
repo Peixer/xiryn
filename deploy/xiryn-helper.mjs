@@ -2,8 +2,8 @@
 
 
 // deploy/xiryn-helper.ts
-import fs4 from "node:fs";
-import path3 from "node:path";
+import fs5 from "node:fs";
+import path4 from "node:path";
 
 // lib/self-update/sha.ts
 var SHA = /^[0-9a-f]{40}$/;
@@ -1216,8 +1216,8 @@ function runStatus(host) {
 
 // lib/self-update/system-host.ts
 import { execFileSync, spawn } from "node:child_process";
-import fs3 from "node:fs";
-import path2 from "node:path";
+import fs4 from "node:fs";
+import path3 from "node:path";
 
 // lib/self-update/audit.ts
 function formatAudit(entry) {
@@ -1261,11 +1261,109 @@ function dutyIsAware(dir2, colour, now, freshMs = 5e3) {
   }
 }
 
-// lib/self-update/quiesce.ts
+// lib/self-update/mount-root.ts
 import fs2 from "node:fs";
+import path2 from "node:path";
+function mountRoots(layout2) {
+  const deploy = layout2.deployDir;
+  const roots = [
+    layout2.blueDir,
+    layout2.greenDir,
+    layout2.blueData,
+    layout2.greenData,
+    path2.dirname(layout2.blueData),
+    path2.dirname(layout2.greenData),
+    layout2.mirror,
+    layout2.backupDir,
+    deploy,
+    path2.join(deploy, "npm-cache"),
+    path2.join(deploy, "cache"),
+    path2.join(deploy, "config"),
+    path2.join(deploy, "staging"),
+    path2.dirname(layout2.caddyfile),
+    path2.dirname(layout2.caddySnippet),
+    path2.dirname(layout2.sharedEnv),
+    path2.dirname(layout2.maintenanceFile)
+  ];
+  return [...new Set(roots.map((root) => path2.resolve(root)))];
+}
+function isMountRoot(layout2, target) {
+  return mountRoots(layout2).includes(path2.resolve(target));
+}
+function codeOf(error) {
+  return error.code;
+}
+function clearChildren(dir2) {
+  let names;
+  try {
+    names = fs2.readdirSync(dir2);
+  } catch (error) {
+    const code = codeOf(error);
+    if (code === "ENOENT" || code === "ENOTDIR") return;
+    throw error;
+  }
+  for (const name of names) removeChild(path2.join(dir2, name));
+}
+function removeChild(target) {
+  let stat;
+  try {
+    stat = fs2.lstatSync(target);
+  } catch (error) {
+    if (codeOf(error) === "ENOENT") return;
+    throw error;
+  }
+  if (stat.isSymbolicLink() || !stat.isDirectory()) {
+    fs2.rmSync(target, { force: true });
+    return;
+  }
+  try {
+    fs2.rmSync(target, { recursive: true, force: true });
+  } catch (error) {
+    const code = codeOf(error);
+    if (code !== "EBUSY" && code !== "ENOTEMPTY") throw error;
+    clearChildren(target);
+  }
+}
+function removeTree(layout2, target) {
+  if (!fs2.existsSync(target)) return;
+  const stat = fs2.lstatSync(target);
+  if (!stat.isSymbolicLink() && stat.isDirectory() && isMountRoot(layout2, target)) {
+    clearChildren(target);
+    return;
+  }
+  try {
+    fs2.rmSync(target, { recursive: true, force: true });
+  } catch (error) {
+    const code = codeOf(error);
+    if (code !== "EBUSY" && code !== "ENOTEMPTY") throw error;
+    if (stat.isDirectory() && !stat.isSymbolicLink()) clearChildren(target);
+  }
+}
+function resetDirectory(dir2) {
+  fs2.mkdirSync(dir2, { recursive: true, mode: 493 });
+  clearChildren(dir2);
+}
+function relocateTree(layout2, from, to) {
+  const blocked = isMountRoot(layout2, from) || isMountRoot(layout2, to);
+  if (!blocked) {
+    try {
+      fs2.renameSync(from, to);
+      return;
+    } catch (error) {
+      const code = codeOf(error);
+      if (code !== "EXDEV" && code !== "EBUSY") throw error;
+    }
+  }
+  fs2.mkdirSync(path2.dirname(to), { recursive: true });
+  fs2.cpSync(from, to, { recursive: true });
+  removeTree(layout2, from);
+}
+
+// lib/self-update/quiesce.ts
+import fs3 from "node:fs";
 function readQuiesce(file) {
   try {
-    const parsed = JSON.parse(fs2.readFileSync(file, "utf8"));
+    const parsed = JSON.parse(fs3.readFileSync(file, "utf8"));
     if (parsed.queryOnly !== true || parsed.workers !== "stopped") return null;
     if (typeof parsed.at !== "number") return null;
     if (typeof parsed.activeRuns !== "number") return null;
@@ -1301,7 +1399,7 @@ function waitForQuiescence(options) {
 // lib/self-update/system-host.ts
 function serviceAccount() {
   const name = serviceUserName();
-  const text = fs3.readFileSync("/etc/passwd", "utf8");
+  const text = fs4.readFileSync("/etc/passwd", "utf8");
   for (const line of text.split("\n")) {
     const [user, , uidText, gidText, , home] = line.split(":");
     if (user !== name) continue;
@@ -1315,16 +1413,16 @@ function serviceAccount() {
   throw new Error("The service user does not exist.");
 }
 function ownTree(target, uid, gid) {
-  if (!fs3.existsSync(target)) return;
+  if (!fs4.existsSync(target)) return;
   const visit = (file) => {
-    const stat = fs3.lstatSync(file);
+    const stat = fs4.lstatSync(file);
     if (stat.isSymbolicLink()) {
-      fs3.lchownSync(file, uid, gid);
+      fs4.lchownSync(file, uid, gid);
       return;
     }
-    fs3.chownSync(file, uid, gid);
+    fs4.chownSync(file, uid, gid);
     if (!stat.isDirectory()) return;
-    for (const name of fs3.readdirSync(file)) visit(path2.join(file, name));
+    for (const name of fs4.readdirSync(file)) visit(path3.join(file, name));
   };
   visit(target);
 }
@@ -1336,19 +1434,19 @@ function serviceDirs(layout2) {
   const root = layout2.deployDir;
   return {
     root,
-    npmCache: path2.join(root, "npm-cache"),
-    xdgCache: path2.join(root, "cache"),
-    xdgConfig: path2.join(root, "config"),
-    staging: path2.join(root, "staging")
+    npmCache: path3.join(root, "npm-cache"),
+    xdgCache: path3.join(root, "cache"),
+    xdgConfig: path3.join(root, "config"),
+    staging: path3.join(root, "staging")
   };
 }
 function ensureServiceDirs(layout2) {
   const dirs = serviceDirs(layout2);
   const account = serviceAccount();
-  fs3.mkdirSync(dirs.root, { recursive: true, mode: 448 });
-  if (fs3.statSync(dirs.root).uid === 0) fs3.chownSync(dirs.root, account.uid, account.gid);
+  fs4.mkdirSync(dirs.root, { recursive: true, mode: 448 });
+  if (fs4.statSync(dirs.root).uid === 0) fs4.chownSync(dirs.root, account.uid, account.gid);
   for (const dir2 of [dirs.npmCache, dirs.xdgCache, dirs.xdgConfig, dirs.staging]) {
-    fs3.mkdirSync(dir2, { recursive: true, mode: 448 });
+    fs4.mkdirSync(dir2, { recursive: true, mode: 448 });
     ownTree(dir2, account.uid, account.gid);
   }
   return dirs;
@@ -1402,12 +1500,12 @@ function runAsService(layout2, argv) {
   });
 }
 function mode(file, bits) {
-  fs3.chmodSync(file, bits);
+  fs4.chmodSync(file, bits);
 }
 var LOCK_SCRIPT = "/usr/local/lib/xiryn/self-update-lock.mjs";
 var NODE_BIN = "/usr/bin/node";
 function rootControlled(file, kind) {
-  const stat = fs3.lstatSync(file);
+  const stat = fs4.lstatSync(file);
   if (stat.isSymbolicLink() || stat.uid !== 0) return false;
   if ((stat.mode & 18) !== 0) return false;
   return kind === "dir" ? stat.isDirectory() : stat.isFile();
@@ -1415,14 +1513,14 @@ function rootControlled(file, kind) {
 function systemNodeTrusted() {
   let resolved = NODE_BIN;
   try {
-    resolved = fs3.realpathSync(NODE_BIN);
+    resolved = fs4.realpathSync(NODE_BIN);
   } catch {
     return false;
   }
   const colour = resolved === "/opt/xiryn" || resolved.startsWith("/opt/xiryn/") || resolved === "/opt/xiryn-blue" || resolved.startsWith("/opt/xiryn-blue/") || resolved === "/opt/xiryn-green" || resolved.startsWith("/opt/xiryn-green/");
   if (colour) return false;
   try {
-    const stat = fs3.statSync(resolved);
+    const stat = fs4.statSync(resolved);
     return stat.isFile() && stat.uid === 0 && (stat.mode & 18) === 0;
   } catch {
     return false;
@@ -1430,7 +1528,7 @@ function systemNodeTrusted() {
 }
 function assertLockTrusted() {
   if (typeof process.getuid !== "function" || process.getuid() !== 0) return;
-  const lib = path2.dirname(LOCK_SCRIPT);
+  const lib = path3.dirname(LOCK_SCRIPT);
   if (!systemNodeTrusted() || !rootControlled(LOCK_SCRIPT, "file") || !rootControlled(lib, "dir")) {
     throw new Error("The database lock is not root-owned.");
   }
@@ -1443,7 +1541,7 @@ function pipeFd(stream) {
 function readChunk(fd) {
   const buf = Buffer.alloc(1024);
   try {
-    const n = fs3.readSync(fd, buf, 0, buf.length, null);
+    const n = fs4.readSync(fd, buf, 0, buf.length, null);
     if (n === 0) return null;
     return buf.subarray(0, n).toString("utf8");
   } catch (error) {
@@ -1474,23 +1572,23 @@ function readLockLine(child, timeoutMs) {
 }
 function loadLayout() {
   const file = process.env.XIRYN_DEPLOY_CONF || "/etc/xiryn-deploy.conf";
-  if (!fs3.existsSync(file)) return DEFAULT_LAYOUT;
-  return parseDeployConf(fs3.readFileSync(file, "utf8"));
+  if (!fs4.existsSync(file)) return DEFAULT_LAYOUT;
+  return parseDeployConf(fs4.readFileSync(file, "utf8"));
 }
 function createSystemHost(layout2 = loadLayout()) {
   const dir2 = process.env.XIRYN_DEPLOY_DIR || layout2.deployDir;
-  const stateFile = path2.join(dir2, "state.json");
-  const progressFile = path2.join(dir2, "progress.jsonl");
-  const auditDir = path2.join(dir2, "audit");
+  const stateFile = path3.join(dir2, "state.json");
+  const progressFile = path3.join(dir2, "progress.jsonl");
+  const auditDir = path3.join(dir2, "audit");
   let caddyBackup = null;
   let maintenanceToken = null;
   let writer = null;
   const writeState = (state) => {
-    fs3.mkdirSync(dir2, { recursive: true, mode: 493 });
-    const tmp = path2.join(dir2, ".state.json.tmp");
-    fs3.writeFileSync(tmp, `${JSON.stringify(state)}
+    fs4.mkdirSync(dir2, { recursive: true, mode: 493 });
+    const tmp = path3.join(dir2, ".state.json.tmp");
+    fs4.writeFileSync(tmp, `${JSON.stringify(state)}
 `, { mode: 420 });
-    fs3.renameSync(tmp, stateFile);
+    fs4.renameSync(tmp, stateFile);
     mode(stateFile, 420);
   };
   return {
@@ -1498,15 +1596,15 @@ function createSystemHost(layout2 = loadLayout()) {
     layout: () => layout2,
     readState() {
       try {
-        return { ...initialState(), ...JSON.parse(fs3.readFileSync(stateFile, "utf8")) };
+        return { ...initialState(), ...JSON.parse(fs4.readFileSync(stateFile, "utf8")) };
       } catch {
         return initialState({ branch: layout2.branch });
       }
     },
     writeState,
     progress(step, message) {
-      fs3.mkdirSync(dir2, { recursive: true, mode: 493 });
-      fs3.appendFileSync(
+      fs4.mkdirSync(dir2, { recursive: true, mode: 493 });
+      fs4.appendFileSync(
         progressFile,
         `${JSON.stringify({ ts: (/* @__PURE__ */ new Date()).toISOString(), step: redact(step), message: redact(message) })}
 `,
@@ -1514,17 +1612,17 @@ function createSystemHost(layout2 = loadLayout()) {
       );
     },
     audit(entry) {
-      fs3.mkdirSync(auditDir, { recursive: true, mode: 472 });
+      fs4.mkdirSync(auditDir, { recursive: true, mode: 472 });
       const line = formatAudit({ ...entry, ts: entry.ts ?? (/* @__PURE__ */ new Date()).toISOString() });
       const name = `${Date.now()}-${entry.op}-${entry.result}.json`;
-      const file = path2.join(auditDir, name);
-      fs3.writeFileSync(file, `${line}
+      const file = path3.join(auditDir, name);
+      fs4.writeFileSync(file, `${line}
 `, { mode: 384 });
       mode(file, 384);
     },
     fetchTip() {
       const mirror = layout2.mirror;
-      if (!fs3.existsSync(mirror)) {
+      if (!fs4.existsSync(mirror)) {
         throw new Error("The pin mirror is missing. Run deploy/migrate-blue-green.sh.");
       }
       runRoot(layout2, [
@@ -1550,9 +1648,8 @@ function createSystemHost(layout2 = loadLayout()) {
       const safe = `safe.directory=${layout2.mirror}`;
       const pack = `git -c ${safe} upload-pack`;
       const ref = `+refs/heads/${layout2.branch}:refs/remotes/pin/${layout2.branch}`;
-      if (!fs3.existsSync(path2.join(dest, ".git"))) {
-        fs3.rmSync(dest, { recursive: true, force: true });
-        fs3.mkdirSync(dest, { recursive: true, mode: 493 });
+      if (!fs4.existsSync(path3.join(dest, ".git"))) {
+        resetDirectory(dest);
         ownService(dest);
         runAsService(layout2, [
           "git",
@@ -1590,29 +1687,29 @@ function createSystemHost(layout2 = loadLayout()) {
       ownService(dest);
     },
     snapshotDb(from, to) {
-      const script = path2.join(
+      const script = path3.join(
         colourDir(layout2, this.readState().active),
         "scripts",
         "self-update-snapshot.mjs"
       );
       const fallback = "/usr/local/lib/xiryn/self-update-snapshot.mjs";
-      const file = fs3.existsSync(script) ? script : fallback;
+      const file = fs4.existsSync(script) ? script : fallback;
       const source = colourData(layout2, from);
       const dest = colourData(layout2, to);
-      if (fs3.existsSync(source)) ownService(source);
-      fs3.mkdirSync(dest, { recursive: true, mode: 448 });
+      if (fs4.existsSync(source)) ownService(source);
+      fs4.mkdirSync(dest, { recursive: true, mode: 448 });
       ownService(dest);
       runAsService(layout2, ["node", file, "--from", source, "--to", dest]);
       ownService(dest);
     },
     migrate(colour) {
       const script = "/usr/local/lib/xiryn/self-update-migrate.mjs";
-      const local = path2.join(
+      const local = path3.join(
         colourDir(layout2, colour),
         "scripts",
         "self-update-migrate.mjs"
       );
-      const file = fs3.existsSync(local) ? local : script;
+      const file = fs4.existsSync(local) ? local : script;
       const data = colourData(layout2, colour);
       ownService(data);
       const out = runAsService(layout2, [
@@ -1671,18 +1768,18 @@ function createSystemHost(layout2 = loadLayout()) {
     setMaintenance(on) {
       if (on) {
         maintenanceToken = String(Date.now());
-        fs3.mkdirSync(path2.dirname(layout2.maintenanceFile), {
+        fs4.mkdirSync(path3.dirname(layout2.maintenanceFile), {
           recursive: true,
           mode: 493
         });
-        fs3.writeFileSync(layout2.maintenanceFile, `read-only
+        fs4.writeFileSync(layout2.maintenanceFile, `read-only
 ${maintenanceToken}
 `, {
           mode: 420
         });
-      } else if (fs3.existsSync(layout2.maintenanceFile)) {
+      } else if (fs4.existsSync(layout2.maintenanceFile)) {
         maintenanceToken = null;
-        fs3.rmSync(layout2.maintenanceFile);
+        fs4.rmSync(layout2.maintenanceFile);
       }
     },
     waitUntilQuiescent(colours) {
@@ -1691,7 +1788,7 @@ ${maintenanceToken}
       if (waiting.length === 0) return;
       const ready = waitForQuiescence({
         acks: waiting.map((colour) => ({
-          file: path2.join(dir2, `quiesce-${colour}.json`),
+          file: path3.join(dir2, `quiesce-${colour}.json`),
           token: maintenanceToken
         })),
         timeoutMs: 25e3,
@@ -1707,8 +1804,8 @@ ${maintenanceToken}
     },
     freezeWrites(colour) {
       if (writer) return;
-      const dbPath = path2.join(colourData(layout2, colour), "xiryn.db");
-      if (!fs3.existsSync(dbPath)) return;
+      const dbPath = path3.join(colourData(layout2, colour), "xiryn.db");
+      if (!fs4.existsSync(dbPath)) return;
       const argv = [NODE_BIN, LOCK_SCRIPT, "--db", dbPath];
       if (!commandAllowed(argv, layout2, serviceUserName())) {
         throw new Error("Refusing a command outside the helper allow-list.");
@@ -1769,19 +1866,19 @@ ${maintenanceToken}
       const standbyApp = active === "blue" ? layout2.greenPort : layout2.bluePort;
       const standbyDesktop = active === "blue" ? layout2.greenDesktopPort : layout2.blueDesktopPort;
       const body = caddySnippet({ app, desktop, standbyApp, standbyDesktop });
-      if (fs3.existsSync(layout2.caddySnippet)) {
+      if (fs4.existsSync(layout2.caddySnippet)) {
         caddyBackup = `${layout2.caddySnippet}.bak`;
-        fs3.copyFileSync(layout2.caddySnippet, caddyBackup);
+        fs4.copyFileSync(layout2.caddySnippet, caddyBackup);
         mode(caddyBackup, 420);
       }
-      fs3.writeFileSync(layout2.caddySnippet, body, { mode: 420 });
+      fs4.writeFileSync(layout2.caddySnippet, body, { mode: 420 });
     },
     reloadCaddy() {
       runRoot(layout2, ["caddy", "reload", "--config", layout2.caddyfile]);
     },
     restoreCaddy() {
-      if (caddyBackup && fs3.existsSync(caddyBackup)) {
-        fs3.copyFileSync(caddyBackup, layout2.caddySnippet);
+      if (caddyBackup && fs4.existsSync(caddyBackup)) {
+        fs4.copyFileSync(caddyBackup, layout2.caddySnippet);
       }
     },
     backup(label) {
@@ -1790,38 +1887,38 @@ ${maintenanceToken}
       }
       const stamp = (/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-");
       const dirs = ensureServiceDirs(layout2);
-      const stage = path2.join(dirs.staging, `${stamp}-${label}`);
-      const dest = path2.join(layout2.backupDir, `${stamp}-${label}`);
-      fs3.mkdirSync(stage, { recursive: true, mode: 448 });
+      const stage = path3.join(dirs.staging, `${stamp}-${label}`);
+      const dest = path3.join(layout2.backupDir, `${stamp}-${label}`);
+      fs4.mkdirSync(stage, { recursive: true, mode: 448 });
       ownService(stage);
       const state = this.readState();
-      const local = path2.join(
+      const local = path3.join(
         colourDir(layout2, state.active),
         "scripts",
         "self-update-snapshot.mjs"
       );
-      const file = fs3.existsSync(local) ? local : "/usr/local/lib/xiryn/self-update-snapshot.mjs";
+      const file = fs4.existsSync(local) ? local : "/usr/local/lib/xiryn/self-update-snapshot.mjs";
       const source = colourData(layout2, state.active);
-      if (fs3.existsSync(source)) ownService(source);
+      if (fs4.existsSync(source)) ownService(source);
       runAsService(layout2, ["node", file, "--from", source, "--to", stage]);
-      fs3.mkdirSync(layout2.backupDir, { recursive: true, mode: 448 });
-      fs3.chownSync(layout2.backupDir, 0, 0);
+      fs4.mkdirSync(layout2.backupDir, { recursive: true, mode: 448 });
+      fs4.chownSync(layout2.backupDir, 0, 0);
       mode(layout2.backupDir, 448);
-      moveTree(stage, dest);
+      relocateTree(layout2, stage, dest);
       sealRoot(dest);
-      if (fs3.existsSync(layout2.sharedEnv))
-        copyPrivate(layout2.sharedEnv, path2.join(dest, "shared.env"));
-      if (fs3.existsSync(layout2.vaultDir)) {
-        for (const name of fs3.readdirSync(layout2.vaultDir)) {
+      if (fs4.existsSync(layout2.sharedEnv))
+        copyPrivate(layout2.sharedEnv, path3.join(dest, "shared.env"));
+      if (fs4.existsSync(layout2.vaultDir)) {
+        for (const name of fs4.readdirSync(layout2.vaultDir)) {
           if (!name.startsWith("vault-") || !name.endsWith(".key")) continue;
-          copyPrivate(path2.join(layout2.vaultDir, name), path2.join(dest, name));
+          copyPrivate(path3.join(layout2.vaultDir, name), path3.join(dest, name));
         }
       }
-      const note2 = path2.join(dest, "label.txt");
-      fs3.writeFileSync(note2, `${label}
+      const note2 = path3.join(dest, "label.txt");
+      fs4.writeFileSync(note2, `${label}
 `, { mode: 384 });
       mode(note2, 384);
-      fs3.chownSync(note2, 0, 0);
+      fs4.chownSync(note2, 0, 0);
     },
     readApproval(id) {
       if (!/^[A-Za-z0-9_-]{8,32}$/.test(id)) return null;
@@ -1832,8 +1929,8 @@ ${maintenanceToken}
       return queryApproval(layout2, this.readState(), id, true);
     },
     writeRelease(release) {
-      const file = path2.join(dir2, "release.json");
-      fs3.writeFileSync(file, `${JSON.stringify(release)}
+      const file = path3.join(dir2, "release.json");
+      fs4.writeFileSync(file, `${JSON.stringify(release)}
 `, { mode: 420 });
     },
     changelog(from, to) {
@@ -1871,34 +1968,24 @@ ${maintenanceToken}
   };
 }
 function copyPrivate(from, to) {
-  fs3.copyFileSync(from, to);
-  fs3.chownSync(to, 0, 0);
+  fs4.copyFileSync(from, to);
+  fs4.chownSync(to, 0, 0);
   mode(to, 384);
-}
-function moveTree(from, to) {
-  try {
-    fs3.renameSync(from, to);
-  } catch (error) {
-    const code = error.code;
-    if (code !== "EXDEV") throw error;
-    fs3.cpSync(from, to, { recursive: true });
-    fs3.rmSync(from, { recursive: true, force: true });
-  }
 }
 function sealRoot(target) {
   const visit = (file) => {
-    const stat = fs3.lstatSync(file);
+    const stat = fs4.lstatSync(file);
     if (stat.isSymbolicLink()) {
-      fs3.lchownSync(file, 0, 0);
+      fs4.lchownSync(file, 0, 0);
       return;
     }
-    fs3.chownSync(file, 0, 0);
+    fs4.chownSync(file, 0, 0);
     if (stat.isDirectory()) {
-      fs3.chmodSync(file, 448);
-      for (const name of fs3.readdirSync(file)) visit(path2.join(file, name));
+      fs4.chmodSync(file, 448);
+      for (const name of fs4.readdirSync(file)) visit(path3.join(file, name));
       return;
     }
-    fs3.chmodSync(file, 384);
+    fs4.chmodSync(file, 384);
   };
   visit(target);
 }
@@ -1929,16 +2016,16 @@ function caddySnippet(ports) {
 `;
 }
 function queryApproval(layout2, state, id, consume) {
-  const script = path2.join(
+  const script = path3.join(
     colourDir(layout2, state.active),
     "scripts",
     "self-update-approval.mjs"
   );
-  const file = fs3.existsSync(script) ? script : "/usr/local/lib/xiryn/self-update-approval.mjs";
+  const file = fs4.existsSync(script) ? script : "/usr/local/lib/xiryn/self-update-approval.mjs";
   try {
     const data = colourData(layout2, state.active);
-    if (fs3.existsSync(data)) ownService(data);
-    const argv = ["node", file, "--db", path2.join(data, "xiryn.db"), "--id", id];
+    if (fs4.existsSync(data)) ownService(data);
+    const argv = ["node", file, "--db", path3.join(data, "xiryn.db"), "--id", id];
     if (consume) argv.push("--consume");
     const out = runAsService(layout2, argv);
     const parsed = JSON.parse(out);
@@ -1962,27 +2049,27 @@ if (process.argv.length !== 2) {
 }
 var layout = loadLayout();
 var dir = process.env.XIRYN_DEPLOY_DIR || layout.deployDir;
-var inbox = path3.join(dir, "inbox");
-var lockPath = path3.join(dir, "helper.lock");
-fs4.mkdirSync(inbox, { recursive: true, mode: 448 });
+var inbox = path4.join(dir, "inbox");
+var lockPath = path4.join(dir, "helper.lock");
+fs5.mkdirSync(inbox, { recursive: true, mode: 448 });
 var lock;
 try {
-  lock = fs4.openSync(lockPath, "wx", 384);
+  lock = fs5.openSync(lockPath, "wx", 384);
 } catch {
   process.exit(0);
 }
 try {
-  const names = fs4.readdirSync(inbox).filter((name) => /^\d+-(prepare|switch|rollback|status)\.json$/.test(name)).sort();
+  const names = fs5.readdirSync(inbox).filter((name) => /^\d+-(prepare|switch|rollback|status)\.json$/.test(name)).sort();
   const host = createSystemHost(layout);
   for (const name of names) {
-    const file = path3.join(inbox, name);
+    const file = path4.join(inbox, name);
     let parsed;
     try {
-      parsed = parseHelperRequest(JSON.parse(fs4.readFileSync(file, "utf8")));
+      parsed = parseHelperRequest(JSON.parse(fs5.readFileSync(file, "utf8")));
     } catch {
       parsed = { ok: false, reason: "The request is not JSON." };
     }
-    fs4.rmSync(file, { force: true });
+    fs5.rmSync(file, { force: true });
     if (!parsed.ok) {
       host.audit({
         op: "status",
@@ -2002,6 +2089,6 @@ try {
     else runStatus(host);
   }
 } finally {
-  fs4.closeSync(lock);
-  fs4.rmSync(lockPath, { force: true });
+  fs5.closeSync(lock);
+  fs5.rmSync(lockPath, { force: true });
 }
