@@ -5,5 +5,12 @@ import nextTs from "eslint-config-next/typescript"
 export default defineConfig([
   ...nextVitals,
   ...nextTs,
-  globalIgnores([".next/**", "out/**", "data/**", "db/migrations/**", "next-env.d.ts"]),
+  globalIgnores([
+    ".next/**",
+    "out/**",
+    "data/**",
+    "db/migrations/**",
+    "next-env.d.ts",
+    "deploy/xiryn-helper.mjs",
+  ]),
 ])

@@ -1,6 +1,9 @@
 import fs from "node:fs"
 import path from "node:path"
 
+// The oneshot does not run this file. scripts/bundle-xiryn-helper.mjs resolves
+// these @/ imports and writes deploy/xiryn-helper.mjs. Root runs that bundle
+// with system node, from outside the checkout.
 import { parseHelperRequest } from "@/lib/self-update/allowlist"
 import { runPrepare, runRollback, runStatus, runSwitch } from "@/lib/self-update/helper"
 import { createSystemHost, loadLayout } from "@/lib/self-update/system-host"

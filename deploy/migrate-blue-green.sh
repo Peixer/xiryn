@@ -205,8 +205,48 @@ if [[ "${XIRYN_STATE_ONLY:-}" == "1" ]]; then
   exit $?
 fi
 
+# Copy the oneshot out of the checkout. The bundle is plain JavaScript, so
+# root runs it with system node and never loads @/ from a colour tree.
+# A later run replaces the copy. The old TypeScript file is removed so
+# nothing still points root at an unresolved @/ import.
+install_helper() {
+  local bin dest_lib bundle
+  bin="${XIRYN_HELPER_BIN:-/usr/local/sbin/xiryn-helper}"
+  dest_lib="${XIRYN_HELPER_LIB_DIR:-/usr/local/lib/xiryn}"
+  bundle="$SRC/xiryn-helper.mjs"
+  if [[ ! -f "$bundle" ]]; then
+    echo "The helper bundle is missing. Run: node scripts/bundle-xiryn-helper.mjs" >&2
+    exit 1
+  fi
+  if grep -Eq "from ['\"]@/" "$bundle"; then
+    echo "The helper bundle still imports @/." >&2
+    exit 1
+  fi
+  install -d -m 0755 "$(dirname "$bin")" "$dest_lib"
+  rm -f "$bin" "$dest_lib/xiryn-helper.mjs" "$dest_lib/xiryn-helper.ts"
+  install -m 0755 "$SRC/xiryn-helper" "$bin"
+  install -m 0644 "$bundle" "$dest_lib/xiryn-helper.mjs"
+}
+
+# Replacing the program does not clear a start-limit failure. The path unit
+# stops triggering until that failure is reset.
+refresh_deploy_path() {
+  if ! command -v systemctl >/dev/null 2>&1; then
+    return 0
+  fi
+  systemctl reset-failed xiryn-deploy.service xiryn-deploy.path || true
+  if systemctl cat xiryn-deploy.path >/dev/null 2>&1; then
+    systemctl restart xiryn-deploy.path
+  fi
+}
+
 if [[ "${XIRYN_SHA_ONLY:-}" == "1" ]]; then
   deployed_sha "${XIRYN_SHA_TREE:-}"
+  exit 0
+fi
+
+if [[ "${XIRYN_HELPER_ONLY:-}" == "1" ]]; then
+  install_helper
   exit 0
 fi
 
@@ -294,6 +334,7 @@ if [[ -f "$ACTIVE" && -d "$BLUE" && -f /etc/systemd/system/xiryn-blue.service ]]
   install_runtime_dirs
   install_colour_files
   install -m 0644 "$SRC/xiryn-deploy.service" /etc/systemd/system/xiryn-deploy.service
+  install_helper
   active="$(tr -d '[:space:]' < "$ACTIVE")"
   tree="$BLUE"
   if [[ "$active" == "green" ]]; then
@@ -307,7 +348,9 @@ if [[ -f "$ACTIVE" && -d "$BLUE" && -f /etc/systemd/system/xiryn-blue.service ]]
     echo "The update screen still has no commit. The colour was left running." >&2
   fi
   systemctl daemon-reload
+  refresh_deploy_path
   echo "Blue/green is already installed (active: ${active})."
+  echo "Replaced the root helper with the bundle at /usr/local/lib/xiryn/xiryn-helper.mjs."
   if [[ "$active" == "blue" || "$active" == "green" ]]; then
     echo "Restart the serving colour so it loads its env file: systemctl restart xiryn-${active}.service"
   else
@@ -410,8 +453,7 @@ EOF
   find "$BLUE_DATA" -type f -exec chmod 600 {} +
 fi
 
-install -m 0755 "$SRC/xiryn-helper" /usr/local/sbin/xiryn-helper
-install -m 0644 "$SRC/xiryn-helper.ts" /usr/local/lib/xiryn/xiryn-helper.ts
+install_helper
 install -m 0644 "$SRC/../scripts/self-update-snapshot.mjs" /usr/local/lib/xiryn/self-update-snapshot.mjs
 install -m 0644 "$SRC/../scripts/self-update-migrate.mjs" /usr/local/lib/xiryn/self-update-migrate.mjs
 install -m 0644 "$SRC/../scripts/self-update-approval.mjs" /usr/local/lib/xiryn/self-update-approval.mjs
