@@ -29,7 +29,12 @@ import { useNotifications } from "@/components/workspace/notifier"
 import { useWorkspace } from "@/components/workspace/context"
 import { subscribeInstalledPush } from "@/components/app/push-client"
 import { rememberThreadList } from "@/lib/pwa/local-db"
-import { isIosSafariUserAgent, isThreadPath } from "@/lib/pwa/shell"
+import {
+  isIosSafariUserAgent,
+  isThreadPath,
+  PHONE_MAX_WIDTH,
+  shellCoversPage,
+} from "@/lib/pwa/shell"
 import type { AgentOverview, RoutineView } from "@/queries/workspace"
 import { cn } from "@/lib/utils"
 import { SelfUpdatePanel } from "@/components/settings/self-update-panel"
@@ -138,10 +143,22 @@ export function AppShell({
   React.useEffect(() => {
     const page = document.querySelector(".xiryn-page")
     if (!(page instanceof HTMLElement)) return
-    const covered = list || Boolean(offlineId)
-    if (covered) page.setAttribute("inert", "")
-    else page.removeAttribute("inert")
-    return () => page.removeAttribute("inert")
+    const query = window.matchMedia(`(max-width: ${PHONE_MAX_WIDTH}px)`)
+    const apply = () => {
+      const covered = shellCoversPage({
+        phone: query.matches,
+        list,
+        offline: Boolean(offlineId),
+      })
+      if (covered) page.setAttribute("inert", "")
+      else page.removeAttribute("inert")
+    }
+    apply()
+    query.addEventListener("change", apply)
+    return () => {
+      query.removeEventListener("change", apply)
+      page.removeAttribute("inert")
+    }
   }, [list, offlineId])
 
   const tabs = [
