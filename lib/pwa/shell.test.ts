@@ -7,6 +7,7 @@ import {
   isIosSafariUserAgent,
   isThreadPath,
   PHONE_MAX_WIDTH,
+  shellCoversPage,
   shouldOfferInstallGuide,
   wantsAppShell,
   workbenchPlacement,
@@ -57,6 +58,20 @@ test("phone CSS collapses the workbench panel, and wider windows do not", () => 
   assert.doesNotMatch(css, /html\[data-xiryn-app="1"\] \[data-panel\]/)
   const wide = css.replace(/@media \(max-width: 767px\) \{[\s\S]*?\n\}/g, "")
   assert.doesNotMatch(wide, /html\[data-xiryn-app="1"\]/)
+})
+
+test("the phone shell covers the page only on a phone-sized viewport", () => {
+  assert.equal(shellCoversPage({ phone: false, list: true, offline: false }), false)
+  assert.equal(shellCoversPage({ phone: false, list: true, offline: true }), false)
+  assert.equal(shellCoversPage({ phone: true, list: true, offline: false }), true)
+  assert.equal(shellCoversPage({ phone: true, list: false, offline: true }), true)
+  assert.equal(shellCoversPage({ phone: true, list: false, offline: false }), false)
+  const source = fs.readFileSync(
+    path.join(import.meta.dirname, "../../components/app/app-shell.tsx"),
+    "utf8"
+  )
+  assert.match(source, /shellCoversPage/)
+  assert.doesNotMatch(source, /const covered = list \|\| Boolean\(offlineId\)/)
 })
 
 test("the boot script marks the app shell from viewport width only", () => {
