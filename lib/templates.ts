@@ -9,6 +9,7 @@ export type AgentTemplate = {
   id: string
   name: string
   role: string
+  agentCategory?: "coding"
   category: TemplateCategory
   // One line for the gallery card
   blurb: string
@@ -29,6 +30,7 @@ export const templateCategories: { id: TemplateCategory; label: string }[] = [
 export const agentTemplates: AgentTemplate[] = [
   {
     id: "orchestrator",
+    agentCategory: "coding",
     name: "Orchestrator",
     role: "Multi-task coding orchestrator",
     category: "build",

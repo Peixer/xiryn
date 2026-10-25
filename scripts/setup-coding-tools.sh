@@ -43,4 +43,11 @@ if ! command -v claude &>/dev/null && [ ! -x "$HOME/.local/bin/claude" ]; then
 else
   echo "Claude Code CLI already available"
 fi
+# Sessions use a stable user-local path even when npm installed globally.
+if command -v claude &>/dev/null; then
+  claude_path="$(command -v claude)"
+  if [ "$claude_path" != "$HOME/.local/bin/claude" ]; then
+    ln -sf "$claude_path" "$HOME/.local/bin/claude"
+  fi
+fi
 echo "Coding tools ready"

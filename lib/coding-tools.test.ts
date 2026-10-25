@@ -46,13 +46,16 @@ test("coding setup is idempotent and retries an incomplete npm install", () => {
     fs.mkdirSync(path.join(root, "codex-cli")) // interrupted previous install
     fs.writeFileSync(
       path.join(bin, "npm"),
-      '#!/bin/bash\nset -e\necho install >> "$HOME/installs"\nmkdir -p "$HOME/codex-cli/node_modules/.bin"\nprintf "#!/bin/sh\\n" > "$HOME/codex-cli/node_modules/.bin/codex"\nchmod +x "$HOME/codex-cli/node_modules/.bin/codex"\n',
+      '#!/bin/bash\nset -e\necho install >> "$HOME/installs"\nif [[ "$*" == *anthropic* ]]; then mkdir -p "$HOME/.local/bin"; printf "#!/bin/sh\\n" > "$HOME/.local/bin/claude"; chmod +x "$HOME/.local/bin/claude"; exit 0; fi\nmkdir -p "$HOME/codex-cli/node_modules/.bin"\nprintf "#!/bin/sh\\n" > "$HOME/codex-cli/node_modules/.bin/codex"\nchmod +x "$HOME/codex-cli/node_modules/.bin/codex"\n',
       { mode: 0o755 }
     )
     const env = { ...process.env, HOME: root, PATH: `${bin}:${process.env.PATH}` }
     for (let i = 0; i < 2; i++)
       execFileSync("bash", ["scripts/setup-coding-tools.sh"], { env })
-    assert.equal(fs.readFileSync(path.join(root, "installs"), "utf8"), "install\n")
+    assert.equal(
+      fs.readFileSync(path.join(root, "installs"), "utf8"),
+      "install\ninstall\n"
+    )
     assert.ok(fs.lstatSync(path.join(root, ".local/bin/codex")).isSymbolicLink())
   } finally {
     fs.rmSync(root, { recursive: true, force: true })

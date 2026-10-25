@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process"
 import path from "node:path"
 import { nanoid } from "nanoid"
+import { appendSessionOutput, getSession } from "./work-sessions"
 
 export type GitRunner = (args: string[]) => Promise<string>
 export type WorktreeHandle = {
@@ -9,6 +10,7 @@ export type WorktreeHandle = {
   branch: string
   baseBranch: string
   repoPath: string
+  onOutput: (line: string) => void
   cleanup: (options?: { preserveBranch?: boolean }) => Promise<void>
 }
 export type WorktreeOptions = {
@@ -16,6 +18,7 @@ export type WorktreeOptions = {
   baseBranch?: string
   branchPrefix?: string
   taskId?: string
+  sessionId?: string
   // Agent callers supply a workstation runner; the default is for local utilities.
   runGit?: GitRunner
 }
@@ -50,7 +53,18 @@ export async function createWorktree(opts: WorktreeOptions): Promise<WorktreeHan
     await git(["worktree", "remove", "--force", wtPath])
     if (!preserveBranch) await git(["branch", "-D", branch])
   }
-  return { id: taskId, path: wtPath, branch, baseBranch, repoPath, cleanup }
+  const sessionId = opts.sessionId ?? taskId
+  const session = getSession(sessionId)
+  if (session) session.branch = branch
+  return {
+    id: taskId,
+    path: wtPath,
+    branch,
+    baseBranch,
+    repoPath,
+    cleanup,
+    onOutput: (line) => appendSessionOutput(sessionId, `${line}\n`),
+  }
 }
 
 export function listWorktrees(

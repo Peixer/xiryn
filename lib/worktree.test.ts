@@ -45,3 +45,47 @@ test("lists main worktree", { skip: !hasGit() }, () =>
 test("prune does not throw", { skip: !hasGit() }, () =>
   assert.doesNotThrow(() => pruneWorktrees(repoPath))
 )
+
+test(
+  "worktree streams output into its tracked session",
+  { skip: !hasGit() },
+  async () => {
+    const { upsertSession, getSession, workSessions } = await import("./work-sessions")
+    const id = `test-${Date.now()}`
+    upsertSession({
+      id,
+      agentId: "test",
+      agentName: "Test",
+      task: "test",
+      tool: "codex",
+      branch: "",
+      repoPath,
+      status: "running",
+      startedAt: new Date(),
+      output: [],
+    })
+    const wt = await createWorktree({ repoPath, sessionId: id })
+    try {
+      wt.onOutput("hello")
+      assert.equal(getSession(id)?.branch, wt.branch)
+      assert.equal(getSession(id)?.output.join(""), "hello\n")
+      await wt.cleanup({ preserveBranch: true })
+      assert.equal(fs.existsSync(wt.path), false)
+      execFileSync(
+        "git",
+        ["-C", repoPath, "show-ref", "--verify", `refs/heads/${wt.branch}`],
+        { stdio: "pipe" }
+      )
+    } finally {
+      try {
+        execFileSync("git", ["-C", repoPath, "worktree", "remove", "--force", wt.path], {
+          stdio: "pipe",
+        })
+      } catch {
+        /* Already removed. */
+      }
+      execFileSync("git", ["-C", repoPath, "branch", "-D", wt.branch], { stdio: "pipe" })
+      workSessions.delete(id)
+    }
+  }
+)

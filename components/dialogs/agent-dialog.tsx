@@ -147,7 +147,7 @@ function AgentForm({ agent, template }: { agent?: NavAgent; template?: AgentTemp
       role: agent?.role ?? template?.role ?? "",
       instructions: agent?.instructions ?? template?.instructions ?? "",
       model: agent?.model ?? "",
-      category: agent?.category ?? "general",
+      category: agent?.category ?? template?.agentCategory ?? "general",
       glyph: initialGlyph,
     },
   })
@@ -160,6 +160,7 @@ function AgentForm({ agent, template }: { agent?: NavAgent; template?: AgentTemp
     form.setValue("role", preset.role, options)
     form.setValue("instructions", preset.instructions, options)
     form.setValue("glyph", preset.glyph, options)
+    form.setValue("category", preset.agentCategory ?? "general", options)
     setSelectedPresetId(preset.id)
   }
 

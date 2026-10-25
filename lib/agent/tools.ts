@@ -1096,8 +1096,7 @@ export function createWorkSessionTools(env: ToolEnv) {
         const { createWorktree } = await import("@/lib/worktree")
         const { runCodingSession } = await import("@/lib/coding-session")
         const { runWorkstationCommand } = await import("@/lib/workstation")
-        const { upsertSession, appendSessionOutput, cleanupOldSessions } =
-          await import("@/lib/work-sessions")
+        const { upsertSession, cleanupOldSessions } = await import("@/lib/work-sessions")
         cleanupOldSessions()
         const agent = env.current()
         const run = async (
@@ -1137,6 +1136,7 @@ export function createWorkSessionTools(env: ToolEnv) {
             try {
               wt = await createWorktree({
                 repoPath,
+                sessionId: tracked.id,
                 baseBranch,
                 branchPrefix: t.branch ?? "task",
                 runGit: (args) => run(["git", ...args]),
@@ -1147,23 +1147,33 @@ export function createWorkSessionTools(env: ToolEnv) {
                 task: t.brief,
                 workdir: wt.path,
                 model: t.model,
-                onOutput: (line) => appendSessionOutput(tracked.id, `${line}\n`),
+                onOutput: wt.onOutput,
                 timeoutMs: (t.timeoutMinutes ?? 15) * 60_000,
                 run: async (command, opts) => {
                   // timeout executes inside Docker and kills the CLI process group there.
-                  const text = await run(
+                  const processResult = await runWorkstationCommand(
+                    agent.id,
                     [
                       "timeout",
                       "--signal=TERM",
                       "--kill-after=5s",
                       `${Math.ceil(opts.timeoutMs / 1000)}s`,
+                      "bash",
+                      "-c",
+                      `touch /tmp/xiryn/active; (while sleep 20; do touch /tmp/xiryn/active; done) & heartbeat=$!; trap 'kill "$heartbeat" 2>/dev/null; touch /tmp/xiryn/active' EXIT; "$@"`,
+                      "work-session",
                       ...command,
                     ],
-                    opts.cwd,
-                    opts.timeoutMs + 20_000,
-                    opts.onOutput
+                    {
+                      cwd: opts.cwd,
+                      timeoutMs: opts.timeoutMs + 20_000,
+                      onLine: opts.onOutput,
+                    }
                   )
-                  return { text, exitCode: 0 }
+                  return {
+                    text: processResult.stdout.toString() + processResult.stderr,
+                    exitCode: processResult.exitCode ?? -1,
+                  }
                 },
               })
               if (result.ok) {

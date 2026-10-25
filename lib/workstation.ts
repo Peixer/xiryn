@@ -972,7 +972,7 @@ export async function ensureCodingTools(agentId: string) {
           name,
           "bash",
           "-c",
-          'if [ ! -f "$HOME/.coding-tools-ready" ]; then bash -s && touch "$HOME/.coding-tools-ready"; fi',
+          'if [ ! -f "$HOME/.coding-tools-v2-ready" ]; then bash -s && touch "$HOME/.coding-tools-v2-ready"; fi',
         ],
         { input: script, timeoutMs: 300_000 }
       )
