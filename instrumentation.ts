@@ -60,5 +60,15 @@ export async function register() {
       stopNotifyWebhook()
       stopWebPush()
     },
+    quiesce() {
+      void import("./lib/self-update/write-freeze").then((gate) =>
+        gate.quiesceThisProcess()
+      )
+    },
+    resumeWrites() {
+      void import("./lib/self-update/write-freeze").then((gate) =>
+        gate.resumeThisProcess()
+      )
+    },
   })
 }

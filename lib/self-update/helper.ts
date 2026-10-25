@@ -46,6 +46,11 @@ export type Host = {
   health(colour: Colour): { ok: boolean; status: string }
   smoke(colour: Colour): { ok: boolean; detail: string }
   setMaintenance(on: boolean): void
+  // Colours running this build publish a beat and an ack. Others are skipped.
+  waitUntilQuiescent(colours: Colour[]): void
+  // Reserved lock on that colour's database. Held across the snapshot.
+  freezeWrites(colour: Colour): void
+  unfreezeWrites(): void
   pointCaddy(active: Colour): void
   reloadCaddy(): void
   restoreCaddy(): void
@@ -112,6 +117,16 @@ function approvalOf(row: ApprovalRow | null): GateApproval | null {
     argsHash: row.argsHash,
     status: row.status,
     expiresAt: row.expiresAt,
+  }
+}
+
+function releaseFreeze(host: Host, frozen: { on: boolean }) {
+  if (!frozen.on) return
+  frozen.on = false
+  try {
+    host.unfreezeWrites()
+  } catch (error) {
+    note(host, "freeze", redactError(error))
   }
 }
 
@@ -359,14 +374,21 @@ export function runSwitch(host: Host, request: HelperRequest) {
     error: null,
   })
   const candidate = switching.candidate!
+  const frozen = { on: false }
   try {
     note(host, "maintenance", "The active colour is read-only.")
+    note(host, "quiesce", "Waiting until the live database stops changing.")
+    host.waitUntilQuiescent([switching.active, candidate])
+    note(host, "freeze", "Blocking writers for the snapshot.")
+    host.freezeWrites(switching.active)
+    frozen.on = true
     host.backup("switch")
     note(host, "snapshot", "Taking the final database snapshot.")
     host.snapshotDb(switching.active, candidate)
     const report = host.migrate(candidate)
     const gap = migrationGap(report)
     if (!gap.ok) {
+      releaseFreeze(host, frozen)
       host.setMaintenance(false)
       const aborted = transition(host.readState(), {
         type: "switch_abort",
@@ -397,6 +419,7 @@ export function runSwitch(host: Host, request: HelperRequest) {
       )
       host.restoreCaddy()
       host.reloadCaddy()
+      releaseFreeze(host, frozen)
       host.setMaintenance(false)
       const rolled = transition(host.readState(), { type: "switch_fail", error })
       host.writeState(rolled)
@@ -427,6 +450,7 @@ export function runSwitch(host: Host, request: HelperRequest) {
       `Stopping ${switching.active}. Only ${candidate} runs background work.`
     )
     stopQuietly(host, switching.active)
+    releaseFreeze(host, frozen)
     host.setMaintenance(false)
     record(host, active, {
       op: "switch",
@@ -445,6 +469,7 @@ export function runSwitch(host: Host, request: HelperRequest) {
     } catch {
       // The audit line records the original failure. The proxy file is the backup.
     }
+    releaseFreeze(host, frozen)
     host.setMaintenance(false)
     const current = host.readState()
     const rolled =
@@ -514,7 +539,12 @@ export function runRollback(host: Host, request: HelperRequest) {
   const previous = switching.previous!
   const outgoing = switching.active
   let started = false
+  const frozen = { on: false }
   try {
+    note(host, "quiesce", "Waiting until the live database stops changing.")
+    host.waitUntilQuiescent([outgoing])
+    host.freezeWrites(outgoing)
+    frozen.on = true
     let health = host.health(previous)
     if (!health.ok) {
       note(host, "start", `Starting ${previous}.`)
@@ -525,6 +555,7 @@ export function runRollback(host: Host, request: HelperRequest) {
     if (!health.ok) {
       const error = `Health check failed (${health.status}).`
       if (started) stopQuietly(host, previous)
+      releaseFreeze(host, frozen)
       host.setMaintenance(false)
       const stayed = transition(host.readState(), { type: "rollback_fail", error })
       host.writeState(stayed)
@@ -546,6 +577,7 @@ export function runRollback(host: Host, request: HelperRequest) {
       host.restoreCaddy()
       host.reloadCaddy()
       if (started) stopQuietly(host, previous)
+      releaseFreeze(host, frozen)
       host.setMaintenance(false)
       const stayed = transition(host.readState(), { type: "rollback_fail", error })
       host.writeState(stayed)
@@ -562,6 +594,7 @@ export function runRollback(host: Host, request: HelperRequest) {
     host.writeState(rolled)
     note(host, "stop", `Stopping ${outgoing}. Only ${previous} runs background work.`)
     stopQuietly(host, outgoing)
+    releaseFreeze(host, frozen)
     host.setMaintenance(false)
     record(host, rolled, {
       op: "rollback",
@@ -581,6 +614,7 @@ export function runRollback(host: Host, request: HelperRequest) {
       // recorded below
     }
     if (started) stopQuietly(host, previous)
+    releaseFreeze(host, frozen)
     host.setMaintenance(false)
     const current = host.readState()
     const stayed =

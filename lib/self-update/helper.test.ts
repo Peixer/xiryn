@@ -46,6 +46,9 @@ function harness(start: DeployState, behaviour: Partial<Host> = {}) {
     health: () => ({ ok: true, status: "ok" }),
     smoke: () => ({ ok: true, detail: "ok" }),
     setMaintenance: (on) => calls.push(on ? "maintenance-on" : "maintenance-off"),
+    waitUntilQuiescent: () => calls.push("quiesce"),
+    freezeWrites: () => calls.push("freeze"),
+    unfreezeWrites: () => calls.push("unfreeze"),
     pointCaddy: (colour) => calls.push(`caddy:${colour}`),
     reloadCaddy: () => calls.push("reload"),
     restoreCaddy: () => calls.push("restore"),
@@ -185,6 +188,11 @@ test("a failed post-switch health check restores the proxy", () => {
     box.calls.some((call) => call.startsWith("stop:")),
     false
   )
+  const freeze = box.calls.indexOf("freeze")
+  const snapshot = box.calls.indexOf("snapshot")
+  const unfreeze = box.calls.indexOf("unfreeze")
+  const opened = box.calls.lastIndexOf("maintenance-off")
+  assert.ok(freeze >= 0 && freeze < snapshot && snapshot < unfreeze && unfreeze < opened)
 })
 
 test("an approved switch leaves the previous colour recorded for rollback", () => {
@@ -223,7 +231,12 @@ test("an approved switch leaves the previous colour recorded for rollback", () =
   assert.equal(box.state().previous, "blue")
   const stopped = box.calls.indexOf("stop:blue")
   const opened = box.calls.lastIndexOf("maintenance-off")
-  assert.ok(stopped >= 0 && stopped < opened)
+  const quiesce = box.calls.indexOf("quiesce")
+  const freeze = box.calls.indexOf("freeze")
+  const snapshot = box.calls.indexOf("snapshot")
+  const unfreeze = box.calls.indexOf("unfreeze")
+  assert.ok(quiesce >= 0 && quiesce < freeze && freeze < snapshot)
+  assert.ok(snapshot < stopped && stopped < unfreeze && unfreeze < opened)
   assert.equal(box.calls.includes("stop:green"), false)
 })
 
@@ -276,6 +289,9 @@ test("rollback starts a stopped previous colour and then stops the one it leaves
   const stop = box.calls.indexOf("stop:green")
   const opened = box.calls.lastIndexOf("maintenance-off")
   assert.ok(start >= 0 && start < caddy && caddy < stop && stop < opened)
+  const freeze = box.calls.indexOf("freeze")
+  const unfreeze = box.calls.indexOf("unfreeze")
+  assert.ok(freeze >= 0 && freeze < start && stop < unfreeze && unfreeze < opened)
 })
 
 test("a failed rollback stops a colour it had to start", () => {
@@ -304,6 +320,8 @@ test("a failed rollback stops a colour it had to start", () => {
   assert.equal(box.calls.includes("stop:blue"), true)
   assert.equal(box.calls.includes("stop:green"), false)
   assert.equal(box.state().maintenance, false)
+  assert.ok(box.calls.indexOf("unfreeze") > box.calls.indexOf("freeze"))
+  assert.ok(box.calls.indexOf("unfreeze") < box.calls.lastIndexOf("maintenance-off"))
 })
 
 test("rollback is refused without approval", () => {
@@ -360,4 +378,9 @@ test("switch refuses a final snapshot whose migrations were skipped", () => {
   assert.equal(box.calls.includes("caddy:green"), false)
   assert.equal(box.state().phase, "ready")
   assert.equal(box.state().active, "blue")
+  const freeze = box.calls.indexOf("freeze")
+  const unfreeze = box.calls.indexOf("unfreeze")
+  assert.ok(freeze >= 0 && freeze < unfreeze)
+  assert.equal(box.calls.filter((call) => call === "freeze").length, 1)
+  assert.equal(box.calls.filter((call) => call === "unfreeze").length, 1)
 })

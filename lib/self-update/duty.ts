@@ -92,6 +92,10 @@ export function claimWorkers(dir: string, colour: Colour, staleMs: number, now: 
   const lock = lockDir(dir)
   const held = readLock(dir)
   if (held?.colour === colour) {
+    // Rewriting the lock on every tick wakes directory watches. A fresh beat
+    // is enough; the holder refreshes once it is older than a quarter of the
+    // stale window.
+    if (now - held.beat < Math.max(50, Math.floor(staleMs / 4))) return true
     try {
       writeLock(dir, colour, now)
       return true
@@ -137,6 +141,41 @@ export type DutyOptions = {
 const DEFAULT_STATE = "/var/lib/xiryn/deploy/state.json"
 const DEFAULT_MAINTENANCE = "/etc/xiryn/maintenance"
 
+export function dutyBeatFile(dir: string, colour: Colour) {
+  return path.join(dir, `duty-${colour}.json`)
+}
+
+// True when this colour's process is running a build that publishes a beat.
+// The helper uses that to decide whether to wait for a quiesce ack.
+export function dutyIsAware(dir: string, colour: Colour, now: number, freshMs = 5_000) {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(dutyBeatFile(dir, colour), "utf8")) as {
+      at?: unknown
+    }
+    return (
+      typeof parsed.at === "number" && now - parsed.at >= 0 && now - parsed.at < freshMs
+    )
+  } catch {
+    return false
+  }
+}
+
+function publishBeat(dir: string, colour: Colour, now: number) {
+  if (!fs.existsSync(dir)) return
+  const file = dutyBeatFile(dir, colour)
+  try {
+    const current = JSON.parse(fs.readFileSync(file, "utf8")) as { at?: unknown }
+    if (typeof current.at === "number" && now - current.at < 1_000) return
+  } catch {
+    // Missing or unreadable: write a new beat below.
+  }
+  try {
+    fs.writeFileSync(file, `${JSON.stringify({ at: now })}\n`, { mode: 0o644 })
+  } catch {
+    // Without a beat the helper does not wait. It still locks the database.
+  }
+}
+
 function watchDir(file: string, onChange: () => void) {
   const dir = path.dirname(file)
   try {
@@ -166,6 +205,7 @@ export function followDuty(handlers: DutyHandlers, options: DutyOptions = {}) {
   let closed = false
   let ticking = false
   let again = false
+  let watchTimer: ReturnType<typeof setTimeout> | null = null
 
   noteDutyWatch(true)
 
@@ -177,6 +217,7 @@ export function followDuty(handlers: DutyHandlers, options: DutyOptions = {}) {
     }
     ticking = true
     try {
+      if (role.kind === "colour") publishBeat(deployDir, role.colour, now())
       const active = readActiveColour(stateFile)
       const maintenance = maintenanceFilePresent(maintenanceFile)
       const wanted = workersWanted({ role, active, maintenance }, previous)
@@ -236,14 +277,23 @@ export function followDuty(handlers: DutyHandlers, options: DutyOptions = {}) {
   tick()
   const timer = setInterval(tick, intervalMs)
   timer.unref?.()
-  const stateWatch = watchDir(stateFile, tick)
-  const maintenanceWatch = watchDir(maintenanceFile, tick)
+  const schedule = () => {
+    if (closed || watchTimer) return
+    watchTimer = setTimeout(() => {
+      watchTimer = null
+      tick()
+    }, 20)
+    watchTimer.unref?.()
+  }
+  const stateWatch = watchDir(stateFile, schedule)
+  const maintenanceWatch = watchDir(maintenanceFile, schedule)
 
   return {
     close() {
       if (closed) return
       closed = true
       clearInterval(timer)
+      if (watchTimer) clearTimeout(watchTimer)
       stateWatch?.close()
       maintenanceWatch?.close()
       if (running) {
