@@ -182,6 +182,79 @@ export const routines = sqliteTable(
   (t) => [index("routines_next_idx").on(t.enabled, t.nextRunAt)]
 )
 
+/* ───────────────────────── work sessions ────────────────────────── */
+
+// One fan-out from spawn_work_session. The wake goes back to the thread that
+// spawned it, once, after every session in the batch has finished.
+export const workSessionBatches = sqliteTable(
+  "work_session_batches",
+  {
+    id: id(),
+    agentId: text()
+      .notNull()
+      .references(() => agents.id, { onDelete: "cascade" }),
+    threadId: text()
+      .notNull()
+      .references(() => threads.id, { onDelete: "cascade" }),
+    // pending: still running, or finished and not yet claimed
+    // queued: finished while the thread was mid-turn
+    // waking: a wake is in progress in this process
+    // woken: startTurn was accepted for this batch
+    wakeStatus: text({ enum: ["pending", "queued", "waking", "woken"] })
+      .notNull()
+      .default("pending"),
+    // Stable message id so a retried wake updates one row instead of posting twice
+    wakeMessageId: text(),
+    createdAt: timestamp(),
+    wokenAt: integer({ mode: "timestamp_ms" }),
+  },
+  (t) => [
+    index("work_session_batches_thread_idx").on(t.threadId, t.wakeStatus),
+    index("work_session_batches_agent_idx").on(t.agentId),
+  ]
+)
+
+// A coding CLI running in its own worktree. Rows outlive the process; the
+// live output tail is also mirrored in memory while this process is up.
+export const workSessionRows = sqliteTable(
+  "work_sessions",
+  {
+    id: id(),
+    batchId: text()
+      .notNull()
+      .references(() => workSessionBatches.id, { onDelete: "cascade" }),
+    agentId: text()
+      .notNull()
+      .references(() => agents.id, { onDelete: "cascade" }),
+    threadId: text()
+      .notNull()
+      .references(() => threads.id, { onDelete: "cascade" }),
+    agentName: text().notNull(),
+    task: text().notNull(),
+    tool: text({ enum: ["codex", "claude-code"] }).notNull(),
+    model: text(),
+    branch: text().notNull().default(""),
+    worktreePath: text(),
+    repoPath: text().notNull(),
+    baseBranch: text().notNull().default("main"),
+    status: text({ enum: ["running", "done", "failed", "cancelled"] })
+      .notNull()
+      .default("running"),
+    startedAt: timestamp(),
+    finishedAt: integer({ mode: "timestamp_ms" }),
+    // Bounded tail of CLI output. The in-memory buffer is the live copy.
+    output: text().notNull().default(""),
+    durationMs: integer(),
+    error: text(),
+    timeoutMinutes: integer(),
+  },
+  (t) => [
+    index("work_sessions_agent_status_idx").on(t.agentId, t.status),
+    index("work_sessions_thread_idx").on(t.threadId, t.startedAt),
+    index("work_sessions_batch_idx").on(t.batchId),
+  ]
+)
+
 /* ───────────────────────────── vault ────────────────────────────── */
 
 // Logins, cards, UPI IDs and personal details, encrypted with a key held by
@@ -279,6 +352,7 @@ export const agentsRelations = relations(agents, ({ many }) => ({
   squads: many(squadMembers),
   threads: many(threads),
   memories: many(memories),
+  workSessions: many(workSessionRows),
 }))
 
 export const squadsRelations = relations(squads, ({ many }) => ({
@@ -295,6 +369,28 @@ export const threadsRelations = relations(threads, ({ one, many }) => ({
   agent: one(agents, { fields: [threads.agentId], references: [agents.id] }),
   squad: one(squads, { fields: [threads.squadId], references: [squads.id] }),
   messages: many(messages),
+  workSessions: many(workSessionRows),
+}))
+
+export const workSessionBatchesRelations = relations(
+  workSessionBatches,
+  ({ one, many }) => ({
+    agent: one(agents, { fields: [workSessionBatches.agentId], references: [agents.id] }),
+    thread: one(threads, {
+      fields: [workSessionBatches.threadId],
+      references: [threads.id],
+    }),
+    sessions: many(workSessionRows),
+  })
+)
+
+export const workSessionRowsRelations = relations(workSessionRows, ({ one }) => ({
+  batch: one(workSessionBatches, {
+    fields: [workSessionRows.batchId],
+    references: [workSessionBatches.id],
+  }),
+  agent: one(agents, { fields: [workSessionRows.agentId], references: [agents.id] }),
+  thread: one(threads, { fields: [workSessionRows.threadId], references: [threads.id] }),
 }))
 
 export const messagesRelations = relations(messages, ({ one }) => ({
@@ -416,3 +512,5 @@ export type Turn = typeof turns.$inferSelect
 export type Routine = typeof routines.$inferSelect
 export type RoutineInput = z.infer<typeof routineInputSchema>
 export type MessageRow = typeof messages.$inferSelect
+export type WorkSessionBatch = typeof workSessionBatches.$inferSelect
+export type WorkSessionRow = typeof workSessionRows.$inferSelect

@@ -38,6 +38,7 @@ import {
 import type { AgentOverview, RoutineView } from "@/queries/workspace"
 import { cn } from "@/lib/utils"
 import { SelfUpdatePanel } from "@/components/settings/self-update-panel"
+import { SessionsLink } from "@/components/work-sessions/sessions-panel"
 import { toast } from "@/components/ui/toast"
 
 function Presence({ online }: { online: boolean }) {
@@ -231,6 +232,9 @@ export function AppShell({
       )}
       {!thread && !offlineId && (
         <div className="pointer-events-none mt-auto flex flex-col">
+          <div className="pointer-events-auto bg-background">
+            <SessionsLink />
+          </div>
           <InstallGuide key={guideKey} />
           <nav className="xiryn-tabbar pointer-events-auto grid grid-cols-4 border-t bg-background/92 px-1 pt-1 pb-[max(0.35rem,env(safe-area-inset-bottom))] backdrop-blur-xl">
             {tabs.map((tab) => {

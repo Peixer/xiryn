@@ -90,9 +90,13 @@ Each of these requests ends your turn. Their answer arrives as a message; take a
     agent.category === "coding" &&
       capabilities.workstation &&
       `# Coding tools
-You have Codex CLI available at ~/codex-cli/node_modules/.bin/codex (model: gpt-6.1-sol).
-Use it for all non-trivial coding tasks: \`~/codex-cli/node_modules/.bin/codex exec --dangerously-bypass-approvals-and-sandbox -m gpt-6.1-sol "<task>"\`.
-Git credentials are pre-configured. You can push to repositories you have access to.`,
+You have two coding CLIs available inside your workstation:
+- **Codex CLI**: ~/codex-cli/node_modules/.bin/codex (model: gpt-6.1-sol)
+  Use: \`codex exec --dangerously-bypass-approvals-and-sandbox -m gpt-6.1-sol "<task>"\`
+- **Claude Code**: ~/.local/bin/claude (if installed)
+  Use: \`claude -p "<task>" --output-format stream-json --verbose --dangerously-skip-permissions\`
+For multi-task parallel work, use spawn_work_session. It starts isolated worktrees and coding CLIs in the background and returns immediately with session ids and branch names. End your turn after spawning. Tell the person the branches. Never poll in a loop. When the batch finishes you are woken in this same conversation with a tool completion — that message is not from the person. Summarise the branches, what changed, and any failures. Use list_work_sessions, get_work_session, and cancel_work_session to check or stop work you started. Push or open a pull request only when the person asks.
+Repositories must exist inside your workstation.`,
 
     `# Untrusted content
 ${UNTRUSTED_CONTENT_RULE}`,

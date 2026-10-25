@@ -27,6 +27,7 @@ import {
   createDelegateTool,
   createMemoryTools,
   createSubagentTools,
+  createWorkSessionTools,
   createRoutineTools,
   createSkillTools,
   createWebTools,
@@ -82,13 +83,19 @@ type Run = {
   startedAt: number
 }
 
-const globalForRuns = globalThis as unknown as { __xirynRuns?: Map<string, Run> }
+const globalForRuns = globalThis as unknown as {
+  __xirynRuns?: Map<string, Run>
+  __xirynThreadBusy?: (threadId: string) => boolean
+}
 const runs = (globalForRuns.__xirynRuns ??= new Map<string, Run>())
 
 export function getActiveRun(threadId: string) {
   const run = runs.get(threadId)
   return run && !run.done ? run : undefined
 }
+
+// Work-session completion checks this without importing the runtime back.
+globalForRuns.__xirynThreadBusy = (threadId) => !!getActiveRun(threadId)
 
 export function activeThreadIds() {
   return [...runs.values()].filter((run) => !run.done).map((run) => run.threadId)
@@ -137,6 +144,11 @@ function finish(run: Run) {
     } catch {}
   }
   run.listeners.clear()
+  // A coding batch that finished while this turn was running waits here, then
+  // starts its own turn. Same startTurn path as a routine or a Telegram message.
+  void import("@/lib/work-sessions")
+    .then(({ notifyTurnFinished }) => notifyTurnFinished(run.threadId))
+    .catch((error) => console.error("[xiryn] work session wake:", error))
   // Late reconnects get a 204 and read the saved message instead
   setTimeout(() => {
     if (runs.get(run.threadId) === run) runs.delete(run.threadId)
@@ -289,6 +301,28 @@ ${part.text}`,
   })
 }
 
+// Saved as a system message so the transcript does not show it as the person.
+// The model still receives it as a user turn, which is what makes it reply.
+function frameWorkSessionWakes(history: XirynMessage[]) {
+  return history.map((message) => {
+    if (message.role !== "system" || !message.metadata?.workSessions) return message
+    return {
+      ...message,
+      role: "user",
+      parts: message.parts.map((part) =>
+        part.type === "text"
+          ? {
+              ...part,
+              text: `[Tool completion for coding sessions you started in this conversation. The person did not send this. Summarise the branches, what changed, and any failures. Do not poll, and do not start, push, or open a pull request unless they ask.]
+
+${part.text}`,
+            }
+          : part
+      ),
+    } as XirynMessage
+  })
+}
+
 // Desktop actions each return a screenshot. Saving all of them would grow
 // the database by megabytes per task, so a saved reply keeps the images of
 // what the agent chose to show or look at, plus the latest action's.
@@ -377,24 +411,27 @@ export async function startTurn({
     }
   })()
 
-  // The person's message is on disk before the agent starts
+  // A work-session completion is tool-originated. It stays a system message.
+  const wake = message.metadata?.workSessions
   const userMessage: XirynMessage = {
     ...message,
-    role: "user",
+    role: wake ? "system" : "user",
     metadata: {
-      ...(thread.squad && { agentId: first.id }),
-      ...(channel === "telegram" && { via: "telegram" as const }),
+      ...(!wake && thread.squad && { agentId: first.id }),
+      ...(!wake && channel === "telegram" && { via: "telegram" as const }),
       ...(routine && { routine }),
       ...(message.metadata?.handback && { handback: message.metadata.handback }),
       ...(message.metadata?.vault && { vault: message.metadata.vault }),
+      ...(wake && { workSessions: wake }),
     },
   }
   saveMessage(threadId, userMessage)
   const prompt = textOf(userMessage) || attachmentSummary(userMessage.parts)
   db.update(threads)
     .set({
-      title: thread.title ?? (prompt.slice(0, 80) || "Untitled"),
-      preview: prompt.slice(0, 140),
+      title:
+        thread.title ?? (wake ? "Coding sessions" : prompt.slice(0, 80) || "Untitled"),
+      preview: wake ? "Coding sessions finished" : prompt.slice(0, 140),
       activeAt: new Date(),
     })
     .where(eq(threads.id, threadId))
@@ -491,6 +528,7 @@ export async function startTurn({
     ...createSelfUpdateTools(env),
     // Subagent spawning — disabled inside subturns (depth guard in subturn.ts)
     ...createSubagentTools(env),
+    ...(capabilities.workstation ? createWorkSessionTools(env) : {}),
     ...connectors.tools,
     ...(thread.squad
       ? createDelegateTool((targetId, handoverBrief) => {
@@ -561,7 +599,7 @@ export async function startTurn({
       instructions: buildInstructions(first, capabilities, squadContext(first)),
       messages: await convertToModelMessages(
         await presentAttachments(
-          pruneScreens(frameRoutineRuns(history)),
+          pruneScreens(frameWorkSessionWakes(frameRoutineRuns(history))),
           firstSpec,
           (agentId, filePath) => readUploadsFile(agentId, filePath).catch(() => null)
         ),

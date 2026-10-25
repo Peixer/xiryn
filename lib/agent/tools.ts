@@ -928,7 +928,8 @@ export type XirynTools = ReturnType<typeof createWorkstationTools> &
   ReturnType<typeof createWebTools> &
   ReturnType<typeof createRoutineTools> &
   ReturnType<typeof createDelegateTool> &
-  ReturnType<typeof createSubagentTools>
+  ReturnType<typeof createSubagentTools> &
+  ReturnType<typeof createWorkSessionTools>
 
 export type XirynMetadata = {
   // The agent that started the reply, or that a squad message was sent to
@@ -949,6 +950,12 @@ export type XirynMetadata = {
   vault?: {
     action: "approved" | "declined" | "taken-over" | "provided"
     summary: string
+  }
+  // Posted when a background coding batch finishes. Not something the person wrote.
+  workSessions?: {
+    batchId: string
+    origin: "tool"
+    sessionIds: string[]
   }
 }
 
@@ -1058,6 +1065,119 @@ export function createSubagentTools(env: ToolEnv) {
 
         const totalCostUsd = results.reduce((sum, r) => sum + (r.costUsd ?? 0), 0)
         return { results, totalCostUsd }
+      },
+    }),
+  }
+}
+
+export function createWorkSessionTools(env: ToolEnv) {
+  return {
+    spawn_work_session: tool({
+      description:
+        "Start up to 5 coding sessions in the background, each on its own git branch in the workstation. Returns immediately with session ids and branch names. End your turn after telling the person; you are woken in this conversation when the batch finishes. Do not poll.",
+      inputSchema: z.object({
+        tasks: z
+          .array(
+            z.object({
+              brief: z.string().min(1).max(4000),
+              branch: z
+                .string()
+                .regex(/^[a-zA-Z0-9_-]+$/)
+                .optional(),
+              tool: z.enum(["codex", "claude-code"]).optional(),
+              model: z.string().optional(),
+              timeoutMinutes: z.number().int().min(1).max(60).optional(),
+            })
+          )
+          .min(1)
+          .max(5),
+        repoPath: z.string().startsWith("/").default("/home/xiryn/xiryn"),
+        baseBranch: z
+          .string()
+          .regex(/^[a-zA-Z0-9_./-]+$/)
+          .default("main"),
+      }),
+      execute: async ({ tasks, repoPath, baseBranch }) => {
+        const { isSubturnThread } = await import("@/lib/agent/subturn")
+        if (isSubturnThread(env.threadId)) {
+          return {
+            started: false,
+            error: "spawn_work_session cannot run inside a subagent turn.",
+          }
+        }
+        const { spawnWorkSessions } = await import("@/lib/work-sessions")
+        const agent = env.current()
+        const result = spawnWorkSessions({
+          agentId: agent.id,
+          agentName: agent.name,
+          threadId: env.threadId,
+          tasks,
+          repoPath,
+          baseBranch,
+        })
+        if (!result.ok) return { started: false, error: result.error }
+        return {
+          started: true,
+          batchId: result.batchId,
+          threadId: result.threadId,
+          sessions: result.sessions.map((session) => ({
+            id: session.id,
+            branch: session.branch,
+            task: session.task,
+            tool: session.tool,
+            status: session.status,
+          })),
+          note: "The sessions are running in the background. End this turn. Tell the person how many started and the branch names. You will be woken in this same conversation when they finish. Do not poll.",
+        }
+      },
+    }),
+    list_work_sessions: tool({
+      description:
+        "List coding sessions you started. Set threadOnly to this conversation; omit it to see every conversation of yours. Does not include other agents.",
+      inputSchema: z.object({
+        threadOnly: z.boolean().optional(),
+      }),
+      execute: async ({ threadOnly }) => {
+        const { listAgentWorkSessions } = await import("@/lib/work-sessions")
+        const agent = env.current()
+        const sessions = listAgentWorkSessions(
+          agent.id,
+          threadOnly ? env.threadId : undefined
+        )
+        return {
+          sessions: sessions.map((session) => ({
+            id: session.id,
+            threadId: session.threadId,
+            batchId: session.batchId,
+            branch: session.branch,
+            status: session.status,
+            tool: session.tool,
+            task: session.task.slice(0, 200),
+            error: session.error,
+          })),
+        }
+      },
+    }),
+    get_work_session: tool({
+      description:
+        "Status of one coding session you started, including the tail of its output. Only sessions that belong to you.",
+      inputSchema: z.object({
+        sessionId: z.string().min(1),
+      }),
+      execute: async ({ sessionId }) => {
+        const { getAgentWorkSession } = await import("@/lib/work-sessions")
+        return getAgentWorkSession(env.current().id, sessionId)
+      },
+    }),
+    cancel_work_session: tool({
+      description:
+        "Stop one of your coding sessions. Kills the CLI inside the workstation and removes the worktree. The branch is kept when it already has commits.",
+      inputSchema: z.object({
+        sessionId: z.string().min(1),
+      }),
+      execute: async ({ sessionId }) => {
+        const { cancelAgentWorkSession } = await import("@/lib/work-sessions")
+        return cancelAgentWorkSession(env.current().id, sessionId)
       },
     }),
   }

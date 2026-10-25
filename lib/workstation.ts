@@ -972,7 +972,7 @@ export async function ensureCodingTools(agentId: string) {
           name,
           "bash",
           "-c",
-          'if [ ! -f "$HOME/.coding-tools-ready" ]; then bash -s && touch "$HOME/.coding-tools-ready"; fi',
+          'if [ ! -f "$HOME/.coding-tools-v2-ready" ]; then bash -s && touch "$HOME/.coding-tools-v2-ready"; fi',
         ],
         { input: script, timeoutMs: 300_000 }
       )
@@ -980,4 +980,13 @@ export async function ensureCodingTools(agentId: string) {
     codingSetupPending.set(agentId, pending)
   }
   await pending
+}
+
+// Structured argv keeps session prompts and repository paths out of shell syntax.
+export async function runWorkstationCommand(
+  agentId: string,
+  command: string[],
+  options: RunOptions & { cwd?: string } = {}
+) {
+  return execIn(agentId, command, options)
 }

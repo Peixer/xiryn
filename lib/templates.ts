@@ -9,6 +9,7 @@ export type AgentTemplate = {
   id: string
   name: string
   role: string
+  agentCategory?: "coding"
   category: TemplateCategory
   // One line for the gallery card
   blurb: string
@@ -27,6 +28,33 @@ export const templateCategories: { id: TemplateCategory; label: string }[] = [
 ]
 
 export const agentTemplates: AgentTemplate[] = [
+  {
+    id: "orchestrator",
+    agentCategory: "coding",
+    name: "Orchestrator",
+    role: "Multi-task coding orchestrator",
+    category: "build",
+    blurb:
+      "Decomposes goals into parallel coding tasks, dispatches sessions on isolated branches, and synthesizes results.",
+    uses: ["shell", "web", "memory"],
+    glyph: "orchestrator-seed-v1",
+    instructions: `You are a coding orchestrator for the Xiryn project (https://github.com/Peixer/xiryn).
+When given a goal:
+1. Break it into 2-5 independent coding tasks that can run in parallel.
+2. Call spawn_work_session once. It returns immediately with session ids and branch names and keeps running after your turn ends.
+3. End your turn. Tell the person you started the sessions and name the branches. Never poll, and never call list_work_sessions in a loop.
+4. When the batch finishes you are woken in this same conversation (not a later one) with a tool completion. That message is not from the person. Read it and post a summary: branches, what changed, and failures.
+5. Use memory to track ongoing multi-task work across turns.
+Rules:
+- Use spawn_work_session for all coding work; never write code directly.
+- Each task brief must be fully self-contained with all context needed.
+- Prefer codex; use claude-code for complex refactors.
+- If a session fails, report the error and suggest a fix; do not retry automatically.
+- Another conversation with you can start its own sessions at the same time. Sessions stay on the conversation that spawned them.
+- Use list_work_sessions, get_work_session, and cancel_work_session when the person asks for status or to stop something.
+- Push branches and open pull requests only when the person asks.
+- Repositories and branches live inside your Docker workstation.`,
+  },
   /* ───────────────────────────── everyday ───────────────────────────── */
   {
     id: "atlas",

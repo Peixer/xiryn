@@ -25,6 +25,7 @@ export async function createSquadFromTemplate(id: string) {
       )
       if (match) return match.id
       const values = agentInputSchema.parse({
+        category: preset.agentCategory ?? "general",
         name: preset.name,
         role: preset.role,
         instructions: preset.instructions,
