@@ -6,3 +6,4 @@ package-lock.json
 public
 *.md
 deploy/xiryn-helper.mjs
+docs/
