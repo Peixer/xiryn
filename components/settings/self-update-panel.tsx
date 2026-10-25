@@ -1,7 +1,15 @@
 "use client"
 
 import * as React from "react"
-import { CheckIcon, XIcon } from "lucide-react"
+import {
+  CheckIcon,
+  XIcon,
+  CircleIcon,
+  SearchIcon,
+  HammerIcon,
+  ArrowRightLeftIcon,
+  AlertTriangleIcon,
+} from "lucide-react"
 
 import { decideSelfUpdate, stageSelfUpdate, startSelfUpdate } from "@/actions/self-update"
 import { Button } from "@/components/ui/button"
@@ -31,7 +39,14 @@ export function SelfUpdatePanel({
     impact: string | null
   } | null>(null)
   const [confirmDiscard, setConfirmDiscard] = React.useState(false)
+  const [clock, setClock] = React.useState(() => Date.now())
+  const logRef = React.useRef<HTMLOListElement>(null)
+  const [queued, setQueued] = React.useState(false)
   const cardRef = React.useRef<HTMLDivElement>(null)
+  const acceptView = React.useCallback((next: SelfUpdateView) => {
+    setView(next)
+    if (["building", "ready", "switching"].includes(next.phase)) setQueued(false)
+  }, [])
 
   React.useEffect(() => {
     // The card is inserted under the buttons. On a phone that sits below the
@@ -43,16 +58,59 @@ export function SelfUpdatePanel({
     const source = new EventSource("/api/self-update/progress")
     source.onmessage = (event) => {
       try {
-        setView(JSON.parse(event.data) as SelfUpdateView)
+        acceptView(JSON.parse(event.data) as SelfUpdateView)
       } catch {
         // A malformed event is ignored. The next one replaces it.
       }
     }
     return () => source.close()
-  }, [])
+  }, [acceptView])
 
   const phase = view?.phase ?? "idle"
   const working = phase === "building" || phase === "switching"
+  React.useEffect(() => {
+    if (phase === "idle" && !queued) return
+    const controller = new AbortController()
+    const timer = setInterval(() => {
+      setClock(Date.now())
+      void fetch("/api/self-update/status", {
+        cache: "no-store",
+        signal: controller.signal,
+      })
+        .then((response) => (response.ok ? response.json() : null))
+        .then((next: SelfUpdateView | null) => {
+          if (next) acceptView(next)
+        })
+        .catch(() => {
+          /* EventSource will reconnect as well. */
+        })
+    }, 5000)
+    return () => {
+      clearInterval(timer)
+      controller.abort()
+    }
+  }, [phase, queued, acceptView])
+  React.useEffect(() => {
+    if (!queued) return
+    const timer = setTimeout(() => {
+      setQueued(false)
+      setError(
+        "The deploy helper did not start within 30 seconds. Check systemctl status xiryn-deploy.path xiryn-deploy.service on the server, then retry Update."
+      )
+    }, 30_000)
+    return () => clearTimeout(timer)
+  }, [queued])
+  React.useEffect(() => {
+    const log = logRef.current
+    if (log) log.scrollTop = log.scrollHeight
+  }, [view?.logs])
+  const shownPhase = busy === "update" || queued ? "checking" : phase
+  const phaseIndex = ["idle", "checking", "building", "ready", "switching"].indexOf(
+    shownPhase
+  )
+  const buildStart = view?.logs.findLast((line) => line.step === "build")?.ts
+  const elapsed = buildStart ? Math.max(0, (clock - Date.parse(buildStart)) / 1000) : 0
+  const failure = error ?? view?.error
   const canUpdate = Boolean(view?.configured && view.updateAvailable && !working)
   const canSwitch = Boolean(
     view?.configured &&
@@ -70,17 +128,36 @@ export function SelfUpdatePanel({
   ) => {
     setBusy(label)
     setError(null)
-    const result = await action()
-    setBusy(null)
-    if (!result.ok) setError(result.error ?? "That did not start.")
+    try {
+      const result = await action()
+      if (!result.ok) setError(result.error ?? "That did not start.")
+      else if (label === "update") setQueued(true)
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Could not contact the update service. Retry when the connection returns."
+      )
+    } finally {
+      setBusy(null)
+    }
   }
 
   const stage = async (op: "switch" | "rollback") => {
     setBusy(op)
     setError(null)
     setConfirmDiscard(false)
-    const result = await stageSelfUpdate(op)
-    setBusy(null)
+    let result: Awaited<ReturnType<typeof stageSelfUpdate>>
+    try {
+      result = await stageSelfUpdate(op)
+    } catch (cause) {
+      setError(
+        cause instanceof Error ? cause.message : "Could not stage the update. Retry."
+      )
+      return
+    } finally {
+      setBusy(null)
+    }
     if (!result.ok) {
       setError(result.error)
       return
@@ -114,8 +191,8 @@ export function SelfUpdatePanel({
             ["Colour", view?.active ?? "blue"],
             ["Phase", phase.replaceAll("_", " ")],
             ["Branch", view?.branch ?? "main"],
-            ["This commit", short(view?.activeSha ?? null)],
-            ["Latest", short(view?.tipSha ?? null)],
+            ["Current version", short(view?.activeSha ?? null)],
+            ["Latest available", short(view?.tipSha ?? null)],
             [
               "Migrations",
               view?.includesMigrations
@@ -129,10 +206,55 @@ export function SelfUpdatePanel({
             className="flex items-baseline justify-between gap-3 px-4 py-2.5"
           >
             <dt className="text-muted-foreground">{label}</dt>
-            <dd className="min-w-0 truncate text-right">{value}</dd>
+            <dd title={value} className="min-w-0 truncate text-right">
+              {value}
+            </dd>
           </div>
         ))}
       </dl>
+      <div
+        aria-label="Update phases"
+        className="flex flex-wrap gap-3 text-xs"
+        role="status"
+      >
+        {(
+          [
+            ["idle", CircleIcon],
+            ["checking", SearchIcon],
+            ["building", HammerIcon],
+            ["ready", CheckIcon],
+            ["switching", ArrowRightLeftIcon],
+          ] as const
+        ).map(([name, Icon], index) => (
+          <span
+            key={name}
+            aria-current={shownPhase === name ? "step" : undefined}
+            className={cn(
+              "inline-flex items-center gap-1",
+              shownPhase === name ? "font-semibold text-rigel" : "text-muted-foreground"
+            )}
+          >
+            {index < phaseIndex ? (
+              <CheckIcon className="size-3" />
+            ) : (
+              <Icon className="size-3" />
+            )}
+            {name}
+          </span>
+        ))}
+        {(phase === "active" || phase === "rolled_back") && (
+          <span>
+            <CheckIcon className="inline size-3" /> {phase.replaceAll("_", " ")}
+          </span>
+        )}
+      </div>
+      {phase === "building" && (
+        <p className="text-sm text-muted-foreground" role="status">
+          {elapsed < 120
+            ? `Estimated ${Math.max(0, Math.ceil(60 - elapsed))}–${Math.ceil(120 - elapsed)} seconds remaining. Builds usually take 60–120 seconds.`
+            : "Build is taking longer than usual. Follow the progress log below."}
+        </p>
+      )}
       {view?.standbyUrl && (
         <p className="text-[12.5px] text-muted-foreground">
           The inactive colour is at{" "}
@@ -144,7 +266,7 @@ export function SelfUpdatePanel({
       )}
       {view && view.titles.length > 0 && (
         <div className="flex flex-col gap-1.5">
-          <span className="label-mono">Changelog</span>
+          <span className="label-mono">What&apos;s new</span>
           <ul className="flex flex-col gap-1 text-[13.5px] leading-relaxed">
             {view.titles.map((title) => (
               <li key={title} className="break-words">
@@ -154,12 +276,27 @@ export function SelfUpdatePanel({
           </ul>
         </div>
       )}
-      {view?.error && <p className="text-[13px] text-destructive">{view.error}</p>}
-      {error && <p className="text-[13px] text-destructive">{error}</p>}
+      {failure && (
+        <div
+          role="alert"
+          className="rounded-xl border border-destructive bg-destructive/10 p-4 text-sm"
+        >
+          <p className="flex items-center gap-2 font-semibold text-destructive">
+            <AlertTriangleIcon className="size-4" /> Update failed
+          </p>
+          <p className="mt-2 break-words">{failure}</p>
+          <p className="mt-2">
+            Review the last progress entries below. For a build failure, fix the reported
+            dependency or disk-space issue and click Update again. For a switch failure,
+            verify the serving colour and retry Switch when healthy. If progress stops,
+            inspect <code>journalctl -u xiryn-deploy.service -n 100</code> on the server.
+          </p>
+        </div>
+      )}
       <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
         <Button
           className="min-h-12 sm:min-h-8"
-          disabled={!canUpdate || !!busy}
+          disabled={!canUpdate || !!busy || queued}
           onClick={() => run("update", startSelfUpdate)}
         >
           {busy === "update" && <Spinner data-icon="inline-start" />}
@@ -261,7 +398,13 @@ export function SelfUpdatePanel({
         </div>
       )}
       {view && view.logs.length > 0 && (
-        <ol className="max-h-64 overflow-auto rounded-xl border bg-surface/40 p-3 font-mono text-[11.5px] leading-relaxed">
+        <ol
+          ref={logRef}
+          aria-label="Update progress log"
+          role="log"
+          aria-live="polite"
+          className="max-h-64 overflow-auto rounded-xl border bg-surface/40 p-3 font-mono text-[11.5px] leading-relaxed"
+        >
           {view.logs.map((line, index) => (
             <li key={`${line.ts}-${index}`} className="break-words">
               <span className="text-muted-foreground">{line.step}</span> {line.message}
