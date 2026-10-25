@@ -6,48 +6,59 @@ export async function register() {
   const { connect } = await import("./db")
   connect()
 
-  // One-time vault entries (codes, a card used once) don't outlive a day
-  const { sweepVault } = await import("./lib/vault")
-  sweepVault()
-  setInterval(sweepVault, 60 * 60_000).unref()
-
-  // Resume the Telegram bridge if a bot token is configured
-  const { syncTelegram } = await import("./lib/telegram/bridge")
-  syncTelegram()
-
-  // Notification webhook. Does nothing until a URL is configured.
-  const { startNotifyWebhook } = await import("./lib/notify-webhook")
-  startNotifyWebhook()
-
-  // Web Push for an installed app. Does nothing until VAPID keys are set.
-  const { startWebPush } = await import("./lib/web-push")
-  startWebPush()
-
-  // Routines: tasks agents run on their own, on a schedule
-  const { startRoutines } = await import("./lib/routines")
-  startRoutines()
-
-  // Same-origin VNC for a public XIRYN_URL. Harmless when you only use loopback.
+  // Same-origin VNC for a public XIRYN_URL. Each colour keeps its own port,
+  // including the one that is not serving, so a standby desktop still connects.
   const { startDesktopProxy } = await import("./lib/desktop-proxy")
   startDesktopProxy()
 
-  // Workstations: see whether Docker is there, tidy up after deleted agents,
-  // and get the workstation image ready so the first task doesn't wait for it
+  // Telegram, routines, and the workstation janitor run only on the active
+  // colour. The idle process stays up for health checks and a later switch.
+  const { followDuty } = await import("./lib/self-update/duty")
+  const { setTelegramPolling } = await import("./lib/telegram/bridge")
+  const { startRoutines, stopRoutines } = await import("./lib/routines")
+  const { startWorkstationJanitor, stopWorkstationJanitor } =
+    await import("./lib/workstation")
+  const { startVaultSweep, stopVaultSweep } = await import("./lib/vault")
+  const { startNotifyWebhook, stopNotifyWebhook } = await import("./lib/notify-webhook")
+  const { startWebPush, stopWebPush } = await import("./lib/web-push")
   const { probeEngine } = await import("./lib/docker")
-  const { startWorkstationJanitor } = await import("./lib/workstation")
   const { buildImage, getImageState } = await import("./lib/workstation-image")
-  const engine = await probeEngine().catch(() => null)
-  startWorkstationJanitor()
-  if (engine?.state === "ready") {
-    getImageState()
-      .then((image) => {
-        if (image.state === "absent") {
-          console.log("[xiryn] building the agent workstation image (first run only)…")
-          return buildImage().then((tag) =>
-            console.log(`[xiryn] workstation image ready: ${tag}`)
-          )
-        }
-      })
-      .catch((error) => console.error("[xiryn] workstation image:", error))
+
+  let imageAttempted = false
+  const globalForDuty = globalThis as unknown as {
+    __xirynDuty?: { close(): void }
   }
+  globalForDuty.__xirynDuty?.close()
+  globalForDuty.__xirynDuty = followDuty({
+    start() {
+      setTelegramPolling(true)
+      startRoutines()
+      startWorkstationJanitor()
+      startVaultSweep()
+      startNotifyWebhook()
+      startWebPush()
+      if (imageAttempted) return
+      imageAttempted = true
+      probeEngine()
+        .then((engine) => {
+          if (engine?.state !== "ready") return
+          return getImageState().then((image) => {
+            if (image.state !== "absent") return
+            console.log("[xiryn] building the agent workstation image (first run only)…")
+            return buildImage().then((tag) =>
+              console.log(`[xiryn] workstation image ready: ${tag}`)
+            )
+          })
+        })
+        .catch((error) => console.error("[xiryn] workstation image:", error))
+    },
+    stop() {
+      setTelegramPolling(false)
+      stopRoutines()
+      stopWorkstationJanitor()
+      stopVaultSweep()
+      stopNotifyWebhook()
+      stopWebPush()
+    },
+  })
 }

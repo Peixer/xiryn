@@ -119,3 +119,8 @@ export function startWebPush() {
   )
   globalForPush.__xirynWebPush = { unsubscribe }
 }
+
+export function stopWebPush() {
+  globalForPush.__xirynWebPush?.unsubscribe()
+  globalForPush.__xirynWebPush = undefined
+}

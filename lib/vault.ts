@@ -9,6 +9,7 @@ import { z } from "zod"
 
 import { db, DATA_DIR, DB_PATH } from "@/db"
 import { vaultApprovals, vaultItems } from "@/db/schema"
+import { backgroundWorkAllowed } from "@/lib/self-update/duty-gate"
 import { vaultAccount } from "@/lib/vault-account"
 
 // The person's vault: saved logins, cards, UPI IDs and personal details.
@@ -537,6 +538,24 @@ export function markVaultUsed(id: string) {
     return
   }
   db.update(vaultItems).set({ lastUsedAt: new Date() }).where(eq(vaultItems.id, id)).run()
+}
+
+const globalForSweep = globalThis as unknown as {
+  __xirynVaultSweep?: ReturnType<typeof setInterval> | null
+}
+
+export function startVaultSweep() {
+  if (!backgroundWorkAllowed()) return
+  if (globalForSweep.__xirynVaultSweep) return
+  sweepVault()
+  const timer = setInterval(sweepVault, 60 * 60_000)
+  timer.unref()
+  globalForSweep.__xirynVaultSweep = timer
+}
+
+export function stopVaultSweep() {
+  if (globalForSweep.__xirynVaultSweep) clearInterval(globalForSweep.__xirynVaultSweep)
+  globalForSweep.__xirynVaultSweep = null
 }
 
 // Ephemeral items nobody used are cleared after a day

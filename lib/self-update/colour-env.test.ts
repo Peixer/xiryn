@@ -93,6 +93,7 @@ test("each colour keeps its own data dir when shared.env names /opt/xiryn/data",
     assert.equal(env.XIRYN_DESKTOP_PROXY_PORT, colour === "blue" ? "6797" : "6897")
     assert.equal(env.XIRYN_VAULT_KEY_DIR, "/etc/xiryn/vault")
     assert.equal(env.XIRYN_DEPLOY_DIR, "/var/lib/xiryn/deploy")
+    assert.equal(env.XIRYN_COLOUR, colour)
     assert.equal(env.OPENAI_API_KEY, "present")
     assert.equal(env.NODE_ENV, "production")
     assert.notEqual(env.XIRYN_DATA_DIR, "/opt/xiryn/data")

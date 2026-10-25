@@ -16,6 +16,7 @@ import {
   type RunOptions,
 } from "@/lib/docker"
 import { pageFromTargets, type PageTarget } from "@/lib/page-origin"
+import { backgroundWorkAllowed } from "@/lib/self-update/duty-gate"
 import { ensureImage, imageTag } from "@/lib/workstation-image"
 
 // Each agent owns a workstation: a Docker container on this computer with a
@@ -180,13 +181,16 @@ const globalForWorkstations = globalThis as unknown as {
     pending: Map<string, Promise<Session>>
     recent: Map<string, Session>
     janitor: NodeJS.Timeout | null
+    janitorSoon: NodeJS.Timeout | null
   }
 }
 const shared = (globalForWorkstations.__xirynWorkstations ??= {
   pending: new Map(),
   recent: new Map(),
   janitor: null,
+  janitorSoon: null,
 })
+let janitorEpoch = 0
 
 // A machine seen running this recently is used without asking Docker again
 const RECENT_MS = 60_000
@@ -813,6 +817,9 @@ export async function checkWorkstationNetwork(agentId: string) {
 // Removes machines whose agent was deleted, and, with auto-delete on,
 // machines that have been stopped for longer than that
 export async function sweepWorkstations() {
+  const epoch = janitorEpoch
+  const stopped = () => epoch !== janitorEpoch
+  if (stopped()) return
   if (engineSnapshot()?.state !== "ready") return
   const install = installId()
   const known = new Set(
@@ -836,13 +843,17 @@ export async function sweepWorkstations() {
     const [agentId, state] = line.split("\t")
     if (!agentId) continue
     if (!known.has(agentId)) {
+      if (stopped()) return
       await deleteWorkstation(agentId)
       continue
     }
     if (autoDelete === undefined || state !== "exited") continue
     const found = await inspect(containerName(agentId))
     const stoppedFor = found ? Date.now() - Date.parse(found.finishedAt) : 0
-    if (stoppedFor >= autoDelete * 60_000) await deleteWorkstation(agentId)
+    if (stoppedFor >= autoDelete * 60_000) {
+      if (stopped()) return
+      await deleteWorkstation(agentId)
+    }
   }
 
   const volumes = await docker([
@@ -854,17 +865,31 @@ export async function sweepWorkstations() {
     '{{.Label "xiryn.agent"}}',
   ])
   for (const agentId of volumes.stdout.toString().split(/\r?\n/).filter(Boolean)) {
+    if (stopped()) return
     if (!known.has(agentId)) await dockerRaw(["volume", "rm", volumeName(agentId)])
   }
 }
 
 export function startWorkstationJanitor() {
+  if (!backgroundWorkAllowed()) return
   if (shared.janitor) return
-  const sweep = () =>
+  const epoch = janitorEpoch
+  const sweep = () => {
+    if (epoch !== janitorEpoch) return
     sweepWorkstations().catch((error) =>
       console.error("[xiryn] workstation cleanup failed:", error)
     )
-  setTimeout(sweep, 20_000)
+  }
+  shared.janitorSoon = setTimeout(sweep, 20_000)
+  shared.janitorSoon.unref?.()
   shared.janitor = setInterval(sweep, 5 * 60_000)
   shared.janitor.unref()
+}
+
+export function stopWorkstationJanitor() {
+  janitorEpoch++
+  if (shared.janitorSoon) clearTimeout(shared.janitorSoon)
+  if (shared.janitor) clearInterval(shared.janitor)
+  shared.janitorSoon = null
+  shared.janitor = null
 }

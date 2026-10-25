@@ -305,6 +305,10 @@ export function createSystemHost(layout = loadLayout()): Host {
     stopColour(colour) {
       runRoot(layout, ["systemctl", "stop", colourUnit(colour)])
     },
+    pause(ms) {
+      if (ms <= 0) return
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
+    },
     health(colour) {
       const port = colour === "blue" ? layout.bluePort : layout.greenPort
       try {

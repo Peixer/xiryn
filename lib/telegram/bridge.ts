@@ -24,6 +24,7 @@ import {
 } from "@/lib/mcp/approval"
 import { clip } from "@/lib/mcp/approval-preview"
 import { answerPayment, answerSecret, type VaultMarker } from "@/lib/vault-requests"
+import { backgroundWorkAllowed } from "@/lib/self-update/duty-gate"
 import { getTakeoverLink } from "@/lib/workstation"
 import { resolveModelSpec } from "@/lib/providers/registry"
 import {
@@ -68,6 +69,8 @@ type BridgeState = {
   rejected: string | null
   // Wrong pairing codes since the last rotation
   failedPairs: number
+  // False while this process is not the active colour.
+  polling: boolean
   // A one-time code an agent asked for: the next reply is stored, not sent
   awaitingCode?: {
     threadId: string
@@ -89,6 +92,7 @@ const state = (globalForBridge.__xirynTelegram ??= {
   rejected: null,
   failedPairs: 0,
   awaitingCode: null,
+  polling: true,
 } as BridgeState)
 
 const COMMANDS = [
@@ -163,9 +167,26 @@ export type TelegramStatus = ReturnType<typeof telegramStatus>
 
 /* ─────────────────────────── lifecycle ────────────────────────── */
 
+// The idle colour must not poll. Settings and boot both come through here.
+export function setTelegramPolling(enabled: boolean) {
+  state.polling = enabled
+  if (!enabled) {
+    state.generation++
+    state.controller?.abort()
+    state.controller = null
+    return
+  }
+  syncTelegram()
+}
+
 // Starts, restarts or stops polling so it matches the configured token.
 // Safe to call any number of times.
 export function syncTelegram() {
+  if (!backgroundWorkAllowed()) {
+    if (state.polling !== false) setTelegramPolling(false)
+    return
+  }
+  if (state.polling === false) return
   const token = getSetting("telegram.botToken") ?? null
   if (token === state.token && (state.controller || !token || state.rejected === token))
     return

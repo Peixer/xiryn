@@ -41,6 +41,8 @@ export type Host = {
   migrate(colour: Colour): MigrateReport
   startColour(colour: Colour): void
   stopColour(colour: Colour): void
+  // Short wait while a colour that was just started answers /api/health.
+  pause(ms: number): void
   health(colour: Colour): { ok: boolean; status: string }
   smoke(colour: Colour): { ok: boolean; detail: string }
   setMaintenance(on: boolean): void
@@ -111,6 +113,24 @@ function approvalOf(row: ApprovalRow | null): GateApproval | null {
     status: row.status,
     expiresAt: row.expiresAt,
   }
+}
+
+function stopQuietly(host: Host, colour: Colour) {
+  try {
+    host.stopColour(colour)
+  } catch (error) {
+    note(host, "stop", `Could not stop ${colour}: ${redactError(error)}`)
+  }
+}
+
+function awaitHealthy(host: Host, colour: Colour) {
+  let last = { ok: false, status: "down" }
+  for (let attempt = 0; attempt < 8; attempt++) {
+    last = host.health(colour)
+    if (last.ok) return last
+    host.pause(400)
+  }
+  return last
 }
 
 function failBuild(host: Host, state: DeployState, error: string) {
@@ -396,9 +416,18 @@ export function runSwitch(host: Host, request: HelperRequest) {
       })
       return { ok: false as const, error }
     }
-    host.setMaintenance(false)
     const active = transition(host.readState(), { type: "switch_ok" })
     host.writeState(active)
+    // Maintenance is still on, so the new colour has not started workers.
+    // Stop the outgoing process before lifting it: an older build does not
+    // read deploy state and would keep polling Telegram.
+    note(
+      host,
+      "stop",
+      `Stopping ${switching.active}. Only ${candidate} runs background work.`
+    )
+    stopQuietly(host, switching.active)
+    host.setMaintenance(false)
     record(host, active, {
       op: "switch",
       result: "ok",
@@ -406,7 +435,7 @@ export function runSwitch(host: Host, request: HelperRequest) {
       sha,
       error: null,
     })
-    note(host, "active", `${candidate} is serving. The previous colour is still running.`)
+    note(host, "active", `${candidate} is serving.`)
     return { ok: true as const }
   } catch (error) {
     const message = redactError(error)
@@ -483,15 +512,19 @@ export function runRollback(host: Host, request: HelperRequest) {
     error: null,
   })
   const previous = switching.previous!
+  const outgoing = switching.active
+  let started = false
   try {
-    note(host, "caddy", `Pointing the proxy back at ${previous}.`)
-    host.pointCaddy(previous)
-    host.reloadCaddy()
-    const health = host.health(previous)
+    let health = host.health(previous)
+    if (!health.ok) {
+      note(host, "start", `Starting ${previous}.`)
+      started = true
+      host.startColour(previous)
+      health = awaitHealthy(host, previous)
+    }
     if (!health.ok) {
       const error = `Health check failed (${health.status}).`
-      host.restoreCaddy()
-      host.reloadCaddy()
+      if (started) stopQuietly(host, previous)
       host.setMaintenance(false)
       const stayed = transition(host.readState(), { type: "rollback_fail", error })
       host.writeState(stayed)
@@ -504,9 +537,32 @@ export function runRollback(host: Host, request: HelperRequest) {
       })
       return { ok: false as const, error }
     }
-    host.setMaintenance(false)
+    note(host, "caddy", `Pointing the proxy back at ${previous}.`)
+    host.pointCaddy(previous)
+    host.reloadCaddy()
+    health = awaitHealthy(host, previous)
+    if (!health.ok) {
+      const error = `Health check failed (${health.status}).`
+      host.restoreCaddy()
+      host.reloadCaddy()
+      if (started) stopQuietly(host, previous)
+      host.setMaintenance(false)
+      const stayed = transition(host.readState(), { type: "rollback_fail", error })
+      host.writeState(stayed)
+      record(host, stayed, {
+        op: "rollback",
+        result: "failed",
+        actor: "helper",
+        sha,
+        error,
+      })
+      return { ok: false as const, error }
+    }
     const rolled = transition(host.readState(), { type: "rollback_ok" })
     host.writeState(rolled)
+    note(host, "stop", `Stopping ${outgoing}. Only ${previous} runs background work.`)
+    stopQuietly(host, outgoing)
+    host.setMaintenance(false)
     record(host, rolled, {
       op: "rollback",
       result: "ok",
@@ -524,6 +580,7 @@ export function runRollback(host: Host, request: HelperRequest) {
     } catch {
       // recorded below
     }
+    if (started) stopQuietly(host, previous)
     host.setMaintenance(false)
     const current = host.readState()
     const stayed =
