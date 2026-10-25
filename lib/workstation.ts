@@ -1,3 +1,6 @@
+import fs from "node:fs/promises"
+import path from "node:path"
+import { codingVolumeArgs, codingAccess } from "@/lib/coding-tools"
 import { randomBytes } from "node:crypto"
 
 import { eq } from "drizzle-orm"
@@ -78,6 +81,7 @@ type Inspection = {
   finishedAt: string
   cpus: number
   memoryBytes: number
+  codingAccess: string
 }
 
 async function inspect(name: string): Promise<Inspection | null> {
@@ -87,7 +91,7 @@ async function inspect(name: string): Promise<Inspection | null> {
       "--type",
       "container",
       "--format",
-      '{{.State.Status}}\t{{index .Config.Labels "xiryn.image"}}\t{{.State.StartedAt}}\t{{.State.FinishedAt}}\t{{.HostConfig.NanoCpus}}\t{{.HostConfig.Memory}}',
+      '{{.State.Status}}\t{{index .Config.Labels "xiryn.image"}}\t{{.State.StartedAt}}\t{{.State.FinishedAt}}\t{{.HostConfig.NanoCpus}}\t{{.HostConfig.Memory}}\t{{index .Config.Labels "xiryn.coding"}}',
       name,
     ],
     { timeoutMs: 20_000 }
@@ -96,7 +100,7 @@ async function inspect(name: string): Promise<Inspection | null> {
     if (/no such (container|object)/i.test(stderr)) return null
     throw new Error(dockerReason(stderr) || "Couldn't look up the workstation.")
   }
-  const [status, image, startedAt, finishedAt, nanoCpus, memory] = stdout
+  const [status, image, startedAt, finishedAt, nanoCpus, memory, access] = stdout
     .toString()
     .trim()
     .split("\t")
@@ -107,12 +111,13 @@ async function inspect(name: string): Promise<Inspection | null> {
     finishedAt,
     cpus: Number(nanoCpus) / 1e9 || 0,
     memoryBytes: Number(memory) || 0,
+    codingAccess: access ?? "",
   }
 }
 
 async function create(agentId: string, tag: string) {
   const agent = db
-    .select({ name: agents.name })
+    .select({ name: agents.name, codingTools: agents.codingTools })
     .from(agents)
     .where(eq(agents.id, agentId))
     .get()
@@ -154,6 +159,9 @@ async function create(agentId: string, tag: string) {
       `TZ=${timeZone}`,
       "--volume",
       `${volumeName(agentId)}:${HOME}`,
+      ...codingVolumeArgs(agent),
+      "--label",
+      `xiryn.coding=${codingAccess(agent)}`,
       "--publish",
       `127.0.0.1::${VNC_PORT}`,
       "--shm-size",
@@ -174,7 +182,13 @@ async function boot(name: string) {
   await docker(["exec", name, "xiryn-ready"], { timeoutMs: 45_000 })
 }
 
-type Session = { name: string; at: number; port?: number; password?: string }
+type Session = {
+  name: string
+  at: number
+  access: string
+  port?: number
+  password?: string
+}
 
 const globalForWorkstations = globalThis as unknown as {
   __xirynWorkstations?: {
@@ -202,8 +216,18 @@ async function prepare(agentId: string): Promise<Session> {
 
   // A stopped machine on an outdated image is recreated; its home folder,
   // which lives in a volume, carries over
+  const agent = db.select().from(agents).where(eq(agents.id, agentId)).get()
+  if (!agent) throw new Error("Agent not found")
+  const changedAccess =
+    found &&
+    (found.codingAccess === "rw" || found.codingAccess === "ro"
+      ? found.codingAccess
+      : "off") !== codingAccess(agent)
   const current = imageTag()
-  if (found && found.status !== "running" && found.image !== current) {
+  if (
+    found &&
+    (changedAccess || (found.status !== "running" && found.image !== current))
+  ) {
     await docker(["rm", "--force", name])
     found = null
   }
@@ -234,14 +258,21 @@ async function prepare(agentId: string): Promise<Session> {
     .set({ workstationId: name, updatedAt: new Date() })
     .where(eq(agents.id, agentId))
     .run()
-  return { name, at: Date.now() }
+  return { name, at: Date.now(), access: codingAccess(agent) }
 }
 
 // The agent's workstation, running. Creates it on first use and starts it
 // (and Docker Desktop, if needed) when it's stopped.
 export async function ensureWorkstation(agentId: string): Promise<string> {
   const cached = shared.recent.get(agentId)
-  if (cached && Date.now() - cached.at < RECENT_MS) return cached.name
+  const agent = db.select().from(agents).where(eq(agents.id, agentId)).get()
+  if (!agent) throw new Error("Agent not found")
+  if (
+    cached &&
+    cached.access === codingAccess(agent) &&
+    Date.now() - cached.at < RECENT_MS
+  )
+    return cached.name
 
   let task = shared.pending.get(agentId)
   if (!task) {
@@ -892,4 +923,34 @@ export function stopWorkstationJanitor() {
   if (shared.janitor) clearInterval(shared.janitor)
   shared.janitorSoon = null
   shared.janitor = null
+}
+
+// No host mounts or secrets are copied: the script executes inside Docker.
+const codingSetupPending = new Map<string, Promise<void>>()
+export async function ensureCodingTools(agentId: string) {
+  const agent = db.select().from(agents).where(eq(agents.id, agentId)).get()
+  if (!agent?.codingTools) return
+  let pending = codingSetupPending.get(agentId)
+  if (!pending) {
+    pending = (async () => {
+      const name = await ensureWorkstation(agentId)
+      const script = await fs.readFile(
+        path.join(process.cwd(), "scripts/setup-coding-tools.sh"),
+        "utf8"
+      )
+      await docker(
+        [
+          "exec",
+          "-i",
+          name,
+          "bash",
+          "-c",
+          'if [ ! -f "$HOME/.coding-tools-ready" ]; then bash -s && touch "$HOME/.coding-tools-ready"; fi',
+        ],
+        { input: script, timeoutMs: 300_000 }
+      )
+    })().finally(() => codingSetupPending.delete(agentId))
+    codingSetupPending.set(agentId, pending)
+  }
+  await pending
 }

@@ -25,6 +25,7 @@ export const agents = sqliteTable("agents", {
   instructions: text(),
   // "provider/model". Null falls back to the workspace default.
   model: text(),
+  codingTools: integer({ mode: "boolean" }).notNull().default(false),
   // Seed for the agent's generated glyph
   glyph: text()
     .notNull()

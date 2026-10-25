@@ -23,6 +23,7 @@ import { reportDeletion } from "@/components/agents/delete-feedback"
 import { Confirm } from "@/components/confirm"
 import { Glyph } from "@/components/glyph"
 import { ModelPicker } from "@/components/model-picker"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -142,6 +143,7 @@ function AgentForm({ agent, template }: { agent?: NavAgent; template?: AgentTemp
       role: agent?.role ?? template?.role ?? "",
       instructions: agent?.instructions ?? template?.instructions ?? "",
       model: agent?.model ?? "",
+      codingTools: agent?.codingTools ?? false,
       glyph: initialGlyph,
     },
   })
@@ -335,6 +337,27 @@ function AgentForm({ agent, template }: { agent?: NavAgent; template?: AgentTemp
                     Workstation tasks need a model that supports tools and images.
                   </FieldDescription>
                   {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                </Field>
+              )}
+            />
+
+            <Controller
+              name="codingTools"
+              control={form.control}
+              render={({ field }) => (
+                <Field>
+                  <FieldLabel htmlFor="agent-coding-tools">
+                    <Checkbox
+                      id="agent-coding-tools"
+                      checked={field.value ?? false}
+                      onCheckedChange={(checked) => field.onChange(checked === true)}
+                    />
+                    Coding tools
+                  </FieldLabel>
+                  <FieldDescription>
+                    Gives this agent Codex CLI and pre-configured git credentials. Enable
+                    on your primary coding agent.
+                  </FieldDescription>
                 </Field>
               )}
             />

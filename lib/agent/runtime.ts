@@ -1,3 +1,4 @@
+import { ensureCodingTools } from "@/lib/workstation"
 import {
   convertToModelMessages,
   hasToolCall,
@@ -583,7 +584,9 @@ export async function startTurn({
       ],
       ...bedrockOutputCap(firstSpec),
       abortSignal: run.controller.signal,
-      prepareStep: ({ messages: stepMessages, stepNumber }) => {
+      prepareStep: async ({ messages: stepMessages, stepNumber }) => {
+        if (capabilities.workstation && current.codingTools)
+          await ensureCodingTools(current.id)
         // Long tool loops resend everything each step; keep it lean.
         // Image bytes from an attachment stay only when this step's model
         // is known to accept them. Screenshots on tool results are untouched.
