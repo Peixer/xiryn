@@ -52,7 +52,7 @@ function harness(start: DeployState, behaviour: Partial<Host> = {}) {
     pointCaddy: (colour) => calls.push(`caddy:${colour}`),
     reloadCaddy: () => calls.push("reload"),
     restoreCaddy: () => calls.push("restore"),
-    backup: () => calls.push("backup"),
+    backup: (label) => calls.push(`backup:${label}`),
     readApproval: () => null,
     takeApproval: (id) => {
       const read = behaviour.readApproval ?? (() => null)
@@ -229,6 +229,7 @@ test("an approved switch leaves the previous colour recorded for rollback", () =
   assert.equal(box.state().phase, "active")
   assert.equal(box.state().active, "green")
   assert.equal(box.state().previous, "blue")
+  assert.equal(box.state().switchedAt, "2026-10-24T08:00:00.000Z")
   const stopped = box.calls.indexOf("stop:blue")
   const opened = box.calls.lastIndexOf("maintenance-off")
   const quiesce = box.calls.indexOf("quiesce")
@@ -240,13 +241,14 @@ test("an approved switch leaves the previous colour recorded for rollback", () =
   assert.equal(box.calls.includes("stop:green"), false)
 })
 
-function approvedRollback() {
+function approvedRollback(discardSince: string | null = null) {
   const args = {
     op: "rollback" as const,
     sha: ACTIVE,
     from: "green" as const,
     to: "blue" as const,
     branch: "main",
+    discardSince,
   }
   return {
     tool: "request_self_update",
@@ -268,6 +270,7 @@ test("rollback starts a stopped previous colour and then stops the one it leaves
       previous: "blue",
       previousSha: ACTIVE,
       branch: "main",
+      switchedAt: "2026-10-24T07:00:00.000Z",
     }),
     {
       health: () => ({ ok: up, status: up ? "ok" : "down" }),
@@ -275,7 +278,7 @@ test("rollback starts a stopped previous colour and then stops the one it leaves
         up = true
         box.calls.push("start:blue")
       },
-      readApproval: () => approvedRollback(),
+      readApproval: () => approvedRollback("2026-10-24T07:00:00.000Z"),
     }
   )
   const result = runRollback(
@@ -291,7 +294,10 @@ test("rollback starts a stopped previous colour and then stops the one it leaves
   assert.ok(start >= 0 && start < caddy && caddy < stop && stop < opened)
   const freeze = box.calls.indexOf("freeze")
   const unfreeze = box.calls.indexOf("unfreeze")
-  assert.ok(freeze >= 0 && freeze < start && stop < unfreeze && unfreeze < opened)
+  const backup = box.calls.indexOf("backup:rollback")
+  assert.ok(freeze >= 0 && freeze < start && start < backup && backup < caddy)
+  assert.ok(stop < unfreeze && unfreeze < opened)
+  assert.equal(box.state().switchedAt, null)
 })
 
 test("a failed rollback stops a colour it had to start", () => {
@@ -322,6 +328,8 @@ test("a failed rollback stops a colour it had to start", () => {
   assert.equal(box.state().maintenance, false)
   assert.ok(box.calls.indexOf("unfreeze") > box.calls.indexOf("freeze"))
   assert.ok(box.calls.indexOf("unfreeze") < box.calls.lastIndexOf("maintenance-off"))
+  assert.equal(box.calls.includes("backup:rollback"), false)
+  assert.equal(box.calls.includes("caddy:blue"), false)
 })
 
 test("rollback is refused without approval", () => {

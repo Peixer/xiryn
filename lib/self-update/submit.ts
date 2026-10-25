@@ -6,7 +6,7 @@ import {
 import type { HelperOp, HelperRequest } from "@/lib/self-update/allowlist"
 import { enqueueRequest } from "@/lib/self-update/queue"
 import { isSha } from "@/lib/self-update/sha"
-import type { DeployState } from "@/lib/self-update/state"
+import { isUtcTimestamp, type DeployState } from "@/lib/self-update/state"
 import type { GateApproval } from "@/lib/self-update/approval-gate"
 
 export function opAllowed(
@@ -52,13 +52,17 @@ export function buildSelfUpdateArgs(
           ? "green"
           : "blue"
         : (state.candidate ?? state.active)
-  return {
+  const args: SelfUpdateArgs = {
     op: publicOp(op === "status" ? "prepare" : op),
     sha,
     from: state.active,
     to,
     branch: state.branch,
   }
+  if (args.op === "rollback") {
+    args.discardSince = isUtcTimestamp(state.switchedAt) ? state.switchedAt : null
+  }
+  return args
 }
 
 // Owner update skips approval. Switch, roll back, and agent updates do not.

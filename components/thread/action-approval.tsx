@@ -26,6 +26,13 @@ export function ActionApprovalCard({
   const [busy, setBusy] = React.useState<"approve" | "decline" | null>(null)
   const [error, setError] = React.useState<string | null>(null)
   const [allowDomain, setAllowDomain] = React.useState(false)
+  const [confirmDiscard, setConfirmDiscard] = React.useState(false)
+  const [seenApproval, setSeenApproval] = React.useState(approvalId)
+  if (seenApproval !== approvalId) {
+    setSeenApproval(approvalId)
+    setAllowDomain(false)
+    setConfirmDiscard(false)
+  }
 
   const load = React.useCallback(async () => {
     setAction(await connectorAction(approvalId))
@@ -50,11 +57,10 @@ export function ActionApprovalCard({
   const decide = async (choice: "approve" | "decline") => {
     setBusy(choice)
     setError(null)
-    const result = await decideConnectorAction(
-      approvalId,
-      choice,
-      choice === "approve" && allowDomain ? { allowDomain: true } : undefined
-    )
+    const result = await decideConnectorAction(approvalId, choice, {
+      allowDomain: choice === "approve" && allowDomain,
+      confirmDiscard: choice === "approve" && confirmDiscard,
+    })
     setBusy(null)
     if (!result.ok) {
       setError(result.error)
@@ -98,6 +104,23 @@ export function ActionApprovalCard({
       </pre>
       <p className="font-mono text-[10.5px] text-muted-foreground">{action.tool}</p>
       {error && <p className="text-[12px] text-destructive">{error}</p>}
+      {open && action.discardWarning && (
+        <>
+          {action.impact && (
+            <p className="text-[12.5px] leading-relaxed break-words whitespace-pre-wrap">
+              {action.impact}
+            </p>
+          )}
+          <label className="flex items-start gap-2 text-[12.5px] leading-relaxed">
+            <Checkbox
+              checked={confirmDiscard}
+              onCheckedChange={(checked) => setConfirmDiscard(checked === true)}
+              className="mt-0.5"
+            />
+            <span>Discard data written since the switch</span>
+          </label>
+        </>
+      )}
       {open && action.offerAllowDomain && action.host && (
         <label className="flex items-start gap-2 text-[12.5px] leading-relaxed">
           <Checkbox
@@ -118,7 +141,7 @@ export function ActionApprovalCard({
           <Button
             size="sm"
             className="min-h-11"
-            disabled={!!busy}
+            disabled={!!busy || (action.discardWarning && !confirmDiscard)}
             onClick={() => decide("approve")}
           >
             {busy === "approve" ? (

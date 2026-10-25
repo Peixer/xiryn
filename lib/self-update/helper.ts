@@ -1,9 +1,9 @@
 import {
   gateSelfUpdate,
-  publicOp,
   type GateApproval,
   type SelfUpdateArgs,
 } from "@/lib/self-update/approval-gate"
+import { buildSelfUpdateArgs } from "@/lib/self-update/submit"
 import type { AuditEntry } from "@/lib/self-update/audit"
 import { migrationGap } from "@/lib/self-update/migrations"
 import { validatePinnedSha } from "@/lib/self-update/sha"
@@ -94,19 +94,7 @@ function argsFor(
   state: DeployState,
   sha: string
 ): SelfUpdateArgs {
-  const to =
-    request.op === "rollback"
-      ? state.previous
-      : request.op === "switch"
-        ? state.candidate
-        : state.candidate
-  return {
-    op: publicOp(request.op === "status" ? "prepare" : request.op),
-    sha,
-    from: state.active,
-    to: (to ?? state.active) as Colour,
-    branch: state.branch,
-  }
+  return buildSelfUpdateArgs(state, request.op === "status" ? "prepare" : request.op, sha)
 }
 
 function approvalOf(row: ApprovalRow | null): GateApproval | null {
@@ -439,7 +427,10 @@ export function runSwitch(host: Host, request: HelperRequest) {
       })
       return { ok: false as const, error }
     }
-    const active = transition(host.readState(), { type: "switch_ok" })
+    const active = transition(host.readState(), {
+      type: "switch_ok",
+      at: new Date(host.now()).toISOString(),
+    })
     host.writeState(active)
     // Maintenance is still on, so the new colour has not started workers.
     // Stop the outgoing process before lifting it: an older build does not
@@ -568,6 +559,8 @@ export function runRollback(host: Host, request: HelperRequest) {
       })
       return { ok: false as const, error }
     }
+    note(host, "backup", "Keeping a backup of the database rollback will stop serving.")
+    host.backup("rollback")
     note(host, "caddy", `Pointing the proxy back at ${previous}.`)
     host.pointCaddy(previous)
     host.reloadCaddy()

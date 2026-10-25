@@ -12,6 +12,10 @@ export type SelfUpdateArgs = {
   from: Colour
   to: Colour
   branch: string
+  // Present only on rollback. The moment the colour being left became
+  // active. Counts of the rows that would be lost stay off this object so
+  // the approval hash does not change between the card and the decision.
+  discardSince?: string | null
 }
 
 export type GateApproval = {

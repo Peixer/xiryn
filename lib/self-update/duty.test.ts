@@ -95,13 +95,13 @@ test("a single install runs workers and a colour runs them only while it is acti
     ),
     true
   )
-  assert.equal(processRole({ XIRYN_COLOUR: "green" }).kind, "colour")
+  assert.equal(processRole({ NODE_ENV: "test", XIRYN_COLOUR: "green" }).kind, "colour")
   assert.equal(
-    processRole({ XIRYN_DATA_DIR: "/var/lib/xiryn/colours/blue" }).kind,
+    processRole({ NODE_ENV: "test", XIRYN_DATA_DIR: "/var/lib/xiryn/colours/blue" }).kind,
     "colour"
   )
-  assert.equal(processRole({ XIRYN_COLOUR: "nope" }).kind, "invalid")
-  assert.equal(processRole({ XIRYN_DATA_DIR: "/tmp/dev" }).kind, "solo")
+  assert.equal(processRole({ NODE_ENV: "test", XIRYN_COLOUR: "nope" }).kind, "invalid")
+  assert.equal(processRole({ NODE_ENV: "test", XIRYN_DATA_DIR: "/tmp/dev" }).kind, "solo")
 })
 
 test("only the active colour runs workers, including across a switch", async () => {
@@ -132,7 +132,7 @@ test("only the active colour runs workers, including across a switch", async () 
         note()
       },
     },
-    { ...options, env: { XIRYN_COLOUR: "blue" } }
+    { ...options, env: { NODE_ENV: "test", XIRYN_COLOUR: "blue" } }
   )
   const green = followDuty(
     {
@@ -145,7 +145,7 @@ test("only the active colour runs workers, including across a switch", async () 
         note()
       },
     },
-    { ...options, env: { XIRYN_COLOUR: "green" } }
+    { ...options, env: { NODE_ENV: "test", XIRYN_COLOUR: "green" } }
   )
   try {
     await waitFor(() => blueOn && !greenOn)

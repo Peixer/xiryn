@@ -426,7 +426,7 @@ export function createSystemHost(layout = loadLayout()): Host {
       }
     },
     backup(label) {
-      if (label !== "prepare" && label !== "switch") {
+      if (label !== "prepare" && label !== "switch" && label !== "rollback") {
         throw new Error("Refusing a backup label outside the allow-list.")
       }
       const stamp = new Date().toISOString().replace(/[:.]/g, "-")

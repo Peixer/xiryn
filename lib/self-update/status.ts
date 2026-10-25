@@ -6,7 +6,12 @@ import { summarizeChangelog } from "@/lib/self-update/changelog"
 import { parseDeployConf, DEFAULT_LAYOUT, type Layout } from "@/lib/self-update/layout"
 import { redact } from "@/lib/self-update/redact"
 import { isSha } from "@/lib/self-update/sha"
-import { initialState, type DeployState, type Phase } from "@/lib/self-update/state"
+import {
+  initialState,
+  isUtcTimestamp,
+  type DeployState,
+  type Phase,
+} from "@/lib/self-update/state"
 
 export type ProgressLine = { ts: string; step: string; message: string }
 
@@ -77,6 +82,7 @@ function asState(value: unknown): DeployState | null {
       record.previous === "blue" || record.previous === "green" ? record.previous : null,
     error: typeof record.error === "string" ? redact(record.error).slice(0, 500) : null,
     branch: typeof record.branch === "string" ? record.branch : "main",
+    switchedAt: isUtcTimestamp(record.switchedAt) ? record.switchedAt : null,
   }
 }
 

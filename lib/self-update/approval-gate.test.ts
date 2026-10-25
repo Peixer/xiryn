@@ -130,4 +130,25 @@ test("an agent update and every switch or rollback need a matching approval", ()
     }).allow,
     true
   )
+  const since = "2026-10-24T08:00:00.000Z"
+  assert.equal(
+    gateSelfUpdate({
+      op: "rollback",
+      actor: "owner",
+      approval: approval({ args: { ...args, op: "rollback", discardSince: null } }),
+      expected: { ...args, op: "rollback", discardSince: since },
+      now,
+    }).allow,
+    false
+  )
+  assert.equal(
+    gateSelfUpdate({
+      op: "rollback",
+      actor: "owner",
+      approval: approval({ args: { ...args, op: "rollback", discardSince: since } }),
+      expected: { ...args, op: "rollback", discardSince: since },
+      now,
+    }).allow,
+    true
+  )
 })

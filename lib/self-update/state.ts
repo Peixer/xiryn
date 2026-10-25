@@ -27,6 +27,9 @@ export type DeployState = {
   maintenance: boolean
   baseline: Baseline
   operation: "switch" | "rollback" | null
+  // When the current colour became active. Rollback uses it to say which
+  // writes would be discarded. Cleared once that colour is no longer current.
+  switchedAt: string | null
 }
 
 export type DeployEvent =
@@ -35,7 +38,7 @@ export type DeployEvent =
   | { type: "build_fail"; error: string }
   | { type: "switch_begin" }
   | { type: "switch_abort"; error: string }
-  | { type: "switch_ok" }
+  | { type: "switch_ok"; at?: string }
   | { type: "switch_fail"; error: string }
   | { type: "rollback_begin" }
   | { type: "rollback_ok" }
@@ -61,8 +64,15 @@ export function initialState(over: Partial<DeployState> = {}): DeployState {
     maintenance: false,
     baseline: "idle",
     operation: null,
+    switchedAt: null,
     ...over,
   }
+}
+
+const UTC_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/
+
+export function isUtcTimestamp(value: unknown): value is string {
+  return typeof value === "string" && UTC_TIMESTAMP.test(value)
 }
 
 export class TransitionError extends Error {
@@ -149,6 +159,9 @@ export function transition(state: DeployState, event: DeployEvent): DeployState 
       if (state.phase !== "switching" || state.operation !== "switch")
         illegal(state, event)
       if (!state.candidate || !state.candidateSha) illegal(state, event)
+      if (event.at !== undefined && !isUtcTimestamp(event.at)) {
+        throw new TransitionError("switchedAt must be a UTC timestamp.")
+      }
       return {
         ...state,
         phase: "active",
@@ -162,6 +175,7 @@ export function transition(state: DeployState, event: DeployEvent): DeployState 
         operation: null,
         maintenance: false,
         error: null,
+        switchedAt: event.at ?? state.switchedAt,
       }
     }
     case "switch_fail": {
@@ -205,6 +219,7 @@ export function transition(state: DeployState, event: DeployEvent): DeployState 
         operation: null,
         maintenance: false,
         error: null,
+        switchedAt: null,
       }
     }
     case "rollback_fail": {

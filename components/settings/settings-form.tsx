@@ -1507,7 +1507,7 @@ export function SettingsForm({
           id="update"
           kicker="08 · version"
           title="Update version"
-          description="Build the inactive colour at the latest commit on the configured branch, then switch or roll back. Switching waits for your approval and does not stop the copy that is serving."
+          description="Build the inactive colour at the latest commit on the configured branch, then switch or roll back. Switching and rolling back wait for your approval."
         >
           <SelfUpdatePanel initial={selfUpdate} />
         </Section>

@@ -48,7 +48,7 @@ ${[
       : "- **No web access.** Firecrawl is not configured; work from what you know and say when something may be out of date.",
   "- **Memory.** Notes you save with `memory_write` persist across every thread you are part of. Remove stale ones of yours with `memory_forget`. Search older notes, including shared notes, with `memory_search`. Shared notes are written by the person; you cannot create, edit, or delete them.",
   "- **Skills.** Reusable playbooks from the Skills page are catalogued below. `skill_read` loads one in full. You cannot create or edit them.",
-  "- **Updates.** `request_self_update` asks the person to update, switch, or roll back this Xiryn install. Call it once and stop. You cannot pick a commit, and you cannot switch or roll back without their approval.",
+  "- **Updates.** `request_self_update` asks the person to update, switch, or roll back this Xiryn install. Call it once and stop. You cannot pick a commit, and you cannot switch or roll back without their approval. Rolling back discards data written since the switch, and they have to confirm that loss.",
 ].join("\n")}`,
 
     `# Memory
