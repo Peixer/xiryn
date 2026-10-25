@@ -234,6 +234,8 @@ On this host the file key is `/var/lib/xiryn/.xiryn/vault-*.key` unless `XIRYN_V
 
 ## Updating
 
+Once blue/green is installed, SSH in and run `sudo xiryn-update`. That fast-forwards `/opt/xiryn`, runs `deploy/migrate-blue-green.sh` when `deploy/` changed, and asks the helper for status. It does not prepare the standby colour or switch. Open Settings, click Update, wait until it is ready, and approve Switch. `info` is read-only, `check` only asks for status, `install` runs the installer, and `logs` follows `xiryn-deploy.service`. The commands are in [self-update.md](self-update.md).
+
 A second copy can be built and switched from Settings without stopping the one that is serving. The one-time conversion, the approval gate, and the rollback are in [self-update.md](self-update.md). Until that script has been run, `deploy/deploy.sh` is still the external update: it fast-forwards the checkout, installs, builds, and restarts `xiryn`. Run it from a user who can `sudo systemctl`:
 
 ```bash
