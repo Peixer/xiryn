@@ -1,34 +1,100 @@
 #!/usr/bin/env bash
-# xiryn-git-token — manage the GitHub credential for coding agents
+# xiryn-git-token — GitHub credentials for coding agents
 #
-#   set [--stdin]   read username + token from stdin, write to volume
-#   show            print masked credential (username and last-4 of token)
-#   clear           remove the credential file
+#   set [--stdin] [agent-id]   read a token from stdin
+#   show [agent-id]            print a masked credential
+#   clear [agent-id]           remove that credential
+#   list                       masked summary of the shared token and per-agent tokens
 #
-# Token is NEVER passed via argv and NEVER printed.
+# With no agent-id, set/show/clear use the legacy shared volume
+# xiryn-coding-creds. Coding agents that do not yet have their own credential
+# mount that volume read-only. A per-agent credential is a separate volume
+# mounted only into that agent.
+#
+# The token is read from stdin only. It is never taken from argv and never printed.
 set -euo pipefail
 
-VOLUME_NAME='xiryn-coding-creds'
+SHARED_VOLUME='xiryn-coding-creds'
 CRED_FILE='.git-credentials'
 OWNER_UID=1000
 
-die()  { printf '%s\n' "$*" >&2; exit 1; }
+die() { printf '%s\n' "$*" >&2; exit 1; }
 info() { printf '%s\n' "$*"; }
 
 require_docker() {
   command -v docker >/dev/null 2>&1 || die 'docker is required but not found in PATH'
 }
 
-get_mountpoint() {
-  require_docker
-  if ! docker volume inspect "$VOLUME_NAME" >/dev/null 2>&1; then
-    info "Creating volume $VOLUME_NAME"
-    docker volume create "$VOLUME_NAME" >/dev/null
+valid_agent() {
+  local id=$1
+  [[ "$id" =~ ^[A-Za-z0-9_-]{1,64}$ ]] || die "Agent id is not safe to use as a volume name: ${id}"
+}
+
+volume_for() {
+  local agent=${1:-}
+  if [[ -z "$agent" ]]; then
+    printf '%s' "$SHARED_VOLUME"
+    return 0
   fi
+  valid_agent "$agent"
+  printf '%s' "xiryn-git-creds-${agent}"
+}
+
+volume_exists() {
+  docker volume inspect "$1" >/dev/null 2>&1
+}
+
+ensure_volume() {
+  local volume=$1
+  local agent=${2:-}
+  require_docker
+  if volume_exists "$volume"; then
+    return 0
+  fi
+  info "Creating volume ${volume}"
+  if [[ -n "$agent" ]]; then
+    docker volume create \
+      --label xiryn.kind=git-credential \
+      --label "xiryn.agent=${agent}" \
+      "$volume" >/dev/null
+  else
+    docker volume create "$volume" >/dev/null
+  fi
+}
+
+mountpoint_of() {
+  local volume=$1
   local mp
-  mp="$(docker volume inspect "$VOLUME_NAME" --format '{{.Mountpoint}}')"
-  [[ -n "$mp" && -d "$mp" ]] || die "Cannot resolve mountpoint for volume $VOLUME_NAME"
+  mp="$(docker volume inspect "$volume" --format '{{.Mountpoint}}')"
+  [[ -n "$mp" && -d "$mp" ]] || die "Cannot resolve mountpoint for volume ${volume}"
   printf '%s' "$mp"
+}
+
+# Codex login and gitconfig live on the shared volume today. Copy them once
+# into the agent's volume so swapping the mount does not drop that login.
+# The shared PAT is never copied.
+copy_shared_tooling() {
+  local dest=$1
+  local src
+  volume_exists "$SHARED_VOLUME" || return 0
+  src="$(mountpoint_of "$SHARED_VOLUME")"
+  if [[ ! -e "$dest/.codex" && -d "$src/.codex" ]]; then
+    cp -a "$src/.codex" "$dest/.codex"
+  fi
+  if [[ ! -e "$dest/.gitconfig" && -f "$src/.gitconfig" ]]; then
+    cp -a "$src/.gitconfig" "$dest/.gitconfig"
+  fi
+}
+
+# The workstation is recreated on next use from its home volume. Drop the
+# container now so it cannot keep the previous credential mount.
+detach_workstation() {
+  local agent=$1
+  local name="xiryn-ws-${agent}"
+  if docker inspect --type container "$name" >/dev/null 2>&1; then
+    docker rm -f "$name" >/dev/null
+    info "Removed workstation ${name} so it is created again with this credential. The home folder was kept."
+  fi
 }
 
 validate_token() {
@@ -38,9 +104,8 @@ validate_token() {
   die 'Token does not look like a GitHub PAT (expected github_pat_*, ghp_*, ghs_*, or classic 40-char hex)'
 }
 
-cmd_set() {
-  local user='' token='' line
-  # Read from stdin only — never from argv
+read_credential() {
+  local line
   IFS= read -r line || die 'No input on stdin'
   if [[ "$line" =~ ^https://([^:]+):([^@]+)@github\.com/?$ ]]; then
     user="${BASH_REMATCH[1]}"
@@ -48,61 +113,168 @@ cmd_set() {
   else
     user="$line"
     IFS= read -r token || die 'Expected token on second line of stdin'
-    token="${token%$'\r'}"  # strip CR if piped from Windows
+    token="${token%$'\r'}"
   fi
-  user="${user#https://}"  # strip leading https:// if present
-  [[ -n "$user"  ]] || die 'Username is empty'
+  user="${user#https://}"
+  [[ -n "$user" ]] || die 'Username is empty'
   [[ -n "$token" ]] || die 'Token is empty'
   validate_token "$token"
-
-  local mp file tmp
-  mp="$(get_mountpoint)"
-  file="$mp/$CRED_FILE"
-  # Atomic write: temp in same dir → chmod → chown → rename
-  tmp="$(mktemp "$mp/.git-credentials.XXXXXX")"
-  printf 'https://%s:%s@github.com\n' "$user" "$token" > "$tmp"
-  chmod 600 "$tmp"
-  chown "$OWNER_UID:$OWNER_UID" "$tmp" 2>/dev/null || true  # no-op if running as the uid already
-  mv -f "$tmp" "$file"
-  info "Credential saved for user $user"
 }
 
-cmd_show() {
-  local mp file line user token last4
-  mp="$(get_mountpoint)"
-  file="$mp/$CRED_FILE"
-  [[ -f "$file" ]] || die "No credential file found. Run: xiryn-git-token set"
-  IFS= read -r line < "$file" || die 'Credential file is empty'
+mask_line() {
+  local line=$1
+  local user token last4
   if [[ "$line" =~ ^https://([^:]+):([^@]+)@github\.com/?$ ]]; then
     user="${BASH_REMATCH[1]}"
     token="${BASH_REMATCH[2]}"
     last4="${token: -4}"
     printf 'host=github.com  user=%s  token=%s***%s\n' "$user" "${token:0:4}" "$last4"
+    return 0
+  fi
+  return 1
+}
+
+cmd_set() {
+  local agent=''
+  if [[ "${1:-}" == "--stdin" ]]; then
+    shift
+  fi
+  agent="${1:-}"
+  [[ $# -le 1 ]] || die 'Too many arguments'
+  # read_credential assigns these in the global scope. They are cleared
+  # before the function returns and are never printed in full.
+  user=''
+  token=''
+  read_credential
+
+  local volume mp file tmp
+  volume="$(volume_for "$agent")"
+  ensure_volume "$volume" "$agent"
+  mp="$(mountpoint_of "$volume")"
+  if [[ -n "$agent" ]]; then
+    copy_shared_tooling "$mp"
+  fi
+  file="${mp}/${CRED_FILE}"
+  tmp="$(mktemp "${mp}/.git-credentials.XXXXXX")"
+  printf 'https://%s:%s@github.com\n' "$user" "$token" >"$tmp"
+  chmod 600 "$tmp"
+  chown "${OWNER_UID}:${OWNER_UID}" "$tmp" 2>/dev/null || true
+  mv -f "$tmp" "$file"
+  if [[ -n "$agent" ]]; then
+    chown -R "${OWNER_UID}:${OWNER_UID}" "$mp" 2>/dev/null || true
+    detach_workstation "$agent"
+    info "Credential saved for user ${user} on agent ${agent}"
   else
+    info "Credential saved for user ${user} on the shared fallback volume"
+  fi
+  user=''
+  token=''
+}
+
+show_file() {
+  local prefix=$1
+  local file=$2
+  local line parsed
+  if [[ ! -f "$file" ]]; then
+    printf '%s  (none)\n' "$prefix"
+    return 0
+  fi
+  IFS= read -r line <"$file" || die 'Credential file is empty'
+  if ! parsed="$(mask_line "$line")"; then
     die 'Credential file format not recognised'
+  fi
+  printf '%s  %s\n' "$prefix" "$parsed"
+}
+
+cmd_show() {
+  local agent=${1:-}
+  [[ $# -le 1 ]] || die 'Too many arguments'
+  local volume mp
+  volume="$(volume_for "$agent")"
+  require_docker
+  if ! volume_exists "$volume"; then
+    if [[ -n "$agent" ]]; then
+      die "No credential for agent ${agent}. Run: xiryn-git-token set ${agent}"
+    fi
+    die 'No shared credential. Run: xiryn-git-token set'
+  fi
+  mp="$(mountpoint_of "$volume")"
+  if [[ -n "$agent" ]]; then
+    show_file "agent=${agent}" "${mp}/${CRED_FILE}"
+  else
+    show_file 'shared' "${mp}/${CRED_FILE}"
   fi
 }
 
 cmd_clear() {
-  local mp file
-  mp="$(get_mountpoint)"
-  file="$mp/$CRED_FILE"
+  local agent=${1:-}
+  [[ $# -le 1 ]] || die 'Too many arguments'
+  local volume mp file
+  volume="$(volume_for "$agent")"
+  require_docker
+  if ! volume_exists "$volume"; then
+    info 'No credential to remove'
+    return 0
+  fi
+  mp="$(mountpoint_of "$volume")"
+  file="${mp}/${CRED_FILE}"
   if [[ -f "$file" ]]; then
     rm -f "$file"
-    info 'Credential file removed'
-  else
-    info 'No credential file to remove'
   fi
+  if [[ -z "$agent" ]]; then
+    info 'Shared credential file removed. Agents without their own token can no longer push until you set one.'
+    return 0
+  fi
+  detach_workstation "$agent"
+  if docker volume rm "$volume" >/dev/null 2>&1; then
+    info "Credential removed for agent ${agent}. That agent uses the shared fallback again, if one is set."
+    return 0
+  fi
+  die "Removed the credential file for agent ${agent}, but volume ${volume} is still in use. Stop that workstation and run: xiryn-git-token clear ${agent}"
+}
+
+cmd_list() {
+  [[ $# -eq 0 ]] || die 'Too many arguments'
+  require_docker
+  local mp line name agent
+  if volume_exists "$SHARED_VOLUME"; then
+    mp="$(mountpoint_of "$SHARED_VOLUME")"
+    show_file 'shared' "${mp}/${CRED_FILE}"
+  else
+    printf '%s\n' 'shared  (none)'
+  fi
+  if ! docker volume ls --filter label=xiryn.kind=git-credential --format '{{.Name}}' >/dev/null 2>&1; then
+    return 0
+  fi
+  while IFS= read -r name; do
+    [[ -n "$name" ]] || continue
+    agent="${name#xiryn-git-creds-}"
+    mp="$(mountpoint_of "$name")"
+    show_file "agent=${agent}" "${mp}/${CRED_FILE}"
+  done < <(docker volume ls --filter label=xiryn.kind=git-credential --format '{{.Name}}')
 }
 
 usage() {
-  sed -n '2,5p' "$0" | sed 's/^# *//'
+  sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'
   exit 1
 }
 
 case "${1:-}" in
-  set)   shift; cmd_set "$@" ;;
-  show)  cmd_show ;;
-  clear) cmd_clear ;;
-  *)     usage ;;
+  set)
+    shift
+    cmd_set "$@"
+    ;;
+  show)
+    shift
+    cmd_show "$@"
+    ;;
+  clear)
+    shift
+    cmd_clear "$@"
+    ;;
+  list)
+    shift
+    cmd_list "$@"
+    ;;
+  *) usage ;;
 esac

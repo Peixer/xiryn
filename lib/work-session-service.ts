@@ -2,6 +2,12 @@ import { nanoid } from "nanoid"
 
 import type { WorkSessionBatch, WorkSessionRow } from "@/db/schema"
 import { redact, redactForStorage } from "@/lib/self-update/redact"
+import {
+  canonicalRepoPath,
+  REPO_PATH_ESCAPE,
+  REPO_PATH_REJECTED,
+  repoPathError,
+} from "@/lib/repo-path"
 import { worktreeLocation } from "@/lib/worktree-path"
 
 import type { WorkSessionStore } from "./work-session-store"
@@ -119,6 +125,8 @@ export type WorkSessionServiceDeps = {
   sleep?: (ms: number) => Promise<void>
   publish?: (session: WorkSessionRow) => void
   log?: (message: string) => void
+  // Real path inside the workstation. Missing means the session fails closed.
+  resolveRepoPath?: (agentId: string, repoPath: string) => Promise<string>
 }
 
 const BRANCH_PREFIX = /^[a-zA-Z0-9_-]+$/
@@ -126,6 +134,11 @@ const BRANCH_PREFIX = /^[a-zA-Z0-9_-]+$/
 export function createWorkSessionService(deps: WorkSessionServiceDeps) {
   const now = deps.now ?? (() => new Date())
   const maxConcurrent = deps.maxConcurrent ?? (() => DEFAULT_MAX_CONCURRENT)
+  const resolveRepoPath =
+    deps.resolveRepoPath ??
+    (async () => {
+      throw new Error("Repository path was not resolved inside the workstation.")
+    })
   const live = new Map<string, LiveSession>()
   const queued = new Map<string, string[]>()
   // Redacted text last written for this session. Safe to persist.
@@ -287,10 +300,17 @@ export function createWorkSessionService(deps: WorkSessionServiceDeps) {
     }
     live.set(session.id, handle)
     void (async () => {
-      let workdir = session.worktreePath ?? ""
+      let workdir = ""
       try {
+        const resolved = (await resolveRepoPath(session.agentId, session.repoPath)).trim()
+        if (repoPathError(resolved)) throw new Error(REPO_PATH_ESCAPE)
+        const repoPath = canonicalRepoPath(resolved)
+        if (!repoPath) throw new Error(REPO_PATH_ESCAPE)
+        if (repoPath !== session.repoPath) {
+          deps.store.updateSession(session.id, { repoPath })
+        }
         const worktree = await deps.createWorktree({
-          repoPath: session.repoPath,
+          repoPath,
           sessionId: session.id,
           baseBranch: session.baseBranch,
           branchPrefix,
@@ -373,6 +393,7 @@ export function createWorkSessionService(deps: WorkSessionServiceDeps) {
     const startedAt = now()
     const batchId = nanoid(12)
     const baseBranch = input.baseBranch ?? "main"
+    const repoPath = canonicalRepoPath(input.repoPath) ?? input.repoPath
     deps.store.insertBatch({
       id: batchId,
       agentId: input.agentId,
@@ -396,7 +417,7 @@ export function createWorkSessionService(deps: WorkSessionServiceDeps) {
         model: task.model ?? null,
         branch: located.branch,
         worktreePath: located.path,
-        repoPath: input.repoPath,
+        repoPath,
         baseBranch,
         status: "running",
         startedAt,
@@ -568,10 +589,12 @@ export type WorkSessionService = ReturnType<typeof createWorkSessionService>
 
 function validate(input: SpawnInput) {
   if (!input.tasks.length) return "Give spawn_work_session at least one task."
+  const pathError = repoPathError(input.repoPath)
+  if (pathError) return pathError
   if (input.tasks.length > MAX_TASKS_PER_CALL) {
     return `spawn_work_session starts at most ${MAX_TASKS_PER_CALL} tasks per call.`
   }
-  if (!input.repoPath.startsWith("/")) return "Repository path must be absolute."
+  if (!canonicalRepoPath(input.repoPath)) return REPO_PATH_REJECTED
   if (input.baseBranch && !/^[a-zA-Z0-9_./-]+$/.test(input.baseBranch)) {
     return "Base branch contains characters git will not accept."
   }

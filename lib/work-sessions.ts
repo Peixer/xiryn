@@ -1,4 +1,5 @@
 import type { CodingTool } from "@/lib/coding-session"
+import { REPO_PATH_MISSING } from "@/lib/repo-path"
 
 import { db } from "@/db"
 import { getMaxWorkSessions } from "@/lib/config"
@@ -126,6 +127,7 @@ function buildWorkSessionService() {
         message: wake.message,
       })
     },
+    resolveRepoPath: resolveWorkstationRepoPath,
     createWorktree: async (opts) => {
       const { createWorktree } = await import("@/lib/worktree")
       const { runWorkstationCommand } = await import("@/lib/workstation")
@@ -292,6 +294,23 @@ type GitRunner = (
   command: string[],
   options?: { cwd?: string; timeoutMs?: number }
 ) => Promise<{ exitCode: number | null; stdout: Buffer; stderr: string }>
+
+const RESOLVE_REPO = `const fs=require("fs");const p=process.argv[1];let real;try{real=fs.realpathSync(p)}catch{process.exit(1)}let st;try{st=fs.statSync(real)}catch{process.exit(1)}if(!st.isDirectory())process.exit(2);process.stdout.write(real)`
+
+export async function resolveWorkstationRepoPath(agentId: string, repoPath: string) {
+  const { runWorkstationCommand } = await import("@/lib/workstation")
+  const result = await runWorkstationCommand(
+    agentId,
+    ["node", "-e", RESOLVE_REPO, repoPath],
+    { timeoutMs: 15_000 }
+  )
+  if (result.exitCode !== 0) throw new Error(REPO_PATH_MISSING)
+  const text = result.stdout.toString("utf8").trim()
+  if (!text || text.includes("\n") || text.includes("\0")) {
+    throw new Error(REPO_PATH_MISSING)
+  }
+  return text
+}
 
 async function gitText(agentId: string, args: string[], run: GitRunner) {
   const result = await run(agentId, ["git", ...args], { timeoutMs: 30_000 })

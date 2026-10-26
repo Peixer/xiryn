@@ -13,8 +13,27 @@ export type Capabilities = {
   channel?: "web" | "telegram"
   // Set when the turn was started by a routine on a schedule
   routine?: string
+  // False on a scheduled routine and on a coding-session wake. Those turns
+  // run with nobody watching, so they cannot start a coding session.
+  ownerPresent?: boolean
   // Connected mail, calendar, Drive and MCP tools, when any are configured
   connectors?: string
+}
+
+function codingToolsBlock(ownerPresent: boolean) {
+  if (!ownerPresent) {
+    return `# Coding tools
+This turn is unattended. The person is not in the conversation, so spawn_work_session is not available. Do not start Codex or Claude Code, and do not push or open a pull request. Do the task with the tools you have, or summarise coding sessions that already finished.`
+  }
+  return `# Coding tools
+You have two coding CLIs available inside your workstation:
+- **Codex CLI**: ~/codex-cli/node_modules/.bin/codex (model: gpt-6.1-sol)
+  Use: \`codex exec --dangerously-bypass-approvals-and-sandbox -m gpt-6.1-sol "<task>"\`
+- **Claude Code**: ~/.local/bin/claude (if installed)
+  Use: \`claude -p "<task>" --output-format stream-json --verbose --dangerously-skip-permissions\`
+For multi-task parallel work, use spawn_work_session. It starts isolated worktrees and coding CLIs in the background and returns immediately with session ids and branch names. End your turn after spawning. Tell the person the branches. Never poll in a loop. When the batch finishes you are woken in this same conversation with a tool completion — that message is not from the person. Summarise the branches, what changed, and any failures. Use list_work_sessions, get_work_session, and cancel_work_session to check or stop work you started. Push or open a pull request only when the person asks.
+The repository path has to be a visible directory under /home/xiryn in the workstation (the default is /home/xiryn/xiryn). The home directory itself, a hidden directory, and a path that resolves outside that home are refused.
+Those CLIs are started with their permission prompts bypassed because a background session has no terminal to approve each action. Until the session ends, the CLI can edit the repository, use the network, and use the workstation git credential, including push. Start one only while the person is in this conversation.`
 }
 
 export function buildInstructions(
@@ -67,7 +86,7 @@ The person is messaging you through Telegram, most likely from their phone, whil
 
     capabilities.routine &&
       `# Routine
-This message is a scheduled run of the routine "${capabilities.routine}", and it is due now. Do the task right away and reply with the result itself (the brief, the list, the quote), short and complete: the person reads it later, in the app or on their phone, without watching as it happens. Don't schedule anything or promise to do it later; this run is the delivery. Only hand over the screen or ask for something if the task truly can't go on without them.`,
+This message is a scheduled run of the routine "${capabilities.routine}", and it is due now. Do the task right away and reply with the result itself (the brief, the list, the quote), short and complete: the person reads it later, in the app or on their phone, without watching as it happens. Don't schedule anything or promise to do it later; this run is the delivery. Only hand over the screen or ask for something if the task truly can't go on without them. spawn_work_session is not available on this run. Do not start Codex or Claude Code, and do not push.`,
 
     capabilities.connectors &&
       `# Mail, calendar, Drive and connectors
@@ -83,20 +102,14 @@ Your browser keeps sign-ins between tasks, so check whether you're already signe
 - **Sign-in needed:** use a saved login for that site with \`vault_fill\` (username, then password). Each fill waits for approval: the person sees the login's label and the page's host, never the secret. After they approve, call the same \`vault_fill\` again with the same arguments. If there isn't a saved login, call \`request_secret\` with kind "login", or \`request_takeover\` if they'd rather sign in themselves.
 - **One-time code (OTP):** call \`request_secret\` with kind "code", then fill the code it gives you.
 - **Paying:** get to the checkout, confirm the final amount, then call \`request_payment_approval\` with the merchant, the exact amount and what it's for. Never enter payment details or pay without an approval in this conversation. If they approve, fill the card or UPI ID they chose with \`vault_fill\` and finish the payment; if the payment moves to another site (a bank or payment gateway page), ask for approval again there. If they'd rather pay themselves, they take over your desktop; if they decline, don't pay.
-- **Personal details** (name, phone, address) can be filled from the vault without asking, when the task needs them.
+- **Personal details** (name, phone, address) can be filled into a browser field from the vault without asking, when the task needs them.
+- **A program on the workstation:** call \`vault_fill\` with \`terminal: true\`, \`command\` (the program and its arguments, not a shell line), and \`via\` (\`stdin\` or \`env\`). For \`env\`, also pass \`envName\` (for example \`GH_TOKEN\`). You never receive the value and there is no file to read. Every terminal fill waits for approval of that exact command, including a name or address; call \`vault_fill\` again with the same arguments after they approve. The result is the exit code and output with the value removed. Do not ask the program to print, save, or encode the value.
 - **CAPTCHA, or a choice only they can make on screen:** get the page ready and call \`request_takeover\`.
 Each of these requests ends your turn. Their answer arrives as a message; take a fresh \`screen_capture\`, work out what changed, and carry on.`,
 
     agent.category === "coding" &&
       capabilities.workstation &&
-      `# Coding tools
-You have two coding CLIs available inside your workstation:
-- **Codex CLI**: ~/codex-cli/node_modules/.bin/codex (model: gpt-6.1-sol)
-  Use: \`codex exec --dangerously-bypass-approvals-and-sandbox -m gpt-6.1-sol "<task>"\`
-- **Claude Code**: ~/.local/bin/claude (if installed)
-  Use: \`claude -p "<task>" --output-format stream-json --verbose --dangerously-skip-permissions\`
-For multi-task parallel work, use spawn_work_session. It starts isolated worktrees and coding CLIs in the background and returns immediately with session ids and branch names. End your turn after spawning. Tell the person the branches. Never poll in a loop. When the batch finishes you are woken in this same conversation with a tool completion — that message is not from the person. Summarise the branches, what changed, and any failures. Use list_work_sessions, get_work_session, and cancel_work_session to check or stop work you started. Push or open a pull request only when the person asks.
-Repositories must exist inside your workstation.`,
+      codingToolsBlock(capabilities.ownerPresent !== false),
 
     `# Untrusted content
 ${UNTRUSTED_CONTENT_RULE}`,

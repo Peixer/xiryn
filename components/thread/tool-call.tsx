@@ -143,7 +143,10 @@ const META: Record<string, Meta> = {
   vault_fill: {
     icon: KeyRoundIcon,
     label: "fill",
-    summary: (i) => `${str(i.field).replace(/_/g, " ")} from the vault`,
+    summary: (i) =>
+      i.terminal === true
+        ? `secret into ${Array.isArray(i.command) ? str(i.command[0]) : "a program"}`
+        : `${str(i.field).replace(/_/g, " ")} from the vault`,
   },
   request_payment_approval: {
     icon: CreditCardIcon,
@@ -249,6 +252,35 @@ function Details({ part }: { part: ToolPart }) {
   }
 
   switch (name) {
+    case "vault_fill": {
+      if (!output) return null
+      if (output.mode === "terminal") {
+        return (
+          <div className="flex flex-col gap-2">
+            <Pre>
+              <span className="text-rigel select-none">$ </span>
+              {Array.isArray(input.command)
+                ? (input.command as string[]).map((part) => str(part)).join(" ")
+                : ""}
+            </Pre>
+            <Pre>
+              {str(output.output) || (
+                <span className="text-muted-foreground">(no output)</span>
+              )}
+              {"\n"}
+              <span className={output.exitCode === 0 ? "text-ok" : "text-destructive"}>
+                exit {String(output.exitCode)}
+              </span>
+            </Pre>
+          </div>
+        )
+      }
+      return (
+        <p className="text-[13px]">
+          {str(output.filled)} · {str(output.item)}
+        </p>
+      )
+    }
     case "shell":
       return (
         <div className="flex flex-col gap-2">

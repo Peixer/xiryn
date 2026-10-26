@@ -244,3 +244,24 @@ sudo /opt/xiryn/deploy/deploy.sh
 ```
 
 It does not touch Caddy, the instance role, or the installed systemd unit. A pull that changes `deploy/xiryn.service` does not apply until you copy the unit and run `daemon-reload`, as in the sandbox section above. If this directory still tracks upstream, fix the remote first (see the top of this page) or the pull will not bring this fork.
+
+## Coding-agent Git credentials
+
+GitHub tokens for coding agents are per agent. The volume `xiryn-coding-creds` is the shared fallback: every coding agent that does not yet have its own token mounts it **read-only**. That includes the workstation whose hostname is `gr8-codegen`. An upgrade does not remove that file, and it does not stop clone or push. The container is recreated once on the next use so the mount is read-only; the home folder in `xiryn-home-<agent-id>` stays.
+
+Do not run `xiryn-git-token clear` with no agent id until `gr8-codegen` has its own token. Clearing the shared file is what removes the fallback.
+
+After you switch to this build, refresh the command (the installer does this when `deploy/` changed; `sudo xiryn-update` runs it in that case), find the agent id, and set a fine-grained PAT that can reach only that agent's repositories:
+
+```bash
+docker ps -aq --filter label=xiryn.workstation=1 \
+  | xargs -r docker inspect --format '{{.Config.Hostname}} {{index .Config.Labels "xiryn.agent"}} {{.Name}}'
+# hostname gr8-codegen, then the agent id, then the container name
+
+printf '%s\n%s\n' 'github-username' 'github_pat_...' | sudo xiryn-git-token set AGENT_ID
+sudo xiryn-git-token show AGENT_ID
+```
+
+`show` prints the username and the first and last four characters of the token. `set AGENT_ID` removes that agent's workstation container immediately. The home folder is kept. The next run creates the container again and mounts only `xiryn-git-creds-AGENT_ID`. Codex can still read a login stored on the shared volume. It cannot rewrite that file while the mount is read-only. The first `set` for an agent copies `auth.json` and `.gitconfig` onto the new writable volume and does not copy the shared PAT. When every coding agent has its own token, `sudo xiryn-git-token clear` removes the shared file.
+
+Scopes, rotation, and the optional GitHub App token shape are in [coding-agents.md](coding-agents.md).

@@ -1,6 +1,11 @@
 import fs from "node:fs/promises"
 import path from "node:path"
-import { codingVolumeArgs, codingAccess } from "@/lib/coding-tools"
+import {
+  codingAccess,
+  codingVolumeArgs,
+  gitCredentialVolume,
+  isGitCredentialAgentId,
+} from "@/lib/coding-tools"
 import { randomBytes } from "node:crypto"
 
 import { eq } from "drizzle-orm"
@@ -19,6 +24,14 @@ import {
   type RunOptions,
 } from "@/lib/docker"
 import { pageFromTargets, type PageTarget } from "@/lib/page-origin"
+import {
+  clipTerminalOutput,
+  encodeSecretFrame,
+  redactSecret,
+  secretExecArgs,
+  TERMINAL_TIMEOUT_SECONDS,
+  type TerminalSpec,
+} from "@/lib/vault-fill"
 import { backgroundWorkAllowed } from "@/lib/self-update/duty-gate"
 import { ensureImage, imageTag } from "@/lib/workstation-image"
 
@@ -115,7 +128,25 @@ async function inspect(name: string): Promise<Inspection | null> {
   }
 }
 
-async function create(agentId: string, tag: string) {
+// True when this agent has a volume written by `xiryn-git-token set <id>`.
+// A missing volume is the shared fallback, not an error. Any other Docker
+// failure is thrown so we do not mount the shared token into an agent that
+// already has its own.
+async function hasOwnGitCredential(agent: { id: string; category: string }) {
+  if (agent.category !== "coding") return false
+  if (!isGitCredentialAgentId(agent.id)) return false
+  const volume = await dockerRaw(["volume", "inspect", gitCredentialVolume(agent.id)], {
+    timeoutMs: 20_000,
+  })
+  if (volume.exitCode === 0) return true
+  const detail = `${volume.stderr}\n${volume.stdout.toString()}`
+  if (volume.exitCode !== null && /no such volume/i.test(detail)) return false
+  throw new Error(
+    dockerReason(volume.stderr) || "Couldn't check the agent's git credential."
+  )
+}
+
+async function create(agentId: string, tag: string, hasOwn: boolean) {
   const agent = db
     .select({ id: agents.id, name: agents.name, category: agents.category })
     .from(agents)
@@ -159,9 +190,9 @@ async function create(agentId: string, tag: string) {
       `TZ=${timeZone}`,
       "--volume",
       `${volumeName(agentId)}:${HOME}`,
-      ...codingVolumeArgs(agent),
+      ...codingVolumeArgs(agent, hasOwn),
       "--label",
-      `xiryn.coding=${codingAccess(agent)}`,
+      `xiryn.coding=${codingAccess(agent, hasOwn)}`,
       "--publish",
       `127.0.0.1::${VNC_PORT}`,
       "--shm-size",
@@ -218,11 +249,12 @@ async function prepare(agentId: string): Promise<Session> {
   // which lives in a volume, carries over
   const agent = db.select().from(agents).where(eq(agents.id, agentId)).get()
   if (!agent) throw new Error("Agent not found")
-  const changedAccess =
-    found &&
-    (found.codingAccess === "rw" || found.codingAccess === "ro"
-      ? found.codingAccess
-      : "off") !== codingAccess(agent)
+  const hasOwn = await hasOwnGitCredential(agent)
+  const access = codingAccess(agent, hasOwn)
+  // Labels from before per-agent credentials were "rw" and "ro". Neither
+  // matches "own" or "shared", so the workstation is recreated once and
+  // comes back on the shared volume, read-only.
+  const changedAccess = Boolean(found) && (found?.codingAccess || "off") !== access
   const current = imageTag()
   if (
     found &&
@@ -233,7 +265,7 @@ async function prepare(agentId: string): Promise<Session> {
   }
 
   if (!found) {
-    await create(agentId, await ensureImage())
+    await create(agentId, await ensureImage(), hasOwn)
     await boot(name)
   } else if (found.status !== "running") {
     await boot(name)
@@ -258,7 +290,7 @@ async function prepare(agentId: string): Promise<Session> {
     .set({ workstationId: name, updatedAt: new Date() })
     .where(eq(agents.id, agentId))
     .run()
-  return { name, at: Date.now(), access: codingAccess(agent) }
+  return { name, at: Date.now(), access }
 }
 
 // The agent's workstation, running. Creates it on first use and starts it
@@ -267,12 +299,14 @@ export async function ensureWorkstation(agentId: string): Promise<string> {
   const cached = shared.recent.get(agentId)
   const agent = db.select().from(agents).where(eq(agents.id, agentId)).get()
   if (!agent) throw new Error("Agent not found")
-  if (
-    cached &&
-    cached.access === codingAccess(agent) &&
-    Date.now() - cached.at < RECENT_MS
-  )
-    return cached.name
+  if (cached && Date.now() - cached.at < RECENT_MS) {
+    try {
+      const hasOwn = await hasOwnGitCredential(agent)
+      if (cached.access === codingAccess(agent, hasOwn)) return cached.name
+    } catch {
+      // Docker is not ready, or the inspect failed. Fall through and start it.
+    }
+  }
 
   let task = shared.pending.get(agentId)
   if (!task) {
@@ -567,31 +601,36 @@ export function typeSecret(agentId: string, value: string) {
   )
 }
 
-const VAULT_TMP_DIR = "/tmp/xiryn/vault"
-
-// Writes a vault value to a restricted temp file inside the workstation.
-// The secret arrives via stdin (never in the process list), and the file is
-// created with mode 600 atomically (umask 077 inside a subshell). A background
-// job deletes it after 5 minutes.
-// Returns the absolute path to be used in shell commands like $(cat path).
-export async function writeSecretFile(agentId: string, value: string): Promise<string> {
-  const filename = `v-${randomBytes(12).toString("hex")}`
-  const filepath = `${VAULT_TMP_DIR}/${filename}`
-  await execOrThrow(
-    agentId,
-    [
-      "sh",
-      "-c",
-      // umask 077 in a subshell ensures the file is created with 600 from the
-      // start, closing the race window a separate chmod would have.
-      'mkdir -p "$1" && (umask 077; cat > "$2") && (sleep 300 && rm -f "$2") &',
-      "sh",
-      VAULT_TMP_DIR,
-      filepath,
-    ],
-    { input: value, timeoutMs: 30_000 }
-  )
-  return filepath
+// Runs a program inside the workstation with a vault value on its stdin or in
+// one environment variable. The value goes to xiryn-secret-exec on stdin and
+// is not an argument. The helper marks the program not dumpable before the
+// value arrives, deletes nothing because it never writes a file, and redacts
+// the value from what it prints. This redacts again before the text can be
+// stored or shown.
+export async function runSecretCommand(
+  agentId: string,
+  value: string,
+  spec: TerminalSpec
+) {
+  const { frame, secret } = encodeSecretFrame(value)
+  try {
+    const result = await execIn(agentId, secretExecArgs(spec, TERMINAL_TIMEOUT_SECONDS), {
+      input: frame,
+      cwd: spec.cwd ?? HOME,
+      timeoutMs: (TERMINAL_TIMEOUT_SECONDS + 20) * 1000,
+    })
+    const combined = `${result.stdout.toString("utf8")}${result.stderr ? `\n${result.stderr}` : ""}`
+    return {
+      exitCode: result.exitCode,
+      output: clipTerminalOutput(redactSecret(combined, value)),
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "The program failed."
+    throw new Error(redactSecret(message, value))
+  } finally {
+    frame.fill(0)
+    secret.fill(0)
+  }
 }
 
 // Shows the focused field as dots, so a value from the vault doesn't appear
@@ -817,6 +856,16 @@ export async function stopWorkstation(agentId: string) {
     await docker(["stop", "--time", "5", name], { timeoutMs: 60_000 })
 }
 
+// Removes the per-agent git credential volume. The shared fallback volume
+// is left in place. A workstation reset does not call this: the token
+// belongs to the agent, not to one machine.
+export async function deleteAgentGitCredential(agentId: string) {
+  if (!isGitCredentialAgentId(agentId)) return
+  await dockerRaw(["volume", "rm", "--force", gitCredentialVolume(agentId)], {
+    timeoutMs: 60_000,
+  })
+}
+
 // Removes the machine and its home folder
 export async function deleteWorkstation(agentId: string) {
   shared.recent.delete(agentId)
@@ -841,7 +890,19 @@ export async function workstationLeftovers(agentId: string) {
   })
   if (volume.exitCode === 0) return true
   const detail = `${volume.stderr}\n${volume.stdout.toString()}`
-  if (volume.exitCode !== null && /no such volume/i.test(detail)) return false
+  if (volume.exitCode !== null && /no such volume/i.test(detail)) {
+    if (!isGitCredentialAgentId(agentId)) return false
+    const git = await dockerRaw(["volume", "inspect", gitCredentialVolume(agentId)], {
+      timeoutMs: 20_000,
+    })
+    if (git.exitCode === 0) return true
+    const gitDetail = `${git.stderr}\n${git.stdout.toString()}`
+    if (git.exitCode !== null && /no such volume/i.test(gitDetail)) return false
+    throw new Error(
+      dockerReason(git.stderr) ||
+        "Couldn't check whether the git credential volume is gone."
+    )
+  }
   throw new Error(
     dockerReason(volume.stderr) ||
       "Couldn't check whether the workstation volume is gone."
@@ -903,6 +964,7 @@ export async function sweepWorkstations() {
     if (!known.has(agentId)) {
       if (stopped()) return
       await deleteWorkstation(agentId)
+      await deleteAgentGitCredential(agentId)
       continue
     }
     if (autoDelete === undefined || state !== "exited") continue
@@ -972,7 +1034,7 @@ export async function ensureCodingTools(agentId: string) {
           name,
           "bash",
           "-c",
-          'if [ ! -f "$HOME/.coding-tools-v2-ready" ]; then bash -s && touch "$HOME/.coding-tools-v2-ready"; fi',
+          'if [ ! -f "$HOME/.coding-tools-v3-ready" ]; then bash -s && touch "$HOME/.coding-tools-v3-ready"; else bash -s -- refresh; fi',
         ],
         { input: script, timeoutMs: 300_000 }
       )

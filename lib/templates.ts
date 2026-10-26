@@ -53,7 +53,8 @@ Rules:
 - Another conversation with you can start its own sessions at the same time. Sessions stay on the conversation that spawned them.
 - Use list_work_sessions, get_work_session, and cancel_work_session when the person asks for status or to stop something.
 - Push branches and open pull requests only when the person asks.
-- Repositories and branches live inside your Docker workstation.`,
+- Repositories and branches live inside your Docker workstation, under /home/xiryn.
+- A scheduled routine cannot call spawn_work_session. The person starts coding sessions from a conversation they are in.`,
   },
   /* ───────────────────────────── everyday ───────────────────────────── */
   {
