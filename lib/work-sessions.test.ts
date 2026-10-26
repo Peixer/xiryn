@@ -8,6 +8,7 @@ import {
   getActiveSessions,
   cleanupOldSessions,
   appendSessionOutput,
+  readSessionOutput,
   type WorkSession,
 } from "./work-sessions"
 beforeEach(() => workSessions.clear())
@@ -62,4 +63,16 @@ test("appends and bounds streaming output", () => {
   assert.equal(getSession("a")?.output.join(""), "hello\n")
   appendSessionOutput("a", "x".repeat(30_000))
   assert.equal(getSession("a")?.output[1].length, 20_000)
+})
+
+test("readSessionOutput redacts a secret split across chunks", () => {
+  const pat = `ghp_${"A".repeat(36)}`
+  const openai = `sk-proj-${"c".repeat(40)}`
+  upsertSession(session("a"))
+  appendSessionOutput("a", pat.slice(0, 10))
+  appendSessionOutput("a", `${pat.slice(10)}\nsee ${openai}\n`)
+  const output = readSessionOutput("a") ?? ""
+  assert.equal(output.includes(pat), false)
+  assert.equal(output.includes(openai), false)
+  assert.match(output, /\[redacted\]/)
 })

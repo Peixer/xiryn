@@ -4,6 +4,7 @@ import { REPO_PATH_MISSING } from "@/lib/repo-path"
 import { db } from "@/db"
 import { getMaxWorkSessions } from "@/lib/config"
 import type { WorkSessionRow } from "@/db/schema"
+import { redact } from "@/lib/self-update/redact"
 import { commitWorktreeChanges } from "@/lib/work-session-commit"
 import {
   createWorkSessionService,
@@ -84,7 +85,6 @@ function workSessionService() {
 }
 
 function publishRow(row: WorkSessionRow) {
-  const existing = getSession(row.id)
   upsertSession({
     id: row.id,
     agentId: row.agentId,
@@ -96,7 +96,9 @@ function publishRow(row: WorkSessionRow) {
     status: row.status,
     startedAt: row.startedAt,
     finishedAt: row.finishedAt ?? undefined,
-    output: existing?.output?.length ? existing.output : row.output ? [row.output] : [],
+    // Replace, don't append. The row is already redacted; keeping an older
+    // live copy would show CLI text the database no longer stores.
+    output: row.output ? [row.output] : [],
     durationMs: row.durationMs ?? undefined,
     error: row.error ?? undefined,
     threadId: row.threadId,
@@ -163,7 +165,7 @@ function buildWorkSessionService() {
             {
               cwd: run.cwd,
               timeoutMs: run.timeoutMs + 30_000,
-              onLine: run.onOutput,
+              onLine: (line) => run.onOutput?.(line.endsWith("\n") ? line : `${line}\n`),
             }
           )
           return {
@@ -403,14 +405,21 @@ export function listPersistedSessionViews() {
       finishedAt: (live?.finishedAt ?? session.finishedAt)?.toISOString() ?? null,
       durationMs: live?.durationMs ?? session.durationMs,
       outputLines: output ? output.split("\n").length : 0,
-      error: live?.error ?? session.error,
+      error: redactStored(live?.error ?? session.error),
     }
   })
 }
 
 export function readSessionOutput(id: string) {
   const live = getSession(id)
-  if (live?.output.length) return live.output.join("")
-  const row = createDrizzleWorkSessionStore(db).getSession(id)
-  return row?.output ?? null
+  const text = live?.output.length
+    ? live.output.join("")
+    : (createDrizzleWorkSessionStore(db).getSession(id)?.output ?? null)
+  if (text === null) return null
+  return redact(text)
+}
+
+function redactStored(value: string | null | undefined) {
+  if (!value) return null
+  return redact(value)
 }

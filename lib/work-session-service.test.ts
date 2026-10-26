@@ -653,7 +653,106 @@ test("get_work_session returns a bounded output tail for the owning agent", asyn
     assert.ok(view.outputTail.length <= 8_000)
     assert.ok(view.outputTail.length > 0)
     const stored = store.getSession(result.sessions[0].id)
-    assert.ok((stored?.output.length ?? 0) <= 100_000)
+    assert.ok((stored?.output.length ?? 0) <= 8_000)
+  } finally {
+    await settle()
+    sqlite.close()
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test("work session output is stored, woken, and recovered without secrets", async () => {
+  const githubPat = `ghp_${"A".repeat(36)}`
+  const githubFine = `github_pat_${"a".repeat(22)}_${"b".repeat(59)}`
+  const openai = `sk-proj-${"c".repeat(40)}`
+  const anthropic = `sk-ant-api03-${"d".repeat(40)}`
+  const awsAccess = "ASIAIOSFODNN7EXAMPLE"
+  const awsSecret = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+  const credentialUrl = "https://octocat:s3cr3t-token@github.com/acme/private.git"
+  const secrets = [
+    githubPat,
+    githubFine,
+    openai,
+    anthropic,
+    awsAccess,
+    awsSecret,
+    "s3cr3t-token",
+  ]
+  const { dir, sqlite, store } = openTemp()
+  const { agentId, threadId } = seed(sqlite)
+  let whilePartial = ""
+  let whileRunning = ""
+  const h = harness(store, {
+    runCoding: async (opts) => {
+      opts.onOutput(`${"y".repeat(20_000)}\n`)
+      opts.onOutput(githubPat.slice(0, 12))
+      whilePartial = store.getSession(opts.session.id)?.output ?? ""
+      opts.onOutput(`${githubPat.slice(12)}\n`)
+      opts.onOutput(
+        [
+          githubFine,
+          `openai ${openai}`,
+          anthropic,
+          `key ${awsAccess}`,
+          `AWS_SECRET_ACCESS_KEY=${awsSecret}`,
+          `clone ${credentialUrl}`,
+          "plain https://github.com/acme/private.git",
+        ].join("\n")
+      )
+      whileRunning = store.getSession(opts.session.id)?.output ?? ""
+      return { ok: false, text: "failed", error: `CLI said ${githubPat}` }
+    },
+  })
+  try {
+    const result = h.service.spawn({
+      agentId,
+      agentName: "Orch",
+      threadId,
+      repoPath: "/home/xiryn/xiryn",
+      tasks: [task("logs")],
+    })
+    assert.equal(result.ok, true)
+    if (!result.ok) return
+    await settle()
+    const stored = store.getSession(result.sessions[0].id)
+    const wake = h.turns[0]?.message.parts[0].text ?? ""
+    const view = h.service.get(agentId, result.sessions[0].id)
+    assert.equal(view.ok, true)
+    if (!view.ok) return
+    for (const secret of secrets) {
+      assert.equal(whilePartial.includes(secret), false, `partial ${secret}`)
+      assert.equal(whileRunning.includes(secret), false, `running ${secret}`)
+      assert.equal(stored?.output.includes(secret), false, `stored ${secret}`)
+      assert.equal((stored?.error ?? "").includes(secret), false, `error ${secret}`)
+      assert.equal(wake.includes(secret), false, `wake ${secret}`)
+      assert.equal(view.outputTail.includes(secret), false, `tail ${secret}`)
+      assert.equal((view.error ?? "").includes(secret), false, `view ${secret}`)
+    }
+    assert.equal(whilePartial.includes("ghp_"), false)
+    assert.match(whileRunning, /\[redacted\]/)
+    assert.match(whileRunning, /https:\/\/github.com\/acme\/private.git/)
+    assert.ok(whileRunning.length > 8_000)
+    assert.ok((stored?.output.length ?? 0) <= 8_000)
+    assert.match(stored?.output ?? "", /\[redacted\]/)
+    assert.match(wake, /\[redacted\]/)
+    assert.match(wake, /https:\/\/\[redacted\]@github.com\/acme\/private.git/)
+    assert.equal(h.turns[0].message.role, "system")
+    const framed = frameWorkSessionWakes([h.turns[0].message])
+    assert.equal(framed[0]?.role, "assistant")
+    const converted = await convertToModelMessages(framed, {
+      tools: createWorkSessionResultTool(),
+    })
+    const toolMessage = converted.find((message) => message.role === "tool")
+    assert.ok(toolMessage && Array.isArray(toolMessage.content))
+    const part = toolMessage.content.find((item) => item.type === "tool-result")
+    assert.ok(part && part.type === "tool-result" && part.output.type === "text")
+    const fenced = part.output.value
+    assert.match(fenced, /<untrusted source="work_session">/)
+    for (const secret of secrets) {
+      assert.equal(fenced.includes(secret), false, `fenced ${secret}`)
+    }
+    assert.match(fenced, /\[redacted\]/)
+    assert.match(fenced, /https:\/\/\[redacted\]@github.com\/acme\/private.git/)
   } finally {
     await settle()
     sqlite.close()
@@ -831,6 +930,53 @@ test("a coding session fails closed when the repository path is not resolved", a
     assert.match(row?.error ?? "", /not resolved inside the workstation/)
   } finally {
     await settle()
+    sqlite.close()
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test("recover redacts secrets already stored on finished sessions", async () => {
+  const githubPat = `ghp_${"B".repeat(36)}`
+  const awsSecret = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+  const { dir, sqlite, store } = openTemp()
+  const { agentId, threadId } = seed(sqlite)
+  const h = harness(store)
+  const batchId = nanoid(12)
+  const sessionId = nanoid(12)
+  try {
+    store.insertBatch({
+      id: batchId,
+      agentId,
+      threadId,
+      wakeStatus: "woken",
+      createdAt: new Date(),
+    })
+    store.insertSession({
+      id: sessionId,
+      batchId,
+      agentId,
+      threadId,
+      agentName: "Orch",
+      task: "already finished",
+      tool: "codex",
+      branch: `task/${sessionId}`,
+      repoPath: "/repo",
+      baseBranch: "main",
+      status: "done",
+      startedAt: new Date(0),
+      output: `${"y".repeat(20_000)}\n${githubPat}\nhttps://octocat:s3cr3t-token@github.com/acme/repo.git\n`,
+      error: `AWS_SECRET_ACCESS_KEY=${awsSecret}`,
+    })
+    await h.service.recover()
+    const row = store.getSession(sessionId)
+    assert.equal(row?.output.includes(githubPat), false)
+    assert.equal(row?.output.includes("s3cr3t-token"), false)
+    assert.equal(row?.error?.includes(awsSecret), false)
+    assert.match(row?.output ?? "", /\[redacted\]/)
+    assert.match(row?.error ?? "", /\[redacted\]/)
+    assert.ok((row?.output.length ?? 0) <= 8_000)
+    assert.equal(h.turns.length, 0)
+  } finally {
     sqlite.close()
     fs.rmSync(dir, { recursive: true, force: true })
   }
