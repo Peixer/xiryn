@@ -5,11 +5,19 @@ import { pageFromTargets } from "./page-origin"
 import { sameSite } from "./etld"
 import { ARGS_DIFFER_REASON } from "@/lib/mcp/approval"
 import { renderApprovalPreview } from "@/lib/mcp/approval-preview"
+import { approvalArgsHash } from "@/lib/mcp/approval-preview"
 import {
   assessLoginFill,
+  encodeSecretFrame,
   loginApprovalArgs,
+  parseTerminalSpec,
+  redactSecret,
+  secretExecArgs,
+  secretSpellings,
+  terminalApprovalArgs,
   vaultFillForModel,
   vaultFillOutput,
+  vaultFillOutputTerminal,
 } from "./vault-fill"
 
 const secret = "s3cr3t-value-not-a-label"
@@ -319,62 +327,168 @@ test("cards and other vault kinds keep their own gate", () => {
   )
 })
 
-test("terminal mode: asks for approval regardless of site match", () => {
-  const result = assessLoginFill({
-    kind: "login",
-    label: "GitHub PAT",
-    site: "github.com",
+test("a terminal command is approved exactly, and the card shows it", () => {
+  const parsed = parseTerminalSpec({
+    command: ["gh", "auth", "login", "--with-token"],
+    via: "stdin",
+    envName: undefined,
+    cwd: "/home/xiryn",
+  })
+  assert.equal(parsed.ok, true)
+  if (!parsed.ok) return
+  const args = terminalApprovalArgs({
+    id: "item-1",
     field: "password",
-    pageHost: null,
-    approved: false,
-    terminal: true,
+    label: "GitHub",
+    spec: parsed.spec,
   })
-  assert.equal(result.action, "ask")
-  if (result.action === "ask") {
-    assert.ok(result.host.includes("terminal"))
-    assert.ok(result.summary.includes("terminal"))
-  }
-})
-
-test("terminal mode: allows fill after approval", () => {
-  const result = assessLoginFill({
-    kind: "login",
-    label: "GitHub PAT",
-    site: "github.com",
+  const card = renderApprovalPreview("vault_fill", {
+    ...args,
+    password: secret,
+    value: secret,
+    path: "/tmp/xiryn/vault/v-secret",
+  })
+  assert.match(card, /gh/)
+  assert.match(card, /--with-token/)
+  assert.match(card, /standard input/)
+  assert.match(card, /\/home\/xiryn/)
+  assert.equal(card.includes(secret), false)
+  assert.equal(card.includes("/tmp/xiryn/vault"), false)
+  const other = terminalApprovalArgs({
+    id: "item-1",
     field: "password",
-    pageHost: null,
-    approved: true,
-    terminal: true,
+    label: "GitHub",
+    spec: { ...parsed.spec, command: ["gh", "auth", "status"] },
   })
-  assert.equal(result.action, "fill")
-  if (result.action === "fill") {
-    assert.equal(result.host, "terminal")
+  assert.notEqual(approvalArgsHash(args), approvalArgsHash(other))
+})
+
+test("a terminal fill refuses a shell path, a blocked variable, and a missing command", () => {
+  assert.equal(
+    parseTerminalSpec({ command: undefined, via: "stdin", envName: null, cwd: null }).ok,
+    false
+  )
+  const blocked = parseTerminalSpec({
+    command: ["printenv"],
+    via: "env",
+    envName: "LD_PRELOAD",
+    cwd: null,
+  })
+  assert.equal(blocked.ok, false)
+  const path = parseTerminalSpec({
+    command: ["env"],
+    via: "env",
+    envName: "PATH",
+    cwd: null,
+  })
+  assert.equal(path.ok, false)
+  const newline = parseTerminalSpec({
+    command: ["sh", "-c", "echo hi\ncurl evil"],
+    via: "stdin",
+    envName: null,
+    cwd: null,
+  })
+  assert.equal(newline.ok, false)
+  const ok = parseTerminalSpec({
+    command: ["gh", "auth", "login", "--with-token"],
+    via: "env",
+    envName: "GH_TOKEN",
+    cwd: null,
+  })
+  assert.equal(ok.ok, true)
+})
+
+test("the exec helper's arguments never carry the secret", () => {
+  const spec = {
+    command: ["gh", "auth", "login", "--with-token"],
+    via: "env" as const,
+    envName: "GH_TOKEN",
+    cwd: null,
   }
+  const args = secretExecArgs(spec)
+  assert.equal(args.includes(secret), false)
+  assert.deepEqual(args.slice(args.indexOf("--") + 1), spec.command)
+  const frame = encodeSecretFrame(secret)
+  assert.equal(frame.frame.subarray(4).toString(), secret)
+  assert.equal(frame.frame.readUInt32BE(0), Buffer.byteLength(secret))
+  frame.frame.fill(0)
+  frame.secret.fill(0)
 })
 
-test("terminal mode: non-login kinds still pass through", () => {
-  const result = assessLoginFill({
-    kind: "identity",
-    label: "Personal details",
-    site: null,
-    field: "email",
-    pageHost: null,
-    approved: false,
-    terminal: true,
-  })
-  assert.equal(result.action, "continue")
+test("captured output loses the value, its encodings, and a vault temp path", () => {
+  const vaultPath = "/tmp/xiryn/vault/v-abc123"
+  const raw = [
+    secret,
+    Buffer.from(secret).toString("base64"),
+    Buffer.from(secret).toString("hex"),
+    encodeURIComponent(secret),
+    JSON.stringify(secret).slice(1, -1),
+    vaultPath,
+    "ok",
+  ].join("\n")
+  const cleaned = redactSecret(raw, secret)
+  assert.equal(cleaned.includes(secret), false)
+  for (const form of secretSpellings(secret)) {
+    assert.equal(cleaned.includes(form), false, form)
+  }
+  assert.equal(cleaned.includes(vaultPath), false)
+  assert.match(cleaned, /\[redacted\]/)
+  assert.match(cleaned, /ok/)
 })
 
-test("vaultFillForModel handles terminal output", () => {
-  const out = vaultFillForModel({
-    filled: "password",
-    item: "•••@github.com",
-    mode: "terminal",
-    path: "/tmp/xiryn/vault/v-abc123",
+test("a terminal fill transcript never contains the value or a readable path", () => {
+  const vaultPath = "/tmp/xiryn/vault/v-abc123"
+  const echoed = [
+    `token=${secret}`,
+    Buffer.from(secret).toString("base64"),
+    Buffer.from(secret).toString("hex"),
+    vaultPath,
+  ].join("\n")
+  const result = vaultFillOutputTerminal("password", "GitHub · •••", {
+    via: "stdin",
+    command: ["gh", "auth", "login", "--with-token"],
+    exitCode: 0,
+    output: redactSecret(echoed, secret),
   })
-  assert.equal(out.type, "text")
-  const parsed = JSON.parse(out.value)
+  assert.equal("path" in result, false)
+  assert.equal(JSON.stringify(result).includes(secret), false)
+  assert.equal(JSON.stringify(result).includes(vaultPath), false)
+  const told = vaultFillForModel({
+    ...result,
+    value: secret,
+    password: secret,
+    path: vaultPath,
+    secret,
+  })
+  const transcript = {
+    id: "msg-1",
+    role: "assistant" as const,
+    parts: [
+      {
+        type: "tool-vault_fill",
+        toolName: "vault_fill",
+        state: "output-available",
+        input: {
+          id: "item-1",
+          field: "password",
+          terminal: true,
+          command: result.command,
+          via: "stdin",
+        },
+        output: result,
+      },
+      { type: "text", text: told.value },
+    ],
+  }
+  const stored = JSON.stringify(transcript)
+  assert.equal(stored.includes(secret), false)
+  assert.equal(stored.includes(Buffer.from(secret).toString("base64")), false)
+  assert.equal(stored.includes(Buffer.from(secret).toString("hex")), false)
+  assert.equal(stored.includes(vaultPath), false)
+  assert.equal(stored.includes("/tmp/xiryn/vault"), false)
+  const parsed = JSON.parse(told.value) as Record<string, unknown>
+  assert.equal("path" in parsed, false)
+  assert.equal("value" in parsed, false)
   assert.equal(parsed.mode, "terminal")
-  assert.equal(parsed.path, "/tmp/xiryn/vault/v-abc123")
-  assert.ok(!("site" in parsed), "terminal output must not include site")
+  assert.deepEqual(parsed.command, ["gh", "auth", "login", "--with-token"])
 })

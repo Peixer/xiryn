@@ -44,6 +44,9 @@ import {
 import {
   assessLoginFill,
   loginApprovalArgs,
+  parseTerminalSpec,
+  redactSecret,
+  terminalApprovalArgs,
   vaultFillForModel,
   vaultFillOutput,
   vaultFillOutputTerminal,
@@ -60,12 +63,13 @@ import {
   movePointer,
   pressKey,
   readFile,
+  resolvePath,
   runCommand,
+  runSecretCommand,
   scroll,
   typeSecret,
   typeText,
   writeFile,
-  writeSecretFile,
 } from "@/lib/workstation"
 
 // The tool belt an agent carries. Every tool acts on behalf of whichever
@@ -411,7 +415,7 @@ export function createVaultTools(env: ToolEnv) {
 
     vault_fill: tool({
       description:
-        "Type a value from the person's vault into a field on your desktop, without you ever seeing it. Click the field first, or pass x and y to have it clicked. A login fills only on the site it was saved for (the page's real origin, same registrable domain), and only after the person approves that fill: the call waits, they see the item's label and the page's host, never the secret, and you call vault_fill again with the same arguments once they approve. A card or UPI ID still needs request_payment_approval, and only fills on the site they approved. The field then shows dots. Returns no screenshot and never the value: take one with screen_capture to check the form. Pass terminal: true when the target is a shell prompt, CLI tool, or terminal command instead of a browser field.",
+        "Type a value from the person's vault into a field on your desktop, without you ever seeing it. Click the field first, or pass x and y to have it clicked. A login fills only on the site it was saved for (the page's real origin, same registrable domain), and only after the person approves that fill: the call waits, they see the item's label and the page's host, never the secret, and you call vault_fill again with the same arguments once they approve. A card or UPI ID still needs request_payment_approval, and only fills on the site they approved. The field then shows dots. Returns no screenshot and never the value: take one with screen_capture to check the form. For a program on the workstation, set terminal: true and pass command (the program and its arguments, not a shell line) and via (\"stdin\" or \"env\"). You do not get the value and you do not get a file. The person approves that exact command; call vault_fill again with the same arguments once they do. The result is the exit code and output with the value removed.",
       inputSchema: z.object({
         id: z
           .string()
@@ -427,17 +431,84 @@ export function createVaultTools(env: ToolEnv) {
           .boolean()
           .optional()
           .describe(
-            "Set to true when filling a terminal or CLI prompt instead of a browser field. " +
-              "The secret is written to a temp file (chmod 600, auto-deleted in 5 min) " +
-              "and you get the file path — use it as $(cat /path) in shell commands. " +
-              "Never output the path or the file contents to the person."
+            "True when the value goes to a program instead of a browser field. Also pass command and via. You never receive the value or a path."
+          ),
+        command: z
+          .array(z.string())
+          .max(32)
+          .optional()
+          .describe(
+            'With terminal: the program and its arguments, executed as-is with no shell. Example: ["gh", "auth", "login", "--with-token"].'
+          ),
+        via: z
+          .enum(["stdin", "env"])
+          .optional()
+          .describe(
+            'With terminal: "stdin" writes the value to the program\'s standard input. "env" puts it in envName.'
+          ),
+        envName: z
+          .string()
+          .max(64)
+          .optional()
+          .describe('With via "env": the variable name, for example GH_TOKEN.'),
+        cwd: z
+          .string()
+          .max(512)
+          .optional()
+          .describe(
+            "With terminal: working directory on the workstation. Defaults to home."
           ),
       }),
-      execute: async ({ id, field, x, y, terminal }) => {
+      execute: async ({ id, field, x, y, terminal, command, via, envName, cwd }) => {
         const item = getVaultItem(id)
         if (!item)
           throw new Error("There's no vault item with that id. Check vault_list.")
-        const where = terminal ? null : await page()
+        if (terminal) {
+          const parsed = parseTerminalSpec({
+            command,
+            via,
+            envName,
+            cwd: cwd ? resolvePath(cwd) : null,
+          })
+          if (!parsed.ok) throw new Error(parsed.message)
+          const args = terminalApprovalArgs({
+            id,
+            field,
+            label: item.label,
+            spec: parsed.spec,
+          })
+          // The card and the hash come from these arguments. requestOrTake
+          // stores renderApprovalPreview, not a separate summary.
+          const hold = await holdOrRun(env, {
+            tool: "vault_fill",
+            summary: renderApprovalPreview("vault_fill", args),
+            args,
+          })
+          if (hold) return hold
+          if (item.kind === "card" || item.kind === "upi") {
+            const approval = activeApproval(env.threadId, item.id)
+            if (!approval) {
+              throw new Error(
+                "This payment method can't be used until the person approves the payment. Call request_payment_approval first."
+              )
+            }
+          }
+          const value = vaultValue(item.id, field)
+          try {
+            const result = await runSecretCommand(agentId(), value, parsed.spec)
+            markVaultUsed(item.id)
+            return vaultFillOutputTerminal(field, item.hint, {
+              via: parsed.spec.via,
+              command: parsed.spec.command,
+              exitCode: result.exitCode,
+              output: result.output,
+            })
+          } catch (error) {
+            const message = error instanceof Error ? error.message : "The program failed."
+            throw new Error(redactSecret(message, value))
+          }
+        }
+        const where = await page()
         const step = assessLoginFill({
           kind: item.kind,
           label: item.label,
@@ -445,7 +516,6 @@ export function createVaultTools(env: ToolEnv) {
           field,
           pageHost: where?.host ?? null,
           approved: false,
-          terminal: terminal ?? false,
         })
         if (step.action === "refuse") throw new Error(step.message)
         if (step.action === "ask") {
@@ -456,7 +526,6 @@ export function createVaultTools(env: ToolEnv) {
             label: item.label,
             x,
             y,
-            terminal: terminal ?? false,
           })
           // The card and the hash come from these arguments. requestOrTake
           // stores renderApprovalPreview, not a separate summary.
@@ -473,7 +542,6 @@ export function createVaultTools(env: ToolEnv) {
             field,
             pageHost: where?.host ?? null,
             approved: true,
-            terminal: terminal ?? false,
           })
           if (allowed.action === "refuse") throw new Error(allowed.message)
         }
@@ -491,12 +559,6 @@ export function createVaultTools(env: ToolEnv) {
           }
         }
         const value = vaultValue(item.id, field)
-
-        if (terminal) {
-          const filepath = await writeSecretFile(agentId(), value)
-          markVaultUsed(item.id)
-          return vaultFillOutputTerminal(field, item.hint, filepath)
-        }
 
         if (x !== undefined && y !== undefined) {
           await click(agentId(), x, y, "left", false)

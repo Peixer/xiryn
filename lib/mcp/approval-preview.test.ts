@@ -122,6 +122,28 @@ test("a long MCP argument blob is truncated with the same marker", () => {
   assert.equal(text.includes(tail), false)
 })
 
+test("a terminal vault fill card shows the command and not a secret or a path", () => {
+  const secret = "s3cret-value-should-not-appear"
+  const text = renderApprovalPreview("vault_fill", {
+    id: "item-1",
+    field: "password",
+    host: "terminal",
+    label: "GitHub",
+    terminal: true,
+    command: ["gh", "auth", "login", "--with-token"],
+    via: "stdin",
+    password: secret,
+    value: secret,
+    path: "/tmp/xiryn/vault/v-secret",
+  })
+  assert.match(text, /Command: \["gh","auth","login","--with-token"\]/)
+  assert.match(text, /standard input/)
+  assert.match(text, /Host: terminal/)
+  assert.equal(text.includes(secret), false)
+  assert.equal(text.includes("/tmp/xiryn/vault"), false)
+  assert.equal(text.includes("item-1"), false)
+})
+
 test("a vault fill card names the host and label and leaves the secret out", () => {
   const secret = "s3cret-value-should-not-appear"
   const host = `${"a".repeat(49)}.${"b".repeat(63)}.${"c".repeat(63)}.${"d".repeat(63)}.example.com`

@@ -19,25 +19,9 @@ export function assessLoginFill(input: {
   field: string
   pageHost: string | null
   approved: boolean
-  terminal?: boolean
 }): LoginFillStep {
   if (input.kind !== "login") return { action: "continue" }
 
-  // Terminal mode: no browser page to verify — always ask for approval
-  if (input.terminal) {
-    if (!input.approved) {
-      const fieldLabel = input.field.replace(/_/g, " ")
-      const site = input.site ?? "unknown site"
-      return {
-        action: "ask",
-        host: `terminal (login for ${site})`,
-        summary: `In terminal, fill the ${fieldLabel} for "${input.label}" (saved for ${site})`,
-      }
-    }
-    return { action: "fill", host: "terminal" }
-  }
-
-  // GUI mode: existing site-matching logic follows
   const host = input.pageHost
   if (!host || !sameSite(host, input.site)) {
     const where = host ?? "not a confirmed website"
@@ -68,7 +52,6 @@ export function loginApprovalArgs(input: {
   label: string
   x?: number
   y?: number
-  terminal?: boolean
 }) {
   const args: {
     id: string
@@ -77,7 +60,6 @@ export function loginApprovalArgs(input: {
     label: string
     x?: number
     y?: number
-    terminal?: boolean
   } = {
     id: input.id,
     field: input.field,
@@ -87,9 +69,6 @@ export function loginApprovalArgs(input: {
   if (input.x !== undefined && input.y !== undefined) {
     args.x = input.x
     args.y = input.y
-  }
-  if (input.terminal) {
-    args.terminal = true
   }
   return args
 }
@@ -103,17 +82,280 @@ export function vaultFillOutput(field: string, hint: string, host: string | null
   }
 }
 
-// What the tool returns for terminal mode. The path is a restricted temp file.
-export function vaultFillOutputTerminal(field: string, hint: string, path: string) {
+export const TERMINAL_TIMEOUT_SECONDS = 120
+export const MAX_SECRET_BYTES = 16_384
+export const TERMINAL_OUTPUT_LIMIT = 20_000
+const MAX_COMMAND_JSON = 1_500
+const MAX_ARGS = 32
+const MAX_ARG_CHARS = 4_096
+
+const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/
+const BLOCKED_ENV = new Set([
+  "PATH",
+  "HOME",
+  "PWD",
+  "OLDPWD",
+  "TMPDIR",
+  "TMP",
+  "TEMP",
+  "SHELL",
+  "IFS",
+  "ENV",
+  "BASH_ENV",
+  "BASHOPTS",
+  "SHELLOPTS",
+  "CDPATH",
+  "GLOBIGNORE",
+  "PS4",
+  "PROMPT_COMMAND",
+  "ZDOTDIR",
+  "NODE_OPTIONS",
+  "NODE_PATH",
+  "PYTHONPATH",
+  "PYTHONHOME",
+  "PYTHONSTARTUP",
+  "PYTHONINSPECT",
+  "PERL5OPT",
+  "PERL5LIB",
+  "PERLLIB",
+  "RUBYOPT",
+  "RUBYLIB",
+  "GIT_SSH",
+  "GIT_SSH_COMMAND",
+  "GIT_EXEC_PATH",
+  "SSLKEYLOGFILE",
+  "SSL_CERT_FILE",
+  "SSL_CERT_DIR",
+  "REQUESTS_CA_BUNDLE",
+  "CURL_CA_BUNDLE",
+  "HTTP_PROXY",
+  "HTTPS_PROXY",
+  "ALL_PROXY",
+  "NO_PROXY",
+  "DISPLAY",
+  "XAUTHORITY",
+  "LD_PRELOAD",
+  "LD_LIBRARY_PATH",
+  "LD_AUDIT",
+  "HOSTALIASES",
+  "RES_OPTIONS",
+])
+
+export type TerminalVia = "stdin" | "env"
+
+export type TerminalSpec = {
+  command: string[]
+  via: TerminalVia
+  envName: string | null
+  cwd: string | null
+}
+
+export function parseTerminalSpec(input: {
+  command: unknown
+  via: unknown
+  envName: unknown
+  cwd: unknown
+}): { ok: true; spec: TerminalSpec } | { ok: false; message: string } {
+  if (
+    !Array.isArray(input.command) ||
+    input.command.length < 1 ||
+    input.command.length > MAX_ARGS
+  ) {
+    return {
+      ok: false,
+      message:
+        "Terminal fill needs command: the program and its arguments, with no shell. There is no file to read.",
+    }
+  }
+  const command: string[] = []
+  for (const part of input.command) {
+    if (
+      typeof part !== "string" ||
+      part.length > MAX_ARG_CHARS ||
+      /[\0\r\n]/.test(part)
+    ) {
+      return {
+        ok: false,
+        message: "Each part of command must be a single line of text.",
+      }
+    }
+    command.push(part)
+  }
+  if (!command[0]) {
+    return { ok: false, message: "Name the program to run." }
+  }
+  if (JSON.stringify(command).length > MAX_COMMAND_JSON) {
+    return {
+      ok: false,
+      message:
+        "That command is too long to show in full on the approval card. Shorten it.",
+    }
+  }
+  if (input.via !== "stdin" && input.via !== "env") {
+    return {
+      ok: false,
+      message:
+        'Set via to "stdin" or "env". The value is passed only that way, never as a file.',
+    }
+  }
+  let envName: string | null = null
+  if (input.via === "env") {
+    if (typeof input.envName !== "string" || !ENV_NAME.test(input.envName)) {
+      return {
+        ok: false,
+        message: "env needs envName: a variable such as GH_TOKEN.",
+      }
+    }
+    const upper = input.envName.toUpperCase()
+    if (BLOCKED_ENV.has(upper) || upper.startsWith("LD_") || upper.startsWith("DYLD_")) {
+      return {
+        ok: false,
+        message: `“${input.envName}” can't carry a vault value. Pick a name like GH_TOKEN.`,
+      }
+    }
+    envName = input.envName
+  }
+  let cwd: string | null = null
+  if (input.cwd != null && input.cwd !== "") {
+    if (
+      typeof input.cwd !== "string" ||
+      !input.cwd.startsWith("/") ||
+      input.cwd.length > 512
+    ) {
+      return { ok: false, message: "cwd must be an absolute path on the workstation." }
+    }
+    if (/[\0\r\n]/.test(input.cwd) || input.cwd.split("/").includes("..")) {
+      return { ok: false, message: "cwd must be an absolute path on the workstation." }
+    }
+    cwd = input.cwd
+  }
+  return { ok: true, spec: { command, via: input.via, envName, cwd } }
+}
+
+// The exact command the person approves. A different program, argument,
+// variable, or directory is a different call and will not run.
+export function terminalApprovalArgs(input: {
+  id: string
+  field: string
+  label: string
+  spec: TerminalSpec
+}) {
+  const args: {
+    id: string
+    field: string
+    host: string
+    label: string
+    terminal: true
+    command: string[]
+    via: TerminalVia
+    envName?: string
+    cwd?: string
+  } = {
+    id: input.id,
+    field: input.field,
+    host: "terminal",
+    label: input.label,
+    terminal: true,
+    command: input.spec.command,
+    via: input.spec.via,
+  }
+  if (input.spec.envName) args.envName = input.spec.envName
+  if (input.spec.cwd) args.cwd = input.spec.cwd
+  return args
+}
+
+export function secretExecArgs(
+  spec: TerminalSpec,
+  timeoutSeconds = TERMINAL_TIMEOUT_SECONDS
+) {
+  const args = ["xiryn-secret-exec", "--via", spec.via]
+  if (spec.via === "env" && spec.envName) args.push("--env-name", spec.envName)
+  args.push("--timeout", String(timeoutSeconds), "--", ...spec.command)
+  return args
+}
+
+export function encodeSecretFrame(value: string) {
+  const secret = Buffer.from(value, "utf8")
+  if (secret.length < 1 || secret.length > MAX_SECRET_BYTES) {
+    throw new Error("That vault field can't be passed to a program.")
+  }
+  const header = Buffer.alloc(4)
+  header.writeUInt32BE(secret.length)
+  return { secret, frame: Buffer.concat([header, secret]) }
+}
+
+const REDACTION_TOKENS = ["[redacted]", "<redacted>", "***"] as const
+
+export function redactionToken(secret: string) {
+  for (const token of REDACTION_TOKENS) {
+    if (!secret.includes(token)) return token
+  }
+  return "\uFFFD"
+}
+
+// Spellings a command can emit without really transforming the value.
+// Longest first, so a shorter form doesn't split a longer one.
+export function secretSpellings(secret: string) {
+  const bytes = Buffer.from(secret, "utf8")
+  const b64 = bytes.toString("base64")
+  const b64url = bytes.toString("base64url")
+  const hex = bytes.toString("hex")
+  const forms = [
+    secret,
+    b64,
+    b64.replace(/=+$/, ""),
+    b64url,
+    b64url.replace(/=+$/, ""),
+    hex,
+    hex.toUpperCase(),
+    encodeURIComponent(secret),
+    JSON.stringify(secret).slice(1, -1),
+  ]
+  return [...new Set(forms.filter((form) => form.length > 0))].sort(
+    (a, b) => b.length - a.length
+  )
+}
+
+export function redactSecret(text: string, secret: string) {
+  if (!text) return text
+  let out = text
+  if (secret) {
+    const token = redactionToken(secret)
+    for (const form of secretSpellings(secret)) {
+      if (out.includes(form)) out = out.split(form).join(token)
+    }
+  }
+  return out.replace(/\/tmp\/xiryn\/vault\/\S*/g, redactionToken(secret || "x"))
+}
+
+export function clipTerminalOutput(text: string) {
+  if (text.length <= TERMINAL_OUTPUT_LIMIT) return text
+  return `${text.slice(0, TERMINAL_OUTPUT_LIMIT)}\n… ${text.length - TERMINAL_OUTPUT_LIMIT} more characters truncated`
+}
+
+// What the tool returns after a terminal run. No path, no value.
+export function vaultFillOutputTerminal(
+  field: string,
+  hint: string,
+  result: {
+    via: TerminalVia
+    command: string[]
+    exitCode: number | null
+    output: string
+  }
+) {
   return {
     filled: field.replace(/_/g, " "),
     item: hint,
     mode: "terminal" as const,
-    path,
+    via: result.via,
+    command: result.command,
+    exitCode: result.exitCode,
+    output: result.output,
   }
 }
 
-// What the model is allowed to see. Extra keys, including a value, are dropped.
+// What the model is allowed to see. Extra keys, including a value or a path, are dropped.
 export function vaultFillForModel(output: {
   status?: unknown
   approvalId?: unknown
@@ -122,7 +364,11 @@ export function vaultFillForModel(output: {
   item?: unknown
   site?: unknown
   mode?: unknown
-  path?: unknown
+  via?: unknown
+  command?: unknown
+  exitCode?: unknown
+  output?: unknown
+  reason?: unknown
   [key: string]: unknown
 }) {
   if (output.status === "needs-approval") {
@@ -145,13 +391,19 @@ export function vaultFillForModel(output: {
     }
   }
   if (output.mode === "terminal") {
+    const command = Array.isArray(output.command)
+      ? output.command.filter((part): part is string => typeof part === "string")
+      : []
     return {
       type: "text" as const,
       value: JSON.stringify({
         filled: typeof output.filled === "string" ? output.filled : "",
         item: typeof output.item === "string" ? output.item : "",
         mode: "terminal",
-        path: typeof output.path === "string" ? output.path : "",
+        via: output.via === "env" ? "env" : "stdin",
+        command,
+        exitCode: typeof output.exitCode === "number" ? output.exitCode : null,
+        output: typeof output.output === "string" ? output.output : "",
       }),
     }
   }
