@@ -24,6 +24,14 @@ import {
   type RunOptions,
 } from "@/lib/docker"
 import { pageFromTargets, type PageTarget } from "@/lib/page-origin"
+import {
+  clipTerminalOutput,
+  encodeSecretFrame,
+  redactSecret,
+  secretExecArgs,
+  TERMINAL_TIMEOUT_SECONDS,
+  type TerminalSpec,
+} from "@/lib/vault-fill"
 import { backgroundWorkAllowed } from "@/lib/self-update/duty-gate"
 import { ensureImage, imageTag } from "@/lib/workstation-image"
 
@@ -593,31 +601,36 @@ export function typeSecret(agentId: string, value: string) {
   )
 }
 
-const VAULT_TMP_DIR = "/tmp/xiryn/vault"
-
-// Writes a vault value to a restricted temp file inside the workstation.
-// The secret arrives via stdin (never in the process list), and the file is
-// created with mode 600 atomically (umask 077 inside a subshell). A background
-// job deletes it after 5 minutes.
-// Returns the absolute path to be used in shell commands like $(cat path).
-export async function writeSecretFile(agentId: string, value: string): Promise<string> {
-  const filename = `v-${randomBytes(12).toString("hex")}`
-  const filepath = `${VAULT_TMP_DIR}/${filename}`
-  await execOrThrow(
-    agentId,
-    [
-      "sh",
-      "-c",
-      // umask 077 in a subshell ensures the file is created with 600 from the
-      // start, closing the race window a separate chmod would have.
-      'mkdir -p "$1" && (umask 077; cat > "$2") && (sleep 300 && rm -f "$2") &',
-      "sh",
-      VAULT_TMP_DIR,
-      filepath,
-    ],
-    { input: value, timeoutMs: 30_000 }
-  )
-  return filepath
+// Runs a program inside the workstation with a vault value on its stdin or in
+// one environment variable. The value goes to xiryn-secret-exec on stdin and
+// is not an argument. The helper marks the program not dumpable before the
+// value arrives, deletes nothing because it never writes a file, and redacts
+// the value from what it prints. This redacts again before the text can be
+// stored or shown.
+export async function runSecretCommand(
+  agentId: string,
+  value: string,
+  spec: TerminalSpec
+) {
+  const { frame, secret } = encodeSecretFrame(value)
+  try {
+    const result = await execIn(agentId, secretExecArgs(spec, TERMINAL_TIMEOUT_SECONDS), {
+      input: frame,
+      cwd: spec.cwd ?? HOME,
+      timeoutMs: (TERMINAL_TIMEOUT_SECONDS + 20) * 1000,
+    })
+    const combined = `${result.stdout.toString("utf8")}${result.stderr ? `\n${result.stderr}` : ""}`
+    return {
+      exitCode: result.exitCode,
+      output: clipTerminalOutput(redactSecret(combined, value)),
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "The program failed."
+    throw new Error(redactSecret(message, value))
+  } finally {
+    frame.fill(0)
+    secret.fill(0)
+  }
 }
 
 // Shows the focused field as dots, so a value from the vault doesn't appear

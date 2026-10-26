@@ -178,7 +178,7 @@ Agents ask when they need a decision, confirm before anything irreversible, and 
 ### Your vault, your approval
 
 - **An encrypted vault** for logins, cards, UPI IDs and personal details. Add them in **Settings → Vault**, or when an agent asks, through a secure form in the chat. They're encrypted with AES-256-GCM, and the key is held by your operating system (macOS Keychain, Windows DPAPI, the Linux Secret Service) — never next to the data.
-- **Agents never see the values.** An agent gets "Visa ···· 4242"; Xiryn types the card into the page itself and shows the field as dots.
+- **Agents never see the values.** An agent gets "Visa ···· 4242"; Xiryn types the card into the page itself and shows the field as dots. A program on the agent's machine gets a value only after you approve that exact command, on the program's standard input or in one environment variable — never as a file the agent can read.
 - **Every payment needs your yes.** At checkout the agent asks — *"Atlas wants to pay ₹19,062 to MakeMyTrip"* — and you choose **Approve** (it pays with the card you pick), **I'll pay myself** (you take over its screen) or **Decline**, in the app or with one tap on Telegram.
 - **Phishing-proof by design.** A saved login fills only on its own site, and only after you approve that fill. An approved card fills only on the site you approved.
 - **Stays signed in.** Each agent's browser keeps your sessions between tasks until the site signs you out. One-time codes you reply to the Telegram bot go straight into the vault, not the chat.
