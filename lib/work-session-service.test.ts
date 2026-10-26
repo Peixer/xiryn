@@ -736,6 +736,23 @@ test("work session output is stored, woken, and recovered without secrets", asyn
     assert.match(stored?.output ?? "", /\[redacted\]/)
     assert.match(wake, /\[redacted\]/)
     assert.match(wake, /https:\/\/\[redacted\]@github.com\/acme\/private.git/)
+    assert.equal(h.turns[0].message.role, "system")
+    const framed = frameWorkSessionWakes([h.turns[0].message])
+    assert.equal(framed[0]?.role, "assistant")
+    const converted = await convertToModelMessages(framed, {
+      tools: createWorkSessionResultTool(),
+    })
+    const toolMessage = converted.find((message) => message.role === "tool")
+    assert.ok(toolMessage && Array.isArray(toolMessage.content))
+    const part = toolMessage.content.find((item) => item.type === "tool-result")
+    assert.ok(part && part.type === "tool-result" && part.output.type === "text")
+    const fenced = part.output.value
+    assert.match(fenced, /<untrusted source="work_session">/)
+    for (const secret of secrets) {
+      assert.equal(fenced.includes(secret), false, `fenced ${secret}`)
+    }
+    assert.match(fenced, /\[redacted\]/)
+    assert.match(fenced, /https:\/\/\[redacted\]@github.com\/acme\/private.git/)
   } finally {
     await settle()
     sqlite.close()
