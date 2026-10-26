@@ -23,6 +23,7 @@ import {
 } from "@/db/schema"
 import { compactContext } from "@/lib/agent/compact"
 import { buildInstructions, type Capabilities } from "@/lib/agent/instructions"
+import { workSessionToolsForTurn } from "@/lib/agent/work-session-access"
 import {
   createWorkSessionResultTool,
   frameWorkSessionWakes,
@@ -32,7 +33,6 @@ import {
   createDelegateTool,
   createMemoryTools,
   createSubagentTools,
-  createWorkSessionTools,
   createRoutineTools,
   createSkillTools,
   createWebTools,
@@ -356,6 +356,7 @@ export async function startTurn({
   const first = members.find((member) => member.id === agentId) ?? members[0]
   if (!first) throw new TurnError("This thread has no agents left in it.", 410)
 
+  // A scheduled routine and a coding-session wake run with nobody watching.
   const wake = message.metadata?.workSessions
   const capabilities: Capabilities = {
     workstation: isWorkstationConfigured(),
@@ -363,6 +364,7 @@ export async function startTurn({
     channel,
     routine: routine?.name,
     workSessionWake: !!wake,
+    ownerPresent: !routine && !wake,
   }
 
   // Fail before anything is saved when the model can't be reached
@@ -513,7 +515,11 @@ export async function startTurn({
     ...createSelfUpdateTools(env),
     // Subagent spawning — disabled inside subturns (depth guard in subturn.ts)
     ...createSubagentTools(env),
-    ...(capabilities.workstation ? createWorkSessionTools(env) : {}),
+    ...workSessionToolsForTurn(env, {
+      workstation: capabilities.workstation,
+      routine: !!routine,
+      wake: !!wake,
+    }),
     ...createWorkSessionResultTool(),
     ...connectors.tools,
     ...(thread.squad

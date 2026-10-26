@@ -681,7 +681,9 @@ const TOOL_LABELS: Record<string, (input: Record<string, unknown>) => string> = 
   request_takeover: () => "handing you the screen",
   vault_list: () => "checking your vault",
   vault_fill: (i) =>
-    `filling ${String(i.field ?? "a field").replace(/_/g, " ")} from your vault`,
+    i.terminal === true
+      ? `running “${(Array.isArray(i.command) ? i.command.map((part) => String(part)).join(" ") : "a program").slice(0, 80)}” with a vault value`
+      : `filling ${String(i.field ?? "a field").replace(/_/g, " ")} from your vault`,
   request_payment_approval: (i) =>
     `asking you to approve ${String(i.amount ?? "a payment")}`,
   request_secret: () => "asking you for a detail",

@@ -1,7 +1,79 @@
 #!/bin/bash
 # Idempotent setup, executed only inside an opted-in agent's workstation.
+# `bash -s -- refresh` only relinks git credentials. The full run also
+# installs Codex and Claude Code.
 set -euo pipefail
-CREDS=/home/xiryn/.coding-creds
+CREDS="${XIRYN_GIT_CREDS:-/home/xiryn/.coding-creds}"
+
+install_git_helper() {
+  mkdir -p "$HOME/.local/bin"
+  cat >"$HOME/.local/bin/xiryn-git-credential" <<'EOF'
+#!/bin/sh
+# Reads ~/.git-credentials for git. Writes back only when that file's
+# directory is writable. The shared fallback volume is mounted read-only,
+# so a save there is ignored instead of failing the git command.
+set -eu
+file="${HOME}/.git-credentials"
+op="${1:-}"
+
+if [ "$op" = get ]; then
+  [ -f "$file" ] || exit 0
+  exec git credential-store --file "$file" get
+fi
+
+if [ "$op" = store ] || [ "$op" = erase ]; then
+  if [ -e "$file" ] || [ -L "$file" ]; then
+    dir=$(dirname "$(readlink -f "$file")")
+  else
+    dir=$HOME
+  fi
+  if [ -w "$dir" ]; then
+    exec git credential-store --file "$file" "$op"
+  fi
+  cat >/dev/null
+  exit 0
+fi
+
+echo 'xiryn-git-credential: unknown operation' >&2
+exit 1
+EOF
+  chmod 755 "$HOME/.local/bin/xiryn-git-credential"
+}
+
+link_git_credentials() {
+  local src="$CREDS/.git-credentials"
+  if [ ! -f "$src" ]; then
+    return 0
+  fi
+  if [ ! -e "$HOME/.git-credentials" ]; then
+    ln -sf "$src" "$HOME/.git-credentials"
+    echo 'git-credentials: linked from volume (was missing)'
+  elif [ -L "$HOME/.git-credentials" ]; then
+    if [ "$(readlink "$HOME/.git-credentials")" = "$src" ]; then
+      echo 'git-credentials: already linked, skipping'
+    else
+      ln -sfn "$src" "$HOME/.git-credentials"
+      echo 'git-credentials: retargeted link'
+    fi
+  elif [ ! -s "$HOME/.git-credentials" ]; then
+    rm "$HOME/.git-credentials"
+    ln -sf "$src" "$HOME/.git-credentials"
+    echo 'git-credentials: replaced empty file with volume link'
+  else
+    cp "$HOME/.git-credentials" "$HOME/.git-credentials.bak"
+    chmod 600 "$HOME/.git-credentials.bak"
+    rm "$HOME/.git-credentials"
+    ln -sf "$src" "$HOME/.git-credentials"
+    echo 'git-credentials: backed up stale file to .git-credentials.bak, linked from volume'
+  fi
+  install_git_helper
+  git config --global credential.helper "$HOME/.local/bin/xiryn-git-credential"
+}
+
+if [ "${1:-}" = refresh ]; then
+  link_git_credentials
+  exit 0
+fi
 
 # Test the executable, so a failed installation can be retried.
 if [ ! -x "$HOME/codex-cli/node_modules/.bin/codex" ]; then
@@ -20,25 +92,7 @@ fi
 if [ -f "$CREDS/.gitconfig" ]; then
   cp "$CREDS/.gitconfig" "$HOME/.gitconfig"
 fi
-if [ -f "$CREDS/.git-credentials" ]; then
-  if [ ! -e "$HOME/.git-credentials" ]; then
-    ln -sf "$CREDS/.git-credentials" "$HOME/.git-credentials"
-    echo 'git-credentials: linked from volume (was missing)'
-  elif [ -L "$HOME/.git-credentials" ]; then
-    echo 'git-credentials: already linked, skipping'
-  elif [ ! -s "$HOME/.git-credentials" ]; then
-    rm "$HOME/.git-credentials"
-    ln -sf "$CREDS/.git-credentials" "$HOME/.git-credentials"
-    echo 'git-credentials: replaced empty file with volume link'
-  else
-    cp "$HOME/.git-credentials" "$HOME/.git-credentials.bak"
-    chmod 600 "$HOME/.git-credentials.bak"
-    rm "$HOME/.git-credentials"
-    ln -sf "$CREDS/.git-credentials" "$HOME/.git-credentials"
-    echo 'git-credentials: backed up stale file to .git-credentials.bak, linked from volume'
-  fi
-  git config --global credential.helper store
-fi
+link_git_credentials
 
 # Make the documented codex command usable in subsequent shells.
 mkdir -p "$HOME/.local/bin"

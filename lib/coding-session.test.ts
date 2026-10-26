@@ -20,6 +20,26 @@ test("missing CLI returns failure without invoking a model", async () => {
   assert.equal(result.ok, false)
   assert.match(result.error!, /not found/)
 })
+test("codex and claude skip their own prompts because the session has no terminal", async () => {
+  const seen: string[][] = []
+  for (const tool of ["codex", "claude-code"] as const) {
+    const result = await runCodingSession({
+      tool,
+      task: "hello",
+      workdir: "/home/xiryn/xiryn",
+      run: async (command) => {
+        seen.push(command)
+        return { text: "", exitCode: 0 }
+      },
+    })
+    assert.equal(result.ok, true)
+  }
+  assert.ok(seen[0].includes("--dangerously-bypass-approvals-and-sandbox"))
+  assert.ok(seen[1].includes("--dangerously-skip-permissions"))
+  assert.equal(seen[0].at(-1), "hello")
+  assert.ok(seen[1].includes("hello"))
+})
+
 test("streams mock output and passes command arguments", async () => {
   let output = ""
   const result = await runCodingSession({

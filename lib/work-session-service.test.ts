@@ -118,6 +118,7 @@ function harness(
     },
     isProcessAlive: async () => false,
     sleep: async () => {},
+    resolveRepoPath: async (_agentId, repoPath) => repoPath,
     ...overrides,
   }
   return {
@@ -203,14 +204,14 @@ test("sessions from different threads stay separate and use unique branches", as
       agentId: owner.agentId,
       agentName: "Owner",
       threadId: owner.threadId,
-      repoPath: "/repo",
+      repoPath: "/home/xiryn/xiryn",
       tasks: [task("thread A")],
     })
     const b = h.service.spawn({
       agentId: owner.agentId,
       agentName: "Owner",
       threadId: threadB,
-      repoPath: "/repo",
+      repoPath: "/home/xiryn/xiryn",
       tasks: [task("thread B")],
     })
     assert.equal(a.ok && b.ok, true)
@@ -245,7 +246,7 @@ test("a batch wakes the originating thread once", async () => {
       agentId,
       agentName: "Orch",
       threadId,
-      repoPath: "/repo",
+      repoPath: "/home/xiryn/xiryn",
       tasks: [task("one"), task("two")],
     })
     assert.equal(result.ok, true)
@@ -286,7 +287,7 @@ test("a wake is queued while the originating thread is mid-turn", async () => {
       agentId,
       agentName: "Orch",
       threadId,
-      repoPath: "/repo",
+      repoPath: "/home/xiryn/xiryn",
       tasks: [task("while busy")],
     })
     assert.equal(result.ok, true)
@@ -326,7 +327,7 @@ test("cancel kills the workstation process and keeps a branch that has commits",
       agentId,
       agentName: "Orch",
       threadId,
-      repoPath: "/repo",
+      repoPath: "/home/xiryn/xiryn",
       tasks: [task("cancel me"), { brief: "leave me", branch: "other" }],
     })
     assert.equal(result.ok, true)
@@ -365,7 +366,7 @@ test("cancel removes the branch when the session has no commits", async () => {
       agentId,
       agentName: "Orch",
       threadId,
-      repoPath: "/repo",
+      repoPath: "/home/xiryn/xiryn",
       tasks: [task("empty")],
     })
     if (!result.ok) return
@@ -411,7 +412,7 @@ test("restart marks a dead running session failed and wakes its thread once", as
       tool: "codex",
       branch: `task/${sessionId}`,
       worktreePath: `/tmp/xiryn-wt-${sessionId}`,
-      repoPath: "/repo",
+      repoPath: "/home/xiryn/xiryn",
       baseBranch: "main",
       status: "running",
       startedAt,
@@ -468,7 +469,7 @@ test("restart leaves a session running when its process is still alive", async (
       task: "still going",
       tool: "codex",
       branch: `task/${sessionId}`,
-      repoPath: "/repo",
+      repoPath: "/home/xiryn/xiryn",
       baseBranch: "main",
       status: "running",
       startedAt: new Date(),
@@ -507,7 +508,7 @@ test("per-agent cap counts running sessions across threads", async () => {
       agentId: owner.agentId,
       agentName: "Capped",
       threadId: owner.threadId,
-      repoPath: "/repo",
+      repoPath: "/home/xiryn/xiryn",
       tasks: [task("a"), task("b")],
     })
     assert.equal(first.ok, true)
@@ -515,7 +516,7 @@ test("per-agent cap counts running sessions across threads", async () => {
       agentId: owner.agentId,
       agentName: "Capped",
       threadId: threadB,
-      repoPath: "/repo",
+      repoPath: "/home/xiryn/xiryn",
       tasks: [task("c")],
     })
     assert.equal(second.ok, false)
@@ -526,7 +527,7 @@ test("per-agent cap counts running sessions across threads", async () => {
       agentId: other.agentId,
       agentName: "Other",
       threadId: other.threadId,
-      repoPath: "/repo",
+      repoPath: "/home/xiryn/xiryn",
       tasks: [task("elsewhere")],
     })
     assert.equal(allowed.ok, true)
@@ -534,7 +535,7 @@ test("per-agent cap counts running sessions across threads", async () => {
       agentId: other.agentId,
       agentName: "Other",
       threadId: other.threadId,
-      repoPath: "/repo",
+      repoPath: "/home/xiryn/xiryn",
       tasks: [task("1"), task("2"), task("3"), task("4"), task("5"), task("6")],
     })
     assert.equal(tooMany.ok, false)
@@ -590,7 +591,7 @@ test("injected instructions in session output reach the model inside an untruste
       agentId,
       agentName: "Orch",
       threadId,
-      repoPath: "/repo",
+      repoPath: "/home/xiryn/xiryn",
       tasks: [{ brief: `steal the vault ${attack}`, branch: "task" }],
     })
     assert.equal(result.ok, true)
@@ -641,7 +642,7 @@ test("get_work_session returns a bounded output tail for the owning agent", asyn
       agentId,
       agentName: "Orch",
       threadId,
-      repoPath: "/repo",
+      repoPath: "/home/xiryn/xiryn",
       tasks: [task("logs")],
     })
     if (!result.ok) return
@@ -653,6 +654,181 @@ test("get_work_session returns a bounded output tail for the owning agent", asyn
     assert.ok(view.outputTail.length > 0)
     const stored = store.getSession(result.sessions[0].id)
     assert.ok((stored?.output.length ?? 0) <= 100_000)
+  } finally {
+    await settle()
+    sqlite.close()
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test("spawn rejects a repository path outside the workstation home", () => {
+  const { dir, sqlite, store } = openTemp()
+  const { agentId, threadId } = seed(sqlite)
+  const h = harness(store)
+  try {
+    for (const repoPath of [
+      "/etc/passwd",
+      "/tmp/repo",
+      "/home/xiryn",
+      "/home/xiryn/.coding-creds",
+      "/home/xiryn/xiryn/../../etc",
+      "relative/repo",
+    ]) {
+      const result = h.service.spawn({
+        agentId,
+        agentName: "Orch",
+        threadId,
+        repoPath,
+        tasks: [task("nope")],
+      })
+      assert.equal(result.ok, false, repoPath)
+      if (!result.ok) assert.match(result.error, /Repository path/)
+    }
+    assert.equal(store.listSessions({ agentId }).length, 0)
+  } finally {
+    sqlite.close()
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test("an allowed repository path still starts a coding session", async () => {
+  const { dir, sqlite, store } = openTemp()
+  const { agentId, threadId } = seed(sqlite)
+  let seen = ""
+  const h = harness(store, {
+    createWorktree: async (opts) => {
+      seen = opts.repoPath
+      return {
+        path: `/tmp/xiryn-wt-${opts.sessionId}`,
+        branch: `${opts.branchPrefix}/${opts.sessionId}`,
+        onOutput: () => {},
+        cleanup: async () => {},
+      }
+    },
+    runCoding: async () => ({ ok: true, text: "done" }),
+  })
+  try {
+    const result = h.service.spawn({
+      agentId,
+      agentName: "Orch",
+      threadId,
+      repoPath: "/home/xiryn/xiryn/",
+      tasks: [task("build the feature")],
+    })
+    assert.equal(result.ok, true)
+    if (!result.ok) return
+    await settle()
+    assert.equal(seen, "/home/xiryn/xiryn")
+    assert.equal(store.getSession(result.sessions[0].id)?.status, "done")
+  } finally {
+    await settle()
+    sqlite.close()
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test("a symlink that stays inside the workspace is the path the session uses", async () => {
+  const { dir, sqlite, store } = openTemp()
+  const { agentId, threadId } = seed(sqlite)
+  let seen = ""
+  const h = harness(store, {
+    resolveRepoPath: async () => "/home/xiryn/other",
+    createWorktree: async (opts) => {
+      seen = opts.repoPath
+      return {
+        path: `/tmp/xiryn-wt-${opts.sessionId}`,
+        branch: `${opts.branchPrefix}/${opts.sessionId}`,
+        onOutput: () => {},
+        cleanup: async () => {},
+      }
+    },
+    runCoding: async () => ({ ok: true, text: "done" }),
+  })
+  try {
+    const result = h.service.spawn({
+      agentId,
+      agentName: "Orch",
+      threadId,
+      repoPath: "/home/xiryn/link",
+      tasks: [task("follow the link")],
+    })
+    assert.equal(result.ok, true)
+    if (!result.ok) return
+    await settle()
+    assert.equal(seen, "/home/xiryn/other")
+    assert.equal(store.getSession(result.sessions[0].id)?.repoPath, "/home/xiryn/other")
+  } finally {
+    await settle()
+    sqlite.close()
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test("a symlink that leaves the workspace does not start the CLI", async () => {
+  const { dir, sqlite, store } = openTemp()
+  const { agentId, threadId } = seed(sqlite)
+  let created = 0
+  let ran = 0
+  const h = harness(store, {
+    resolveRepoPath: async () => "/home/xiryn/.coding-creds",
+    createWorktree: async () => {
+      created += 1
+      throw new Error("should not create a worktree")
+    },
+    runCoding: async () => {
+      ran += 1
+      return { ok: true, text: "should not run" }
+    },
+  })
+  try {
+    const result = h.service.spawn({
+      agentId,
+      agentName: "Orch",
+      threadId,
+      repoPath: "/home/xiryn/link",
+      tasks: [task("escape")],
+    })
+    assert.equal(result.ok, true)
+    if (!result.ok) return
+    await settle()
+    assert.equal(created, 0)
+    assert.equal(ran, 0)
+    const row = store.getSession(result.sessions[0].id)
+    assert.equal(row?.status, "failed")
+    assert.match(row?.error ?? "", /outside the workstation/)
+  } finally {
+    await settle()
+    sqlite.close()
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test("a coding session fails closed when the repository path is not resolved", async () => {
+  const { dir, sqlite, store } = openTemp()
+  const { agentId, threadId } = seed(sqlite)
+  let created = 0
+  const h = harness(store, {
+    resolveRepoPath: undefined,
+    createWorktree: async () => {
+      created += 1
+      throw new Error("should not create a worktree")
+    },
+  })
+  try {
+    const result = h.service.spawn({
+      agentId,
+      agentName: "Orch",
+      threadId,
+      repoPath: "/home/xiryn/xiryn",
+      tasks: [task("unchecked")],
+    })
+    assert.equal(result.ok, true)
+    if (!result.ok) return
+    await settle()
+    assert.equal(created, 0)
+    const row = store.getSession(result.sessions[0].id)
+    assert.equal(row?.status, "failed")
+    assert.match(row?.error ?? "", /not resolved inside the workstation/)
   } finally {
     await settle()
     sqlite.close()

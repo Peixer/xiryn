@@ -111,6 +111,16 @@ export async function runCodingSession(
       ok: false,
       error: `${opts.tool} CLI not found`,
     }
+  // Codex and Claude Code stop on every file edit and shell command until a
+  // person approves it in a terminal. A coding session is a background
+  // process in the workstation and has no terminal, so the CLI is started
+  // with its permission prompts bypassed. That is what lets the brief finish.
+  //
+  // The risk is the same bypass: until the process exits, the CLI can edit
+  // the repository, use the network, and use the workstation git credential,
+  // including push, with no further prompt. spawn_work_session is only offered
+  // on a turn the owner started. The repository path has to stay a visible
+  // directory under /home/xiryn (see lib/repo-path.ts).
   const args =
     opts.tool === "codex"
       ? [

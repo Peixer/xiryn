@@ -414,9 +414,17 @@ function selfUpdatePreview(args: Record<string, unknown>) {
   return capCard(lines.join("\n"))
 }
 
+const SHELLS = new Set(["sh", "bash", "dash", "zsh", "ash", "ksh", "fish"])
+
+function programName(command: string) {
+  const base = command.split("/").pop() ?? command
+  return base
+}
+
 // Only the fields the person is approving. A secret is not one of them, and
 // any other key on the hashed payload stays off the card.
 function vaultFillPreview(args: Record<string, unknown>) {
+  if (args.terminal === true) return terminalFillPreview(args)
   const field = stringOf(args.field).replace(/_/g, " ")
   const lines = [
     `Host: ${shown(oneLine(stringOf(args.host)), FIELD_LIMIT)}`,
@@ -425,5 +433,35 @@ function vaultFillPreview(args: Record<string, unknown>) {
   if (typeof args.x === "number" && typeof args.y === "number") {
     lines.push(`Click: ${args.x}, ${args.y}`)
   }
+  return capCard(lines.join("\n"))
+}
+
+// The whole command is on the card. parseTerminalSpec refuses a command that
+// does not fit, so a later truncation cannot hide the tail of what will run.
+function terminalFillPreview(args: Record<string, unknown>) {
+  const field = stringOf(args.field).replace(/_/g, " ")
+  const command = Array.isArray(args.command)
+    ? args.command.map((part) => stringOf(part))
+    : []
+  const via =
+    args.via === "env"
+      ? `environment variable ${stringOf(args.envName)}`
+      : "standard input"
+  const lines = [
+    `Run this program with the ${shown(oneLine(field), FIELD_LIMIT)} for “${shown(oneLine(stringOf(args.label)), FIELD_LIMIT)}”`,
+    `Command: ${shown(oneLine(JSON.stringify(command)), 1_500)}`,
+    `Secret on: ${shown(oneLine(via), FIELD_LIMIT)}`,
+  ]
+  if (typeof args.cwd === "string" && args.cwd) {
+    lines.push(`Directory: ${shown(oneLine(args.cwd), FIELD_LIMIT)}`)
+  }
+  lines.push("Host: terminal")
+  if (command[0] && SHELLS.has(programName(command[0]))) {
+    lines.push(
+      "This is a shell. It can save or send the value. Approve it only if you trust every argument."
+    )
+  }
+  lines.push("The value is not shown. Output returned to the agent has it removed.")
+  lines.push("Nothing runs until you approve this exact command.")
   return capCard(lines.join("\n"))
 }
