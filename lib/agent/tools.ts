@@ -1157,6 +1157,7 @@ export function createWorkSessionTools(env: ToolEnv) {
           })),
         }
       },
+      toModelOutput: ({ output }) => toUntrustedModelOutput("work_session", output),
     }),
     get_work_session: tool({
       description:
@@ -1168,6 +1169,7 @@ export function createWorkSessionTools(env: ToolEnv) {
         const { getAgentWorkSession } = await import("@/lib/work-sessions")
         return getAgentWorkSession(env.current().id, sessionId)
       },
+      toModelOutput: ({ output }) => toUntrustedModelOutput("work_session", output),
     }),
     cancel_work_session: tool({
       description:

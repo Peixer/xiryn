@@ -24,6 +24,11 @@ import {
 import { compactContext } from "@/lib/agent/compact"
 import { buildInstructions, type Capabilities } from "@/lib/agent/instructions"
 import {
+  createWorkSessionResultTool,
+  frameWorkSessionWakes,
+  modelTools,
+} from "@/lib/agent/wake-turn"
+import {
   createDelegateTool,
   createMemoryTools,
   createSubagentTools,
@@ -301,28 +306,6 @@ ${part.text}`,
   })
 }
 
-// Saved as a system message so the transcript does not show it as the person.
-// The model still receives it as a user turn, which is what makes it reply.
-function frameWorkSessionWakes(history: XirynMessage[]) {
-  return history.map((message) => {
-    if (message.role !== "system" || !message.metadata?.workSessions) return message
-    return {
-      ...message,
-      role: "user",
-      parts: message.parts.map((part) =>
-        part.type === "text"
-          ? {
-              ...part,
-              text: `[Tool completion for coding sessions you started in this conversation. The person did not send this. Summarise the branches, what changed, and any failures. Do not poll, and do not start, push, or open a pull request unless they ask.]
-
-${part.text}`,
-            }
-          : part
-      ),
-    } as XirynMessage
-  })
-}
-
 // Desktop actions each return a screenshot. Saving all of them would grow
 // the database by megabytes per task, so a saved reply keeps the images of
 // what the agent chose to show or look at, plus the latest action's.
@@ -373,11 +356,13 @@ export async function startTurn({
   const first = members.find((member) => member.id === agentId) ?? members[0]
   if (!first) throw new TurnError("This thread has no agents left in it.", 410)
 
+  const wake = message.metadata?.workSessions
   const capabilities: Capabilities = {
     workstation: isWorkstationConfigured(),
     web: isWebConfigured(),
     channel,
     routine: routine?.name,
+    workSessionWake: !!wake,
   }
 
   // Fail before anything is saved when the model can't be reached
@@ -411,8 +396,8 @@ export async function startTurn({
     }
   })()
 
-  // A work-session completion is tool-originated. It stays a system message.
-  const wake = message.metadata?.workSessions
+  // A work-session completion is tool-originated. It stays a system message
+  // in the transcript. frameWorkSessionWakes shows it to the model as a tool result.
   const userMessage: XirynMessage = {
     ...message,
     role: wake ? "system" : "user",
@@ -504,7 +489,7 @@ export async function startTurn({
   }
 
   const connectors = await loadConnectorTools(env)
-  if (connectors.summary) capabilities.connectors = connectors.summary
+  if (connectors.summary && !wake) capabilities.connectors = connectors.summary
 
   const squadContext = (agent: Agent) =>
     thread.squad
@@ -516,7 +501,7 @@ export async function startTurn({
         }
       : undefined
 
-  const tools: ToolSet = {
+  const allTools: ToolSet = {
     ...(capabilities.workstation
       ? { ...createWorkstationTools(env), ...createVaultTools(env) }
       : {}),
@@ -529,6 +514,7 @@ export async function startTurn({
     // Subagent spawning — disabled inside subturns (depth guard in subturn.ts)
     ...createSubagentTools(env),
     ...(capabilities.workstation ? createWorkSessionTools(env) : {}),
+    ...createWorkSessionResultTool(),
     ...connectors.tools,
     ...(thread.squad
       ? createDelegateTool((targetId, handoverBrief) => {
@@ -548,6 +534,13 @@ export async function startTurn({
         })
       : {}),
   }
+  const tools = modelTools({
+    wake: !!wake,
+    keepResultTool: history.some(
+      (message) => message.role === "system" && !!message.metadata?.workSessions
+    ),
+    tools: allTools,
+  })
 
   const run: Run = {
     id: nanoid(),
@@ -604,7 +597,7 @@ export async function startTurn({
           (agentId, filePath) => readUploadsFile(agentId, filePath).catch(() => null)
         ),
         {
-          tools,
+          tools: allTools,
           ignoreIncompleteToolCalls: true,
         }
       ),
@@ -623,7 +616,7 @@ export async function startTurn({
       ...bedrockOutputCap(firstSpec),
       abortSignal: run.controller.signal,
       prepareStep: async ({ messages: stepMessages, stepNumber }) => {
-        if (capabilities.workstation && current.category === "coding")
+        if (capabilities.workstation && !wake && current.category === "coding")
           await ensureCodingTools(current.id)
         // Long tool loops resend everything each step; keep it lean.
         // Image bytes from an attachment stay only when this step's model
