@@ -1074,7 +1074,7 @@ export function createWorkSessionTools(env: ToolEnv) {
   return {
     spawn_work_session: tool({
       description:
-        "Start up to 5 coding sessions in the background, each on its own git branch in the workstation. Returns immediately with session ids and branch names. End your turn after telling the person; you are woken in this conversation when the batch finishes. Do not poll.",
+        "Start up to 5 coding sessions in the background, each on its own git branch in the workstation. Returns immediately with session ids and branch names. End your turn after telling the person; you are woken in this conversation when the batch finishes. Do not poll. repoPath must be a visible directory under /home/xiryn (default /home/xiryn/xiryn). The home directory, hidden directories, and paths outside that home are refused.",
       inputSchema: z.object({
         tasks: z
           .array(
@@ -1091,7 +1091,13 @@ export function createWorkSessionTools(env: ToolEnv) {
           )
           .min(1)
           .max(5),
-        repoPath: z.string().startsWith("/").default("/home/xiryn/xiryn"),
+        repoPath: z
+          .string()
+          .startsWith("/")
+          .default("/home/xiryn/xiryn")
+          .describe(
+            "Absolute path of a git checkout inside the workstation, under /home/xiryn. A visible directory such as /home/xiryn/xiryn. The home directory, hidden directories, and paths outside that home are refused."
+          ),
         baseBranch: z
           .string()
           .regex(/^[a-zA-Z0-9_./-]+$/)
@@ -1105,14 +1111,20 @@ export function createWorkSessionTools(env: ToolEnv) {
             error: "spawn_work_session cannot run inside a subagent turn.",
           }
         }
-        const { spawnWorkSessions } = await import("@/lib/work-sessions")
+        const { prepareRepoPath } = await import("@/lib/repo-path")
+        const { resolveWorkstationRepoPath, spawnWorkSessions } =
+          await import("@/lib/work-sessions")
         const agent = env.current()
+        const prepared = await prepareRepoPath(repoPath, (path) =>
+          resolveWorkstationRepoPath(agent.id, path)
+        )
+        if (!prepared.ok) return { started: false, error: prepared.error }
         const result = spawnWorkSessions({
           agentId: agent.id,
           agentName: agent.name,
           threadId: env.threadId,
           tasks,
-          repoPath,
+          repoPath: prepared.path,
           baseBranch,
         })
         if (!result.ok) return { started: false, error: result.error }

@@ -2,6 +2,20 @@
 
 Coding agents (category **Coding** in Settings → Agents) get a dedicated toolset: the Codex CLI and a shared Git credential volume so they can push commits without exposing a token to the model.
 
+## Coding sessions
+
+`spawn_work_session` starts up to five Codex or Claude Code processes in the agent's workstation, each on its own git branch. The person starts those sessions from a conversation they are in, in the app or on Telegram. A scheduled routine does not receive the tool, and neither does the turn that runs when a batch finishes. List, status, and cancel stay available on those turns.
+
+### Why the CLIs skip their own permission prompts
+
+Codex and Claude Code wait for a person to approve each file edit and shell command in a terminal. A coding session has no terminal: it is a background process, so Xiryn starts them with `--dangerously-bypass-approvals-and-sandbox` (Codex) and `--dangerously-skip-permissions` (Claude Code). That is what lets the brief finish.
+
+The risk is the same flag. Until the process exits, the CLI can edit the repository, use the network, and use the workstation git credential, including push, with no further prompt inside the CLI. The owner's consent is the conversation they started. The session still does not push or open a pull request on its own; the prompt tells the agent to do that only when the person asks. The credential file itself is covered in the section below.
+
+### Which repositories a session can use
+
+`repoPath` has to be a visible directory inside the workstation home, under `/home/xiryn`. The default is `/home/xiryn/xiryn`. The home directory itself is refused because it holds `.coding-creds` and the `.git-credentials` symlink. Hidden directories (`.coding-creds`, `.ssh`, `.git`, and anything else starting with a dot) are refused. `..`, a path outside `/home/xiryn`, and a symlink whose target leaves that home are refused. The check runs on the path the model sent and again on the path the workstation resolves, so a link to the credential volume or to `/etc` does not become the working tree.
+
 ## Git credentials for coding agents
 
 ### How it works
