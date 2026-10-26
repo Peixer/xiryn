@@ -242,7 +242,8 @@ export const workSessionRows = sqliteTable(
       .default("running"),
     startedAt: timestamp(),
     finishedAt: integer({ mode: "timestamp_ms" }),
-    // Bounded tail of CLI output. The in-memory buffer is the live copy.
+    // Bounded redacted tail of CLI output. Secrets are removed before write.
+    // Finished rows keep a short tail; the live copy is redacted the same way.
     output: text().notNull().default(""),
     durationMs: integer(),
     error: text(),

@@ -663,11 +663,16 @@ function migrationGap(input) {
 // lib/self-update/redact.ts
 var SECRET_ASSIGN = /\b(?:[A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL|PRIVATE)[A-Z0-9_]*)\s*[=:]\s*\S+/gi;
 var BEARER = /\bBearer\s+[A-Za-z0-9._~+/-]{8,}/gi;
-var AWS_KEY = /\bAKIA[0-9A-Z]{16}\b/g;
+var AWS_KEY = /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/g;
 var BASIC = /\bBasic\s+[A-Za-z0-9+/=]{8,}/gi;
 var ENV_LINE = /^(?:export\s+)?[A-Z][A-Z0-9_]*\s*=\s*\S+/gm;
+var GITHUB_FINE = /\bgithub_pat_[A-Za-z0-9]{22}_[A-Za-z0-9]{59}\b/g;
+var GITHUB_TOKEN = /\bgh[pousr]_[A-Za-z0-9]{36}\b/g;
+var MODEL_KEY = /\bsk-(?:proj-|svcacct-|admin-|ant-(?:api\d{2}|admin\d{2})-)?[A-Za-z0-9_-]{20,}/g;
+var CREDENTIAL_URL = /\b([a-z][a-z0-9+.-]*:\/\/)([^/\s:@]+:\S+)@/gi;
+var PEM = /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z0-9 ]*PRIVATE KEY-----/g;
 function redact(text) {
-  return text.replace(SECRET_ASSIGN, (match) => match.replace(/[=:]\s*\S+/, "= [redacted]")).replace(BEARER, "Bearer [redacted]").replace(BASIC, "Basic [redacted]").replace(AWS_KEY, "[redacted]").replace(ENV_LINE, (line) => {
+  return text.replace(PEM, "[redacted]").replace(CREDENTIAL_URL, "$1[redacted]@").replace(GITHUB_FINE, "[redacted]").replace(GITHUB_TOKEN, "[redacted]").replace(MODEL_KEY, "[redacted]").replace(SECRET_ASSIGN, (match) => match.replace(/[=:]\s*\S+/, "= [redacted]")).replace(BEARER, "Bearer [redacted]").replace(BASIC, "Basic [redacted]").replace(AWS_KEY, "[redacted]").replace(ENV_LINE, (line) => {
     const eq = line.indexOf("=");
     return `${line.slice(0, eq + 1)} [redacted]`;
   });

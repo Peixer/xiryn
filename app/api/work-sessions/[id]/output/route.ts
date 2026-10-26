@@ -1,5 +1,6 @@
 import { readSessionOutput } from "@/lib/work-sessions"
 import { createDrizzleWorkSessionStore } from "@/lib/work-session-store"
+import { redact } from "@/lib/self-update/redact"
 import { db } from "@/db"
 
 // Same gate as the other workspace routes: proxy.ts only answers on loopback.
@@ -16,9 +17,9 @@ export async function GET(
   return Response.json({
     id,
     status: row?.status ?? "running",
-    output,
+    output: redact(output),
     durationMs: row?.durationMs ?? null,
-    error: row?.error ?? null,
+    error: row?.error ? redact(row.error) : null,
     threadId: row?.threadId ?? null,
   })
 }

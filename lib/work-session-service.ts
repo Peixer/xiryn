@@ -1,6 +1,7 @@
 import { nanoid } from "nanoid"
 
 import type { WorkSessionBatch, WorkSessionRow } from "@/db/schema"
+import { redact, redactForStorage } from "@/lib/self-update/redact"
 import { worktreeLocation } from "@/lib/worktree-path"
 
 import type { WorkSessionStore } from "./work-session-store"
@@ -8,7 +9,11 @@ import type { WorkSessionStore } from "./work-session-store"
 export const MAX_TASKS_PER_CALL = 5
 export const DEFAULT_MAX_CONCURRENT = 8
 export const OUTPUT_TAIL_CHARS = 8_000
+// Live sessions keep a long redacted tail so the panel can follow them.
+// Finished sessions shrink to the tail the agent is allowed to read, so
+// snapshots and backups do not keep the whole CLI log.
 const PERSISTED_OUTPUT_CHARS = 100_000
+const RETAINED_OUTPUT_CHARS = OUTPUT_TAIL_CHARS
 const DEFAULT_TIMEOUT_MINUTES = 15
 
 export type WorkSessionTask = {
@@ -123,7 +128,11 @@ export function createWorkSessionService(deps: WorkSessionServiceDeps) {
   const maxConcurrent = deps.maxConcurrent ?? (() => DEFAULT_MAX_CONCURRENT)
   const live = new Map<string, LiveSession>()
   const queued = new Map<string, string[]>()
+  // Redacted text last written for this session. Safe to persist.
   const outputBuffers = new Map<string, string>()
+  // Unredacted CLI text. Stays in this process so a token split across
+  // chunks can be recognised, and is never written to the database.
+  const rawOutputs = new Map<string, string>()
   const wakingNow = new Set<string>()
 
   function sessionsOf(batchId: string) {
@@ -143,28 +152,57 @@ export function createWorkSessionService(deps: WorkSessionServiceDeps) {
   }
 
   function rememberOutput(id: string, chunk: string) {
-    const current = outputBuffers.get(id) ?? deps.store.getSession(id)?.output ?? ""
-    const next = (current + chunk).slice(-PERSISTED_OUTPUT_CHARS)
-    outputBuffers.set(id, next)
-    deps.store.updateSession(id, { output: next })
+    let raw = rawOutputs.get(id)
+    if (raw === undefined) {
+      raw = outputBuffers.get(id) ?? deps.store.getSession(id)?.output ?? ""
+    }
+    raw = boundRaw(raw + chunk)
+    rawOutputs.set(id, raw)
+    const safe = redactForStorage(raw, false)
+    outputBuffers.set(id, safe)
+    deps.store.updateSession(id, { output: safe })
     publish(id)
+  }
+
+  // End of the session: redact whatever was held back, then drop the long
+  // tail. Later readers only need the same slice the agent is shown.
+  function flushOutput(id: string) {
+    const raw = rawOutputs.get(id)
+    if (raw === undefined) return
+    rawOutputs.delete(id)
+    const safe = trimRetained(redact(raw))
+    outputBuffers.set(id, safe)
+    deps.store.updateSession(id, { output: safe })
+  }
+
+  function scrubStoredSecrets() {
+    for (const session of deps.store.listSessions()) {
+      const redacted = redact(session.output)
+      const output = session.status === "running" ? redacted : trimRetained(redacted)
+      const error = session.error ? redact(session.error).slice(0, 500) : null
+      if (output === session.output && (session.error ?? null) === error) continue
+      deps.store.updateSession(session.id, { output, error })
+    }
   }
 
   function finish(
     id: string,
     patch: { status: WorkSessionRow["status"]; error?: string | null }
   ) {
+    flushOutput(id)
     const current = deps.store.getSession(id)
     if (!current || current.status !== "running") return false
     const finishedAt = now()
+    const output = trimRetained(outputBuffers.get(id) ?? redact(current.output))
+    outputBuffers.delete(id)
+    rawOutputs.delete(id)
     deps.store.updateSession(id, {
       status: patch.status,
-      error: patch.error ?? null,
+      error: patch.error ? redact(patch.error).slice(0, 500) : null,
       finishedAt,
       durationMs: finishedAt.getTime() - current.startedAt.getTime(),
-      ...(outputBuffers.has(id) ? { output: outputBuffers.get(id) } : {}),
+      output,
     })
-    outputBuffers.delete(id)
     publish(id)
     return true
   }
@@ -271,8 +309,9 @@ export function createWorkSessionService(deps: WorkSessionServiceDeps) {
           workdir: worktree.path,
           timeoutMs: (current.timeoutMinutes ?? DEFAULT_TIMEOUT_MINUTES) * 60_000,
           onOutput: (line) => {
-            rememberOutput(session.id, line.endsWith("\n") ? line : `${line}\n`)
-            worktree.onOutput(line)
+            // Keep the chunk intact. Inserting a newline here would split a
+            // token across a boundary that was not in the CLI output.
+            rememberOutput(session.id, line)
           },
         })
         if (deps.store.getSession(session.id)?.status !== "running") return
@@ -302,11 +341,12 @@ export function createWorkSessionService(deps: WorkSessionServiceDeps) {
           await cleanup(current, preserve)
           finish(session.id, {
             status: "failed",
-            error: (error instanceof Error ? error.message : String(error)).slice(0, 500),
+            error: error instanceof Error ? error.message : String(error),
           })
         }
       } finally {
         live.delete(session.id)
+        flushOutput(session.id)
         if (deps.store.getSession(session.id)?.status !== "cancelled")
           await wakeBatch(session.batchId)
       }
@@ -405,9 +445,9 @@ export function createWorkSessionService(deps: WorkSessionServiceDeps) {
       branch: session.branch,
       tool: session.tool,
       task: session.task,
-      error: session.error,
+      error: session.error ? redact(session.error) : session.error,
       durationMs: session.durationMs,
-      outputTail: session.output.slice(-OUTPUT_TAIL_CHARS),
+      outputTail: redact(session.output).slice(-OUTPUT_TAIL_CHARS),
     }
   }
 
@@ -496,12 +536,14 @@ export function createWorkSessionService(deps: WorkSessionServiceDeps) {
       }
     } finally {
       live.delete(session.id)
+      flushOutput(session.id)
       if (deps.store.getSession(session.id)?.status !== "cancelled")
         await wakeBatch(session.batchId)
     }
   }
 
   async function recover() {
+    scrubStoredSecrets()
     const running = deps.store.listSessions({ status: "running" })
     for (const session of running) {
       if (live.has(session.id)) continue
@@ -545,7 +587,7 @@ function validate(input: SpawnInput) {
 
 function failureText(result: CodingRun) {
   if (result.timedOut) return "timed out"
-  return (result.error || "coding session failed").slice(0, 500)
+  return redact(result.error || "coding session failed").slice(0, 500)
 }
 
 function wakeMessage(
@@ -554,11 +596,12 @@ function wakeMessage(
   messageId: string
 ): WakeMessage {
   const lines = sessions.map((session) => {
-    const tail = session.output.trim().slice(-2_000)
+    const tail = redact(session.output).trim().slice(-2_000)
+    const error = session.error ? redact(session.error) : null
     return [
       `- ${session.status} \`${session.branch || "(no branch)"}\` (${session.tool})`,
       `  task: ${session.task.slice(0, 400)}`,
-      session.error ? `  error: ${session.error}` : null,
+      error ? `  error: ${error}` : null,
       session.durationMs != null ? `  durationMs: ${session.durationMs}` : null,
       tail ? `  output tail:\n${tail}` : null,
     ]
@@ -598,7 +641,7 @@ function summarize(session: WorkSessionRow) {
     status: session.status,
     tool: session.tool,
     task: session.task,
-    error: session.error,
+    error: session.error ? redact(session.error) : session.error,
     startedAt: session.startedAt,
     finishedAt: session.finishedAt,
     durationMs: session.durationMs,
@@ -616,4 +659,19 @@ function isBusy(error: unknown) {
 
 function delay(ms: number) {
   return new Promise<void>((resolve) => setTimeout(resolve, ms))
+}
+
+function boundRaw(text: string) {
+  if (text.length <= PERSISTED_OUTPUT_CHARS) return text
+  const sliced = text.slice(-PERSISTED_OUTPUT_CHARS)
+  const nl = sliced.indexOf("\n")
+  if (nl === -1 || nl > 400) return sliced
+  return sliced.slice(nl + 1)
+}
+
+function trimRetained(text: string) {
+  if (text.length <= RETAINED_OUTPUT_CHARS) return text
+  const sliced = text.slice(-RETAINED_OUTPUT_CHARS)
+  const nl = sliced.indexOf("\n")
+  return nl === -1 || nl > 200 ? sliced : sliced.slice(nl + 1)
 }
