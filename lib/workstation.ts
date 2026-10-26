@@ -1,6 +1,11 @@
 import fs from "node:fs/promises"
 import path from "node:path"
-import { codingVolumeArgs, codingAccess } from "@/lib/coding-tools"
+import {
+  codingAccess,
+  codingVolumeArgs,
+  gitCredentialVolume,
+  isGitCredentialAgentId,
+} from "@/lib/coding-tools"
 import { randomBytes } from "node:crypto"
 
 import { eq } from "drizzle-orm"
@@ -115,7 +120,25 @@ async function inspect(name: string): Promise<Inspection | null> {
   }
 }
 
-async function create(agentId: string, tag: string) {
+// True when this agent has a volume written by `xiryn-git-token set <id>`.
+// A missing volume is the shared fallback, not an error. Any other Docker
+// failure is thrown so we do not mount the shared token into an agent that
+// already has its own.
+async function hasOwnGitCredential(agent: { id: string; category: string }) {
+  if (agent.category !== "coding") return false
+  if (!isGitCredentialAgentId(agent.id)) return false
+  const volume = await dockerRaw(["volume", "inspect", gitCredentialVolume(agent.id)], {
+    timeoutMs: 20_000,
+  })
+  if (volume.exitCode === 0) return true
+  const detail = `${volume.stderr}\n${volume.stdout.toString()}`
+  if (volume.exitCode !== null && /no such volume/i.test(detail)) return false
+  throw new Error(
+    dockerReason(volume.stderr) || "Couldn't check the agent's git credential."
+  )
+}
+
+async function create(agentId: string, tag: string, hasOwn: boolean) {
   const agent = db
     .select({ id: agents.id, name: agents.name, category: agents.category })
     .from(agents)
@@ -159,9 +182,9 @@ async function create(agentId: string, tag: string) {
       `TZ=${timeZone}`,
       "--volume",
       `${volumeName(agentId)}:${HOME}`,
-      ...codingVolumeArgs(agent),
+      ...codingVolumeArgs(agent, hasOwn),
       "--label",
-      `xiryn.coding=${codingAccess(agent)}`,
+      `xiryn.coding=${codingAccess(agent, hasOwn)}`,
       "--publish",
       `127.0.0.1::${VNC_PORT}`,
       "--shm-size",
@@ -218,11 +241,12 @@ async function prepare(agentId: string): Promise<Session> {
   // which lives in a volume, carries over
   const agent = db.select().from(agents).where(eq(agents.id, agentId)).get()
   if (!agent) throw new Error("Agent not found")
-  const changedAccess =
-    found &&
-    (found.codingAccess === "rw" || found.codingAccess === "ro"
-      ? found.codingAccess
-      : "off") !== codingAccess(agent)
+  const hasOwn = await hasOwnGitCredential(agent)
+  const access = codingAccess(agent, hasOwn)
+  // Labels from before per-agent credentials were "rw" and "ro". Neither
+  // matches "own" or "shared", so the workstation is recreated once and
+  // comes back on the shared volume, read-only.
+  const changedAccess = Boolean(found) && (found?.codingAccess || "off") !== access
   const current = imageTag()
   if (
     found &&
@@ -233,7 +257,7 @@ async function prepare(agentId: string): Promise<Session> {
   }
 
   if (!found) {
-    await create(agentId, await ensureImage())
+    await create(agentId, await ensureImage(), hasOwn)
     await boot(name)
   } else if (found.status !== "running") {
     await boot(name)
@@ -258,7 +282,7 @@ async function prepare(agentId: string): Promise<Session> {
     .set({ workstationId: name, updatedAt: new Date() })
     .where(eq(agents.id, agentId))
     .run()
-  return { name, at: Date.now(), access: codingAccess(agent) }
+  return { name, at: Date.now(), access }
 }
 
 // The agent's workstation, running. Creates it on first use and starts it
@@ -267,12 +291,14 @@ export async function ensureWorkstation(agentId: string): Promise<string> {
   const cached = shared.recent.get(agentId)
   const agent = db.select().from(agents).where(eq(agents.id, agentId)).get()
   if (!agent) throw new Error("Agent not found")
-  if (
-    cached &&
-    cached.access === codingAccess(agent) &&
-    Date.now() - cached.at < RECENT_MS
-  )
-    return cached.name
+  if (cached && Date.now() - cached.at < RECENT_MS) {
+    try {
+      const hasOwn = await hasOwnGitCredential(agent)
+      if (cached.access === codingAccess(agent, hasOwn)) return cached.name
+    } catch {
+      // Docker is not ready, or the inspect failed. Fall through and start it.
+    }
+  }
 
   let task = shared.pending.get(agentId)
   if (!task) {
@@ -817,6 +843,16 @@ export async function stopWorkstation(agentId: string) {
     await docker(["stop", "--time", "5", name], { timeoutMs: 60_000 })
 }
 
+// Removes the per-agent git credential volume. The shared fallback volume
+// is left in place. A workstation reset does not call this: the token
+// belongs to the agent, not to one machine.
+export async function deleteAgentGitCredential(agentId: string) {
+  if (!isGitCredentialAgentId(agentId)) return
+  await dockerRaw(["volume", "rm", "--force", gitCredentialVolume(agentId)], {
+    timeoutMs: 60_000,
+  })
+}
+
 // Removes the machine and its home folder
 export async function deleteWorkstation(agentId: string) {
   shared.recent.delete(agentId)
@@ -841,7 +877,19 @@ export async function workstationLeftovers(agentId: string) {
   })
   if (volume.exitCode === 0) return true
   const detail = `${volume.stderr}\n${volume.stdout.toString()}`
-  if (volume.exitCode !== null && /no such volume/i.test(detail)) return false
+  if (volume.exitCode !== null && /no such volume/i.test(detail)) {
+    if (!isGitCredentialAgentId(agentId)) return false
+    const git = await dockerRaw(["volume", "inspect", gitCredentialVolume(agentId)], {
+      timeoutMs: 20_000,
+    })
+    if (git.exitCode === 0) return true
+    const gitDetail = `${git.stderr}\n${git.stdout.toString()}`
+    if (git.exitCode !== null && /no such volume/i.test(gitDetail)) return false
+    throw new Error(
+      dockerReason(git.stderr) ||
+        "Couldn't check whether the git credential volume is gone."
+    )
+  }
   throw new Error(
     dockerReason(volume.stderr) ||
       "Couldn't check whether the workstation volume is gone."
@@ -903,6 +951,7 @@ export async function sweepWorkstations() {
     if (!known.has(agentId)) {
       if (stopped()) return
       await deleteWorkstation(agentId)
+      await deleteAgentGitCredential(agentId)
       continue
     }
     if (autoDelete === undefined || state !== "exited") continue
@@ -972,7 +1021,7 @@ export async function ensureCodingTools(agentId: string) {
           name,
           "bash",
           "-c",
-          'if [ ! -f "$HOME/.coding-tools-v2-ready" ]; then bash -s && touch "$HOME/.coding-tools-v2-ready"; fi',
+          'if [ ! -f "$HOME/.coding-tools-v3-ready" ]; then bash -s && touch "$HOME/.coding-tools-v3-ready"; else bash -s -- refresh; fi',
         ],
         { input: script, timeoutMs: 300_000 }
       )

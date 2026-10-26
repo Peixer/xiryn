@@ -129,6 +129,10 @@ It waits until the helper consumes that file, prints `release.json`, and tells y
 
 The installer copies this script to `/usr/local/sbin/xiryn-update` on the first blue/green install and on every later run. You can still pull and run `deploy/migrate-blue-green.sh` by hand, as in [Refresh the root helper](#refresh-the-root-helper).
 
+### Git credentials
+
+Switching to a build that isolates GitHub credentials does not delete the shared token in the `xiryn-coding-creds` volume. Coding agents that do not yet have a token of their own keep mounting that volume, read-only, including the workstation whose hostname is `gr8-codegen`. The next time that agent runs, its container is recreated once so the mount is read-only; the home folder stays. Git clone and push keep working. Assign a per-agent token when you can, and do not run `xiryn-git-token clear` with no agent id until that agent has one. The steps are in [coding-agents.md](coding-agents.md) and [aws.md](aws.md). A re-run of the installer replaces `/usr/local/sbin/xiryn-git-token`. `xiryn-update` runs the installer when `deploy/` changed.
+
 ## What the buttons do
 
 Settings → **Update version** on a wide browser (the item sits in the settings list between Remote access and System). On a phone, or in the installed app, open the **Settings** tab — it shows a dot when a newer commit is on the branch — and tap **Update version** at the top of that screen. The row carries a **New** badge in the same case. Switch and roll back open an approval card on that screen, with full-width Approve and Decline buttons.

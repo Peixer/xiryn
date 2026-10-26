@@ -9,7 +9,7 @@ export const CATEGORY_LABELS: Record<AgentCategory, string> = {
 
 export const CATEGORY_DESCRIPTIONS: Record<AgentCategory, string> = {
   general: "Standard agent for everyday tasks.",
-  coding: "Coding specialist. Gets Codex CLI and shared git credentials.",
+  coding: "Coding specialist. Gets Codex CLI and its own git credential.",
   research: "Optimized for deep web research and analysis.",
   assistant: "Optimized for everyday assistance and task management.",
 }

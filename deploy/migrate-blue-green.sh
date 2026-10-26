@@ -293,6 +293,7 @@ install_git_token() {
   if [[ "$(id -u)" -eq 0 ]]; then
     chown root:root "$bin"
   fi
+  echo 'Installed xiryn-git-token. The shared volume still works until you set a token per agent. See docs/coding-agents.md.'
 }
 
 warn_host_credentials() {
@@ -300,10 +301,11 @@ warn_host_credentials() {
   if [[ -f "$cred" ]]; then
     echo '' >&2
     echo 'WARNING: /home/xiryn/.git-credentials exists on the host.' >&2
-    echo 'This file is NOT used by coding agents (they read from the xiryn-coding-creds volume).' >&2
-    echo 'It may also be world-readable. To move it into the volume:' >&2
+    echo 'This file is NOT used by coding agents (they read a Docker volume).' >&2
+    echo 'It may also be world-readable. Move it into the shared fallback, then give each coding agent its own token:' >&2
     echo '' >&2
     echo '  sudo cat /home/xiryn/.git-credentials | sudo xiryn-git-token set' >&2
+    echo '  sudo xiryn-git-token set <agent-id>' >&2
     echo '  sudo rm /home/xiryn/.git-credentials # only after verifying xiryn-git-token show works' >&2
     echo '' >&2
   fi
@@ -505,7 +507,7 @@ if [[ ( -f "$ACTIVE" || -f "$STATE_FILE" ) && -d "$BLUE" && -f /etc/systemd/syst
   refresh_deploy_path
   warn_host_credentials
   echo "Blue/green is already installed (active: ${active})."
-  echo "Replaced the root helper, xiryn-update, the lock script, and the root-owned better-sqlite3 under /usr/local/lib/xiryn."
+  echo "Replaced the root helper, xiryn-update, xiryn-git-token, the lock script, and the root-owned better-sqlite3 under /usr/local/lib/xiryn."
   if [[ "$active" == "blue" || "$active" == "green" ]]; then
     echo "Restart the serving colour so it loads its env file: systemctl restart xiryn-${active}.service"
   else
