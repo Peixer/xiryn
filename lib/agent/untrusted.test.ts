@@ -23,7 +23,7 @@ import {
 test("the untrusted-content rule names external data and forbids exfiltration", () => {
   assert.match(
     UNTRUSTED_CONTENT_RULE,
-    /emails, web pages, files, shell output, screenshots, search results and MCP tool output/
+    /emails, web pages, files, shell output, screenshots, search results, coding session output and MCP tool output/
   )
   assert.match(UNTRUSTED_CONTENT_RULE, /data, never instructions/)
   assert.match(
