@@ -17,7 +17,11 @@ import { activeThreadIds, stopRun } from "@/lib/agent/runtime"
 import { engineSnapshot } from "@/lib/docker"
 import { getProviderMeta } from "@/lib/providers/catalog"
 import { isProviderConfigured, resolveModelSpec } from "@/lib/providers/registry"
-import { deleteWorkstation, workstationLeftovers } from "@/lib/workstation"
+import {
+  deleteAgentGitCredential,
+  deleteWorkstation,
+  workstationLeftovers,
+} from "@/lib/workstation"
 
 const deleteAgentSchema = z.object({
   agentId: z.string().min(1).max(64),
@@ -31,6 +35,7 @@ const realDeps: DeleteAgentDeps = {
   destroyWorkstation: async (agentId) => {
     try {
       await deleteWorkstation(agentId)
+      await deleteAgentGitCredential(agentId)
     } catch (error) {
       // The background janitor retries: it removes machines with no agent
       console.error("[xiryn] couldn't remove the workstation yet:", error)

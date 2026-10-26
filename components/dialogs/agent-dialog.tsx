@@ -370,8 +370,9 @@ function AgentForm({ agent, template }: { agent?: NavAgent; template?: AgentTemp
                           </span>
                           {category === "coding" && (
                             <span className="block text-muted-foreground">
-                              The first coding agent you create owns the credentials.
-                              Others get read-only access.
+                              Each coding agent mounts only its own GitHub credential.
+                              Until you set one with xiryn-git-token, it keeps using the
+                              shared credential read-only.
                             </span>
                           )}
                         </span>
